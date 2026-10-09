@@ -95,7 +95,8 @@
     if (v === 0) return '$0';
     return v >= 1 ? '$' + v.toFixed(2) : v >= 0.1 ? '$' + v.toFixed(3) : v >= 0.001 ? '$' + v.toFixed(4) : '$' + v.toPrecision(2);
   }
-  function pct(v) { return ok(v) ? Math.round(v * 100) + '%' : ''; }
+  // A share is never rounded up to 100%: 99.6% is shown as 99%.
+  function pct(v) { return !ok(v) ? '' : v >= 0.9995 ? '100%' : Math.min(99, Math.round(v * 100)) + '%'; }
   function num(v, digits) { return ok(v) ? v.toFixed(digits == null ? 1 : digits) : ''; }
   function int(v) { return ok(v) ? Math.round(v).toLocaleString('en-US') : ''; }
   function turns(p) { return num(p.requests, p.n > 1 ? 1 : 0); }
