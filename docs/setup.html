@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Setup: Local index token benchmark</title>
+<meta name="description" content="How to install the local index setup, the lx command reference, the options, and what each index costs to build and store.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
+<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body data-page="setup">
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" id="site-header"></header>
+<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
+<main class="wrap" id="main">
+  <h1>Setup: local index first</h1>
+  <p class="lede">One set of rules, three helper agents, the skills the rules name and one session-start hook, installed for Claude Code, Codex and GitHub Copilot.</p>
+  <p>The aim is fewer input and cache-read tokens. An agent asks a local index where something is, gets the answer in one turn, and opens a file only when the answer is not already on the line. Once installed, everything runs on the machine. Nothing calls a model or a remote index.</p>
+  <p>The files are in the <code>setup</code> folder of the <a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" rel="noopener">repository</a>.</p>
+
+  <h2>Install</h2>
+  <p>Hand an agent <code>INSTALL.txt</code>, or run it yourself. It is one file that holds both the instructions and the program. The header is plain text, and below it every file of the setup is packed as readable comment lines, nothing encoded.</p>
+<pre><code>python INSTALL.txt                    # rules, agents, hook and tools, all three clients
+python INSTALL.txt --client claude    # one client: claude, codex or copilot
+python INSTALL.txt --no-tools         # no downloads
+python INSTALL.txt --dry-run          # show what would change, write nothing</code></pre>
+  <p>From a checkout of the repository the same two steps are:</p>
+<pre><code>python setup/apply.py           # rules, agents and the hook
+python setup/tools.py           # the search tools and the lx command</code></pre>
+  <p>Anything <code>apply.py</code> is about to change is first copied to <code>~/.local-index/backups/&lt;timestamp&gt;/</code>, and it is safe to run again.</p>
+
+  <h2>What gets installed</h2>
+  <div class="card"><div class="scroll" tabindex="0" role="region" aria-label="What gets installed">
+    <table>
+      <caption class="visually-hidden">What gets installed</caption>
+      <thead><tr><th scope="col">Part</th><th scope="col">Where</th><th scope="col">What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Rules</td><td class="wide"><code>~/.claude/CLAUDE.md</code>, <code>~/.codex/AGENTS.md</code>, <code>~/.copilot/copilot-instructions.md</code></td><td class="wide">Two marked blocks. The protected rules tell an agent to ask the local index before it searches or reads a file, and to read only the lines the index points at. The no-compress block tells any tool that shortens instruction files to leave those rules whole. Everything else in each file is left alone.</td></tr>
+        <tr><td>Agents</td><td class="wide"><code>~/.claude/agents/</code>, <code>~/.codex/agents/</code>, <code>~/.copilot/agents/</code></td><td class="wide">Three helper agents a session can hand work to: <code>cavecrew-investigator</code> finds code, <code>cavecrew-builder</code> writes it and <code>cavecrew-reviewer</code> checks it. Rendered from <code>agents/*.md</code>.</td></tr>
+        <tr><td>Skills</td><td class="wide"><code>~/.claude/skills/</code>, <code>~/.codex/skills/</code>, <code>~/.copilot/skills/</code></td><td class="wide">One folder for each skill under <code>setup/skills</code>, because the rules name them. A skill that is already installed is never touched, whatever its version.</td></tr>
+        <tr><td>Hook</td><td class="wide"><code>~/.local-index/session_index.py</code></td><td class="wide">Runs at session start. Inside a git repository it refreshes the indexes in the background and prints one <code>local-index:</code> line. Outside one it prints nothing.</td></tr>
+        <tr><td>Tools</td><td class="wide"><code>~/Tools/codesearch-venv</code>, <code>~/.graphify/venv</code> only when no graphify was found, and launchers in the first of <code>~/bin</code>, <code>~/.local/bin</code> or the Windows <code>WindowsApps</code> folder that is on PATH</td><td class="wide">semble, ast-grep, codanna, graphify when none is present, and the <code>lx</code> launcher.</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <p>No agent file names a model version. Work is routed by tier: Tier A is the strongest model on offer at its highest reasoning setting, Tier B the fast coding class, Tier C the lightest. Claude Code reaches them through its <code>inherit</code>, <code>sonnet</code> and <code>haiku</code> aliases, which follow new releases. Codex and Copilot agents set no model and inherit the model of the session.</p>
+  <p><code>tools.py</code> is the part that downloads: semble 0.6.1 and ast-grep 0.45.3 as pinned wheels, graphify 0.9.72 only when no graphify is found, codanna 0.16.0 as one release file whose SHA-256 must match the pinned value, and the semble embedding model once. Only the Windows build of codanna is pinned. On other systems it is skipped, <code>lx</code> answers from the graphify graph, <code>--rust</code> and <code>codanna_embeddings</code> do nothing, and <code>--hybrid</code> searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30. With <code>--no-tools</code> nothing is downloaded and <code>lx</code> is still created.</p>
+
+  <h2>The engines</h2>
+  <div class="card"><div class="scroll" tabindex="0" role="region" aria-label="The engines">
+    <table>
+      <caption class="visually-hidden">The engines</caption>
+      <thead><tr><th scope="col">Layer</th><th scope="col">Tool</th><th scope="col">Answers</th><th scope="col">Where its index lives</th></tr></thead>
+      <tbody>
+        <tr><td>Symbol index</td><td>codanna, Rust</td><td class="wide">Where a symbol is defined, what calls it</td><td class="wide"><code>~/.local-index/codanna/&lt;repo&gt;/</code>, outside the repository</td></tr>
+        <tr><td>Search by meaning (local RAG)</td><td>semble: static embeddings (word vectors that are looked up, with no model run at query time) plus BM25 keyword scoring</td><td class="wide">A concept, or where something lives</td><td class="wide">The user cache folder, one entry per repository</td></tr>
+        <tr><td>Code graph</td><td>graphify, built from the syntax tree that tree-sitter parses, <code>--code-only</code></td><td class="wide">Blast radius (what a change can break), paths between symbols, and hubs (the symbols most code passes through)</td><td class="wide"><code>&lt;repo&gt;/graphify-out/</code>, hidden through <code>.git/info/exclude</code></td></tr>
+        <tr><td>Structural search</td><td>ast-grep, Rust, no index</td><td class="wide">An exact code shape</td><td class="wide">None</td></tr>
+        <tr><td>Literal search</td><td>ripgrep, Rust, no index</td><td class="wide">An exact string</td><td class="wide">None</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <p>The three indexes build side by side. codanna is always run with a settings file this setup writes and keeps outside the repository, so a <code>.codanna/settings.toml</code> inside a repository cannot switch embeddings on or point it at a server.</p>
+
+  <h2>lx, the one command agents type</h2>
+  <p><code>lx</code> routes each question to the engine that answers it best and trims the answer to a line per hit.</p>
+<pre><code>lx def NAME...            name path:first-last signature
+lx callers NAME...        "N callers of NAME:", then name path:first-last per caller
+lx about NAME...          definition, doc line and callers in one answer
+lx find "words"           path:first-last of the lines that match, then name:line
+                          for each definition they sit in
+lx find "words" --cards   each hit as its definition: name path:first-last
+                          signature, then the doc line
+lx find "words" --rust    search the embeddings of the Rust index
+lx find "words" --hybrid  every search merged: semble, the name and doc search of the
+                          Rust index, and its embeddings when the index has them
+lx find "words" --docs    search prose; --all adds config; -k N sets how many
+lx ask KIND:WHAT...       several questions in one call: def, callers, about, find
+lx refresh                rebuild what changed, print the status line
+lx graph                  build or refresh the graphify graph alone
+lx status                 print the status line
+lx prune [--apply]        list index data left behind by folders that are gone</code></pre>
+  <p><code>--rust</code> needs an index built with <code>codanna_embeddings</code> on. <code>--hybrid</code> and the <code>find</code> inside <code>lx ask</code> work on any index and add the embeddings when they are there. When the Rust index is missing, or the code is in a language it does not parse, <code>lx</code> answers from the graphify graph instead, so the commands stay the same.</p>
+  <p>Graph questions go straight to graphify, from the repository root:</p>
+<pre><code>graphify affected "check_token"
+graphify path "A" "B"
+graphify query "how does auth reach the store" --budget 1500</code></pre>
+  <p>Exact shapes and strings need no index:</p>
+<pre><code>ast-grep run -p 'check_token($$$)' -l python .
+rg -n -F 'check_token(' . -g '!graphify-out'</code></pre>
+
+  <h2>Options</h2>
+  <p>The options live in <code>~/.local-index/config.json</code>. What each choice costs to build and store is measured in the next section.</p>
+  <div class="card"><div class="scroll" tabindex="0" role="region" aria-label="Options">
+    <table>
+      <caption class="visually-hidden">Options</caption>
+      <thead><tr><th scope="col">Option</th><th scope="col">Default</th><th scope="col">Effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>graph_on_demand</code></td><td><code>false</code></td><td class="wide"><code>true</code> skips graphify at refresh, and <code>lx graph</code> builds it when needed. The index is smaller and a refresh after one edit is faster. <code>lx find</code> then prints ranges without definition names.</td></tr>
+        <tr><td><code>codanna_embeddings</code></td><td><code>false</code></td><td class="wide"><code>true</code> gives the Rust index its own embeddings, which <code>lx find --hybrid</code>, <code>--rust</code> and <code>lx ask</code> then also search. The first build and every refresh take longer. codanna fetches its embedding model the first time, and its size is listed under embedding models below. It embeds doc comments, so undocumented code is found through semble and the name search, which <code>--hybrid</code> still asks. If the build fails, the index is rebuilt without embeddings.</td></tr>
+        <tr><td><code>embed_max_files</code></td><td><code>600</code></td><td class="wide">With embeddings on, a repository with more tracked files than this is still indexed without them. <code>--rust</code> then falls back to semble, and <code>--hybrid</code> merges semble with the name and doc search.</td></tr>
+        <tr><td><code>find_engine</code></td><td><code>"semble"</code></td><td class="wide"><code>"codanna"</code> makes plain <code>lx find</code> search the Rust index and stops building the semble index. It only takes effect when <code>codanna_embeddings</code> is on and the repository is within <code>embed_max_files</code>. Otherwise <code>lx find</code> keeps using semble.</td></tr>
+        <tr><td><code>max_files</code></td><td><code>20000</code></td><td class="wide">A repository with more tracked files is left for a deliberate, hand-run index.</td></tr>
+        <tr><td><code>skip_roots</code></td><td><code>[]</code></td><td class="wide">Paths never indexed. An empty <code>.local-index-skip</code> file in a repository root does the same for that repository.</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <p>Changing an option never empties an index a lookup is about to read: only <code>lx refresh</code> rebuilds.</p>
+
+  <h2>What each option costs</h2>
+  <p id="index-text"></p>
+  <section class="card" aria-labelledby="index-title">
+    <h3 id="index-title">Build time and disk, by index stack</h3>
+    <p class="sub">Three separate scales: seconds for a first build, seconds after one file changes, megabytes on disk. Shorter bars are better in all three.</p>
+    <div class="chart small-multiples" id="index"></div>
+    <details open><summary>Table view</summary><div id="index-table"></div></details>
+    <p class="note" id="index-parts"></p>
+  </section>
+  <section class="card" aria-labelledby="search-title">
+    <h3 id="search-title">Search by meaning: which engine finds the right function</h3>
+    <p class="sub" id="search-sub"></p>
+    <div id="search-table"></div>
+    <p class="note" id="search-note"></p>
+  </section>
+  <section class="card" aria-labelledby="lookup-title" id="lookup-card">
+    <h3 id="lookup-title">One lookup, by engine</h3>
+    <p class="sub">The time one lookup takes and the size of the answer it prints.</p>
+    <div id="lookup-table"></div>
+  </section>
+  <section class="card" aria-labelledby="models-title" id="models-card">
+    <h3 id="models-title">Embedding models on disk</h3>
+    <ul class="plain" id="models"></ul>
+  </section>
+
+  <h2>Checks</h2>
+<pre><code>python setup/tests/check_hook.py setup/local-index/session_index.py EMPTY_DIR
+python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR</code></pre>
+  <p>The first drives the hook and <code>lx</code> against small throwaway repositories. The second installs over copies of real client files in throwaway home directories. Those originals are personal, so you supply your own. <code>build_install.py</code> repacks <code>INSTALL.txt</code> and renders <code>rendered/</code> again after any edit to the setup.</p>
+
+  <h2>Limits worth knowing</h2>
+  <ul class="plain">
+    <li>graphify before 0.9.70 is affected by GHSA-pcc4-rvhr-2pr8: a hostile Fortran file can make the C preprocessor pull other host files into <code>graph.json</code>. The refresh command runs an older graphify with every folder holding a <code>cpp</code> taken off its PATH, which closes it. Running <code>graphify extract</code> by hand does not have that guard, which is one reason the rules forbid it.</li>
+    <li>The codanna release file is not code-signed. <code>tools.py</code> accepts it only when its SHA-256 matches the pinned value.</li>
+    <li>Copilot loads extra instruction folders named in the user variable <code>COPILOT_CUSTOM_INSTRUCTIONS_DIRS</code>. <code>apply.py</code> reports any whose file still carries the older wrapper block this setup replaces, and prints the command that clears the variable. It never changes the variable itself.</li>
+    <li>Codex asks for new hooks to be trusted before it runs them: open <code>/hooks</code> once and approve the session-start entries.</li>
+    <li>Claude Code reads a new <code>~/.claude/agents/</code> folder only after a restart.</li>
+    <li>token-goat, rtk and the caveman-autocompress hook are not installed by this setup. The rules name them as "where installed", so the same files work on a machine that has them.</li>
+  </ul>
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="data/benchmark.js"></script>
+<script src="assets/site.js"></script>
+<script src="assets/charts.js"></script>
+<script src="assets/setup.js"></script>
+</body>
+</html>

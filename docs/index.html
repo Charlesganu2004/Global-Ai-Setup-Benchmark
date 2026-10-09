@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local index token benchmark</title>
+<meta name="description" content="What a code lookup costs an AI agent in tokens, measured across local index methods, model tiers and agent setups.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
+<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body data-page="home">
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" id="site-header"></header>
+<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
+<main class="wrap" id="main">
+  <h1>Local index token benchmark</h1>
+  <p class="lede" id="lede"></p>
+  <p>An agent re-reads its whole context on every turn, so the number of turns is what a lookup costs. A local index is worth having when it gives the answer in fewer turns.</p>
+  <div class="tiles" id="tiles"></div>
+
+  <h2>Leaderboard</h2>
+  <p>One row per method, fewest tokens first. Each row is the mean of the complete runs of that method, and the Runs column says how many that is. Pick a setup and a model tier. A <a href="how.html">model tier</a> is a class of model, from the lightest (C) to the strongest (A). The row tagged control used no index, only the search and read tools every agent has.</p>
+  <div class="filters" role="group" aria-label="Leaderboard filters">
+    <div class="filter"><span class="name" id="board-setup-name">Setup</span><div class="seg" id="board-setup" role="group" aria-labelledby="board-setup-name"></div></div>
+    <div class="filter"><span class="name" id="board-tier-name">Model tier</span><div class="seg" id="board-tier" role="group" aria-labelledby="board-tier-name"></div></div>
+  </div>
+  <p class="note" id="board-note" aria-live="polite"></p>
+  <div class="card"><div id="board"></div></div>
+
+  <h2>What the numbers say</h2>
+  <p>Each line counts its own runs. Many methods were run once or twice on a tier, and a result from one run is an example, not an average.</p>
+  <ul class="plain" id="findings"></ul>
+
+  <h2>Where to go next</h2>
+  <div class="navcards">
+    <a class="navcard" href="results.html"><strong>Results</strong><span>Charts of cost, tokens and accuracy for every method, and a table of every single run.</span></a>
+    <a class="navcard" href="methods.html"><strong>Methods</strong><span>What each method is, the exact commands the agents were given, and the questions they answered.</span></a>
+    <a class="navcard" href="setup.html"><strong>Setup</strong><span>How to install the local index setup, the lx commands, and what each index costs to build and store.</span></a>
+    <a class="navcard" href="how.html"><strong>How it was measured</strong><span>The model tiers, the prices, where the start-up context comes from, and what this test cannot tell you.</span></a>
+  </div>
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="data/benchmark.js"></script>
+<script src="assets/site.js"></script>
+<script src="assets/home.js"></script>
+</body>
+</html>

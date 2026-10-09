@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Methods: Local index token benchmark</title>
+<meta name="description" content="The catalogue of lookup methods that were measured, with the exact commands each agent was given.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
+<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body data-page="methods">
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" id="site-header"></header>
+<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
+<main class="wrap" id="main">
+  <h1>Methods</h1>
+  <p class="lede">A method is the set of search commands an agent was allowed to use. Everything else stayed the same: the repository, the questions and the grading.</p>
+  <p>The method tagged control had no index, only the search and read tools every agent has. Every other method is compared with it.</p>
+
+  <h2>The questions every method answered</h2>
+  <p>The right answers come from the syntax tree of the repository, and a script graded every reply against them.</p>
+  <div class="questions" id="questions"></div>
+
+  <h2>The catalogue</h2>
+  <p>Each card ends with one result: the first setup on the cheapest <a href="how.html">model tier</a> where that was measured, otherwise the first setup and tier that was.</p>
+  <ul class="plain" id="groups-text"></ul>
+  <div class="filters" role="group" aria-label="Catalogue filters">
+    <div class="filter"><label class="name" for="q">Search</label><input class="search" id="q" type="search" autocomplete="off" spellcheck="false" placeholder="Code, name or command"></div>
+    <div class="filter"><span class="name" id="m-group-name">Group</span><div class="seg" id="m-group" role="group" aria-labelledby="m-group-name"></div></div>
+  </div>
+  <p class="note" id="m-note" aria-live="polite"></p>
+  <div class="methods" id="methods"></div>
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="data/benchmark.js"></script>
+<script src="assets/site.js"></script>
+<script src="assets/methods.js"></script>
+</body>
+</html>
