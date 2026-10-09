@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+
+# Index data the session hook builds inside a repository
+graphify-out/
+.codanna/
+.codannaignore
+
+# Local client settings and personal originals
+.claude/
+backup-*/
+installed-on-this-machine/
+
+# Editors and operating systems
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
