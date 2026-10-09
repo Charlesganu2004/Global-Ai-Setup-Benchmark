@@ -11,8 +11,8 @@ the same centred hero. It is chosen by nobody. Taste here means making each
 decision deliberately and being able to say why it fits this audience.
 
 The approach draws on Leonxlnx/taste-skill (MIT), whose taste skill is the
-original and far longer; this is our own condensed statement with house rules
-added. `repo-lists/skill-upstreams.json` records the version checked against.
+original and far longer; this is a separate, condensed statement with house
+rules added.
 
 ## 1. Audit what exists before changing it
 
@@ -111,6 +111,5 @@ from one hidden behind an opaque layer; a screenshot and a hit-test can. This
 repository shipped a page where every element was present and nothing could be
 clicked, and only looking found it.
 
-Related: `master-refactor-ui` for fixing an existing surface in the right order,
-`master-anti-slop` for the default patterns to reach past, `verify-before-complete`
-for why the screenshot is the evidence.
+Related: `master-anti-slop` for the default patterns to reach past,
+`verify-before-complete` for why the screenshot is the evidence.

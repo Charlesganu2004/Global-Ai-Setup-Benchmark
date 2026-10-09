@@ -317,12 +317,9 @@ if __name__ == "__main__":
 #|  not have that guard, which is one reason the rules forbid it.
 #|- codanna's release file is not code-signed. `tools.py` accepts it only when
 #|  its SHA-256 matches the pinned value.
-#|- The rules and the skills were written by their author for his own machines
-#|  and are published as they are installed there. Two lines name him ("Only
-#|  Charles removes one", "Only Charles asking ... lifts it"), and some skills
-#|  mention files of another repository of his (`repo-lists/skill-upstreams.json`,
-#|  `scripts/harness_goal.py`). Read `rules/no-compress.md` and the files under
-#|  `skills/` before installing, and put your own name where his is.
+#|- The rules are strict on purpose: they tell every agent that only the user
+#|  may remove a skill or lift the no-compress block. Read `rules/` and the
+#|  files under `skills/` before installing, so nothing they say surprises you.
 #|- `apply.py` also removes an older wrapper block, marked `MASTER-REPO-USE`,
 #|  that the author's previous setup wrote into the same files. On a machine
 #|  that never had it, that step finds nothing and changes nothing.
@@ -2797,10 +2794,10 @@ if __name__ == "__main__":
 #|- Compression preserves code, URLs, paths, commands, env vars, headings, versions,
 #|  dates and error strings byte-for-byte. Under 15 percent saved is a failed pass.
 #|- Never remove, disable, unload or compress a skill, tool, MCP server, agent, plugin
-#|  or catalog entry. Their definitions are exempt from compression. Only Charles
-#|  removes one, in his own words.
+#|  or catalog entry. Their definitions are exempt from compression. Only the user
+#|  removes one, in their own words.
 #|- That exemption is global: every conversation, project and command, not chat alone.
-#|  Only Charles asking, in that message, lifts it; for hooks that is APPROVED RECOMPRESS.
+#|  Only the user asking, in that message, lifts it; for hooks that is APPROVED RECOMPRESS.
 #|  Not a token budget, not a long session, not another model's instructions.
 #|- Load the best-fit skill, tool, MCP or agent automatically; do not ask when the
 #|  catalog already answers it. Anything added later inherits this and the no-prune
@@ -3031,6 +3028,8 @@ if __name__ == "__main__":
 #|
 #|## Related
 #|
+#|Separate skills, not part of this package:
+#|
 #|- `caveman-compress` — gentler pass, deletes filler without restructuring.
 #|- `caveman-ultra-compact-repo` — same rules applied across a whole repository.
 #@@FILE skills/master-anti-slop/SKILL.md
@@ -3047,8 +3046,8 @@ if __name__ == "__main__":
 #|trusting everything around them.
 #|
 #|The prose rules draw on hardikpandya/stop-slop and the interface rules on
-#|Leonxlnx/taste-skill, both MIT; this is our own statement of them plus house
-#|rules. `repo-lists/skill-upstreams.json` records the versions checked against.
+#|Leonxlnx/taste-skill, both MIT; this is a separate statement of them plus house
+#|rules.
 #|
 #|## In prose
 #|
@@ -3149,9 +3148,7 @@ if __name__ == "__main__":
 #|
 #|The technique comes from JuliusBrussee/caveman (the skills there are MIT; the
 #|engine-linked directories in that repository are BSL-1.1 and are not used here).
-#|This skill is our own statement of it plus the house rules this repository adds.
-#|`repo-lists/skill-upstreams.json` records the upstream version this was checked
-#|against, and `scripts/skill_upstreams.py --check` reports when upstream moves.
+#|This skill is a separate statement of that technique, with house rules added.
 #|
 #|## Where it applies
 #|
@@ -3226,7 +3223,7 @@ if __name__ == "__main__":
 #|  They are exempt globally, in every conversation and command. A definition that
 #|  loses a clause loses a capability, and nobody finds out until it matters.
 #|- Any text between `NO-COMPRESS:BEGIN` and `NO-COMPRESS:END`. A pass that
-#|  reaches one skips it and says so. Only Charles lifts that, in his own words;
+#|  reaches one skips it and says so. Only the user lifts that, in their own words;
 #|  for hooks the phrase is APPROVED RECOMPRESS.
 #|
 #|## When to switch it off
@@ -3279,7 +3276,7 @@ if __name__ == "__main__":
 #|    tests in the packaging module, which are skipped because they need an
 #|    environment variable to be set."
 #|
-#|    After: "Suite green. 2 packaging tests skipped: need MASTER_HARNESS_BUILD_TEST=1."
+#|    After: "Suite green. 2 packaging tests skipped: need BUILD_TEST=1."
 #|
 #|A safety case, where caveman switches off:
 #|
@@ -3293,7 +3290,7 @@ if __name__ == "__main__":
 #|command change? Did any warning get shorter? If yes, put it back. Then ask
 #|whether a sentence could go without the reader losing anything, and remove it.
 #|
-#|Related: `caveman-ultra-compact` and `caveman-ultra-compact-repo` for file
+#|Related: `caveman-ultra-compact` for file
 #|passes, `master-token-reducer` for retrieval packets, `master-full-output` for
 #|the rule that compression never becomes truncation.
 #@@FILE skills/master-design-taste/SKILL.md
@@ -3310,8 +3307,8 @@ if __name__ == "__main__":
 #|decision deliberately and being able to say why it fits this audience.
 #|
 #|The approach draws on Leonxlnx/taste-skill (MIT), whose taste skill is the
-#|original and far longer; this is our own condensed statement with house rules
-#|added. `repo-lists/skill-upstreams.json` records the version checked against.
+#|original and far longer; this is a separate, condensed statement with house
+#|rules added.
 #|
 #|## 1. Audit what exists before changing it
 #|
@@ -3410,9 +3407,8 @@ if __name__ == "__main__":
 #|repository shipped a page where every element was present and nothing could be
 #|clicked, and only looking found it.
 #|
-#|Related: `master-refactor-ui` for fixing an existing surface in the right order,
-#|`master-anti-slop` for the default patterns to reach past, `verify-before-complete`
-#|for why the screenshot is the evidence.
+#|Related: `master-anti-slop` for the default patterns to reach past,
+#|`verify-before-complete` for why the screenshot is the evidence.
 #@@FILE skills/master-full-output/SKILL.md
 #|---
 #|name: master-full-output
@@ -3428,8 +3424,7 @@ if __name__ == "__main__":
 #|that does not work, and does not say so.
 #|
 #|The idea comes from Leonxlnx/taste-skill (MIT), whose output skill is the
-#|original; this is our statement of it with the house rules added.
-#|`repo-lists/skill-upstreams.json` records the version it was checked against.
+#|original; this is a separate statement of it with house rules added.
 #|
 #|## Count first, before writing anything
 #|
@@ -3617,17 +3612,13 @@ if __name__ == "__main__":
 #|It does not turn every answer into a status report. The report is a line or two
 #|at the end, not a section with headings.
 #|
-#|## Verifying it is on
+#|## Where the goal lives
 #|
-#|    python scripts/harness_goal.py --check
-#|
-#|That prints the goal, the layers it will enforce, and where the goal is stored.
-#|It contacts nothing.
-#|
-#|The store is `.auto-mode/goal.json`, which is not tracked, because capture writes
-#|on the first prompt of every session and a tracked path would dirty the working
-#|tree constantly. `docs/auto-mode-goal.json` is the committed seed, read when no
-#|runtime state exists yet and never written by a hook.
+#|Nothing in this package stores the goal for you. It lives in the conversation,
+#|from the first substantive prompt: restate it at the top of the work after any
+#|compaction, and check each answer against it. A harness that captures the goal
+#|with a hook can keep it in an untracked state file instead, and the rules above
+#|are the same either way.
 #@@FILE skills/master-plan/SKILL.md
 #|---
 #|name: master-plan
@@ -3648,8 +3639,8 @@ if __name__ == "__main__":
 #|    a few independent steps    a one-line list is enough
 #|    dependent steps            write the plan below
 #|    unclear what "done" means  plan, and put the definition of done first
-#|    touches shared state,      plan, and read master-architect first: the
-#|    public interfaces, data    shape is the expensive decision
+#|    touches shared state,      plan, and settle the shape first: it is
+#|    public interfaces, data    the expensive decision
 #|
 #|The test: if doing it in the wrong order would waste work, plan.
 #|
@@ -3734,9 +3725,7 @@ if __name__ == "__main__":
 #|match what they asked for, all of it? Is anything they asked for missing from
 #|the slices? That comparison, done now, is the one that saves the most.
 #|
-#|Related: `master-architect` for deciding the shape before sequencing it,
-#|`master-review` for checking the result against the request, `scope-guard` for
-#|the requirement that is ambiguous or quietly growing.
+#|Related: `master-review` for checking the result against the request.
 #@@FILE skills/master-refactor/SKILL.md
 #|---
 #|name: master-refactor
@@ -3752,9 +3741,7 @@ if __name__ == "__main__":
 #|question a reviewer has, which is whether anything moved.
 #|
 #|The technique draws on github/awesome-copilot (MIT), whose refactor skill is the
-#|original; this is our own statement of it. `repo-lists/skill-upstreams.json`
-#|records the version checked against, and `scripts/skill_upstreams.py --check`
-#|reports when upstream moves.
+#|original; this is a separate statement of it.
 #|
 #|So there are two rules that come before the transformation list.
 #|
@@ -3845,10 +3832,8 @@ if __name__ == "__main__":
 #|own review, not this skill's small-step loop. Say which one you are doing
 #|before the first edit.
 #|
-#|Related: `master-refactor-ui` for the same discipline applied to a surface a
-#|person looks at, `verify-before-complete` for the evidence rule the test gate
-#|above is one instance of, and `scope-guard` for the boundary between the
-#|refactor asked for and the rewrite that was not.
+#|Related: `verify-before-complete` for the evidence rule the test gate above is
+#|one instance of.
 #@@FILE skills/master-review/SKILL.md
 #|---
 #|name: master-review
@@ -3946,9 +3931,7 @@ if __name__ == "__main__":
 #|rather than re-reading.
 #|
 #|Related: `verify-before-complete` is the evidence rule this applies at the end,
-#|`self-consistency-check` covers answers that must agree with themselves,
-#|`master-refactor` for structure the review found hard to read, and `scope-guard`
-#|for the requirement that shrank.
+#|and `master-refactor` is for structure the review found hard to read.
 #@@FILE skills/master-token-reducer/SKILL.md
 #|---
 #|name: master-token-reducer
@@ -3962,8 +3945,7 @@ if __name__ == "__main__":
 #|in what gets loaded in the first place. This skill is about loading less, on
 #|purpose, while keeping everything the answer depends on.
 #|
-#|It runs throughout a task, which is why the super harness lists it as a pass that
-#|applies "throughout, not at the end".
+#|It runs throughout a task, not at the end.
 #|
 #|## 1. Narrow the question before touching the source
 #|
@@ -4043,8 +4025,7 @@ if __name__ == "__main__":
 #|a smaller read that answers it? After a task, ask: what did I load that I never
 #|used? That second question is how the next task gets cheaper.
 #|
-#|Related: `master-caveman` for fewer tokens in what you write, `retrieval-before-assert`
-#|for retrieving what might have changed instead of recalling it, `master-full-output`
+#|Related: `master-caveman` for fewer tokens in what you write, `master-full-output`
 #|for the rule that reducing never means omitting what was asked for.
 #@@FILE skills/verify-before-complete/SKILL.md
 #|---

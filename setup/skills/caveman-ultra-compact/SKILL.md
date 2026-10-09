@@ -131,5 +131,7 @@ After:
 
 ## Related
 
+Separate skills, not part of this package:
+
 - `caveman-compress` — gentler pass, deletes filler without restructuring.
 - `caveman-ultra-compact-repo` — same rules applied across a whole repository.

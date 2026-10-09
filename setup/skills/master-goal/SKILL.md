@@ -92,14 +92,10 @@ not.
 It does not turn every answer into a status report. The report is a line or two
 at the end, not a section with headings.
 
-## Verifying it is on
+## Where the goal lives
 
-    python scripts/harness_goal.py --check
-
-That prints the goal, the layers it will enforce, and where the goal is stored.
-It contacts nothing.
-
-The store is `.auto-mode/goal.json`, which is not tracked, because capture writes
-on the first prompt of every session and a tracked path would dirty the working
-tree constantly. `docs/auto-mode-goal.json` is the committed seed, read when no
-runtime state exists yet and never written by a hook.
+Nothing in this package stores the goal for you. It lives in the conversation,
+from the first substantive prompt: restate it at the top of the work after any
+compaction, and check each answer against it. A harness that captures the goal
+with a hook can keep it in an untracked state file instead, and the rules above
+are the same either way.

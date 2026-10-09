@@ -94,6 +94,4 @@ the first pass found something, fix it and re-run the check that would catch it,
 rather than re-reading.
 
 Related: `verify-before-complete` is the evidence rule this applies at the end,
-`self-consistency-check` covers answers that must agree with themselves,
-`master-refactor` for structure the review found hard to read, and `scope-guard`
-for the requirement that shrank.
+and `master-refactor` is for structure the review found hard to read.

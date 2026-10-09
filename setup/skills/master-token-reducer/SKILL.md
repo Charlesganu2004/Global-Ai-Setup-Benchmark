@@ -10,8 +10,7 @@ then the tokens were already spent getting there. The real savings are upstream,
 in what gets loaded in the first place. This skill is about loading less, on
 purpose, while keeping everything the answer depends on.
 
-It runs throughout a task, which is why the super harness lists it as a pass that
-applies "throughout, not at the end".
+It runs throughout a task, not at the end.
 
 ## 1. Narrow the question before touching the source
 
@@ -91,6 +90,5 @@ Before a large read, ask: what specific question does this answer, and is there
 a smaller read that answers it? After a task, ask: what did I load that I never
 used? That second question is how the next task gets cheaper.
 
-Related: `master-caveman` for fewer tokens in what you write, `retrieval-before-assert`
-for retrieving what might have changed instead of recalling it, `master-full-output`
+Related: `master-caveman` for fewer tokens in what you write, `master-full-output`
 for the rule that reducing never means omitting what was asked for.

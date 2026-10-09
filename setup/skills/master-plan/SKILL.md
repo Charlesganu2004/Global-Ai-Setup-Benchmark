@@ -17,8 +17,8 @@ as how to write it.
     a few independent steps    a one-line list is enough
     dependent steps            write the plan below
     unclear what "done" means  plan, and put the definition of done first
-    touches shared state,      plan, and read master-architect first: the
-    public interfaces, data    shape is the expensive decision
+    touches shared state,      plan, and settle the shape first: it is
+    public interfaces, data    the expensive decision
 
 The test: if doing it in the wrong order would waste work, plan.
 
@@ -103,6 +103,4 @@ Read the plan once as the person who asked would. Does the definition of done
 match what they asked for, all of it? Is anything they asked for missing from
 the slices? That comparison, done now, is the one that saves the most.
 
-Related: `master-architect` for deciding the shape before sequencing it,
-`master-review` for checking the result against the request, `scope-guard` for
-the requirement that is ambiguous or quietly growing.
+Related: `master-review` for checking the result against the request.

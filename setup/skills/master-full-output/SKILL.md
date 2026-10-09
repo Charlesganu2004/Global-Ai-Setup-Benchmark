@@ -12,8 +12,7 @@ abbreviation that saves the writer effort and leaves the reader with something
 that does not work, and does not say so.
 
 The idea comes from Leonxlnx/taste-skill (MIT), whose output skill is the
-original; this is our statement of it with the house rules added.
-`repo-lists/skill-upstreams.json` records the version it was checked against.
+original; this is a separate statement of it with house rules added.
 
 ## Count first, before writing anything
 

@@ -12,9 +12,7 @@ confidently.
 
 The technique comes from JuliusBrussee/caveman (the skills there are MIT; the
 engine-linked directories in that repository are BSL-1.1 and are not used here).
-This skill is our own statement of it plus the house rules this repository adds.
-`repo-lists/skill-upstreams.json` records the upstream version this was checked
-against, and `scripts/skill_upstreams.py --check` reports when upstream moves.
+This skill is a separate statement of that technique, with house rules added.
 
 ## Where it applies
 
@@ -89,7 +87,7 @@ compress around it.
   They are exempt globally, in every conversation and command. A definition that
   loses a clause loses a capability, and nobody finds out until it matters.
 - Any text between `NO-COMPRESS:BEGIN` and `NO-COMPRESS:END`. A pass that
-  reaches one skips it and says so. Only Charles lifts that, in his own words;
+  reaches one skips it and says so. Only the user lifts that, in their own words;
   for hooks the phrase is APPROVED RECOMPRESS.
 
 ## When to switch it off
@@ -142,7 +140,7 @@ A status update at ultra:
     tests in the packaging module, which are skipped because they need an
     environment variable to be set."
 
-    After: "Suite green. 2 packaging tests skipped: need MASTER_HARNESS_BUILD_TEST=1."
+    After: "Suite green. 2 packaging tests skipped: need BUILD_TEST=1."
 
 A safety case, where caveman switches off:
 
@@ -156,6 +154,6 @@ Before sending, reread the answer once and ask: did any number, name, path or
 command change? Did any warning get shorter? If yes, put it back. Then ask
 whether a sentence could go without the reader losing anything, and remove it.
 
-Related: `caveman-ultra-compact` and `caveman-ultra-compact-repo` for file
+Related: `caveman-ultra-compact` for file
 passes, `master-token-reducer` for retrieval packets, `master-full-output` for
 the rule that compression never becomes truncation.

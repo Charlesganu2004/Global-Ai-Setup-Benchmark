@@ -12,9 +12,7 @@ edit that nobody can review, because the diff no longer answers the only
 question a reviewer has, which is whether anything moved.
 
 The technique draws on github/awesome-copilot (MIT), whose refactor skill is the
-original; this is our own statement of it. `repo-lists/skill-upstreams.json`
-records the version checked against, and `scripts/skill_upstreams.py --check`
-reports when upstream moves.
+original; this is a separate statement of it.
 
 So there are two rules that come before the transformation list.
 
@@ -105,7 +103,5 @@ work between processes is a redesign. It gets a plan, a migration path and its
 own review, not this skill's small-step loop. Say which one you are doing
 before the first edit.
 
-Related: `master-refactor-ui` for the same discipline applied to a surface a
-person looks at, `verify-before-complete` for the evidence rule the test gate
-above is one instance of, and `scope-guard` for the boundary between the
-refactor asked for and the rewrite that was not.
+Related: `verify-before-complete` for the evidence rule the test gate above is
+one instance of.

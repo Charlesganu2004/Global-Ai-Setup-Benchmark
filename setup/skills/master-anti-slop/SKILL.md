@@ -11,8 +11,8 @@ made a decision leaves a mark, and readers learn to see those marks and stop
 trusting everything around them.
 
 The prose rules draw on hardikpandya/stop-slop and the interface rules on
-Leonxlnx/taste-skill, both MIT; this is our own statement of them plus house
-rules. `repo-lists/skill-upstreams.json` records the versions checked against.
+Leonxlnx/taste-skill, both MIT; this is a separate statement of them plus house
+rules.
 
 ## In prose
 
