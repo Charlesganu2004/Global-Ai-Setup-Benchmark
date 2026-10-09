@@ -144,7 +144,10 @@ GRAPH_SOURCE = re.compile(r"^\s*Source:\s+(\S+) L(\d+)", re.MULTILINE)
 CPP_SAFE_FROM = (0, 9, 70)
 CPP_NAMES = ("cpp", "cpp.exe", "cpp.cmd", "cpp.bat", "cpp.com")
 
-LOCK_STALE_SECONDS = 900
+# Longer than the slowest build this script can start: an embeddings build is
+# allowed an hour, twice, and then a plain rebuild. A dead owner's lock is
+# taken over at once, whatever its age.
+LOCK_STALE_SECONDS = 3 * 3600
 NO_WINDOW = 0x08000000 if os.name == "nt" else 0
 _config_note = ""
 
@@ -592,9 +595,21 @@ def lookup_settings(root: pathlib.Path) -> pathlib.Path | None:
 def codanna(found: dict, root: pathlib.Path, *args: str, timeout: int = 60) -> tuple[int, str]:
     if not found["codanna"]:
         return 127, ""
-    settings = lookup_settings(root) or codanna_settings(
-        root, bool(found.cfg.get("codanna_embeddings")))
+    settings = lookup_settings(root)
+    if settings is None:
+        # Nothing here that this version built and still trusts. Answer as if
+        # codanna were absent, so the caller falls back: creating, stamping or
+        # emptying an index is refresh's job alone.
+        return 127, ""
     return run([found["codanna"], "--config", str(settings), *args], timeout=timeout)
+
+
+def keep_retry(entry: dict, previous: dict) -> dict:
+    """Carry the date before which embeddings are not to be tried again into a
+    new state entry, so a failed or skipped build does not forget it."""
+    if number(previous.get("embed_retry_after")) > time.time():
+        entry["embed_retry_after"] = previous["embed_retry_after"]
+    return entry
 
 
 def refresh_codanna(found: dict, root: pathlib.Path, previous: dict,
@@ -617,7 +632,8 @@ def refresh_codanna(found: dict, root: pathlib.Path, previous: dict,
                     embed_retry_after=time.time() + 86400)
     if code != 0:
         log(f"codanna failed for {root}: {out.strip()[-400:]}")
-        return {"ok": False, "note": "last build failed, see ~/.local-index/refresh.log"}
+        return keep_retry({"ok": False, "note": "last build failed, see ~/.local-index/refresh.log"},
+                          previous)
     counted = re.search(r"with (\d+) total symbols", out)
     # An unchanged index reports no count, so the last one still stands.
     symbols = int(counted.group(1)) if counted else previous.get("nodes", 0)
@@ -625,9 +641,9 @@ def refresh_codanna(found: dict, root: pathlib.Path, previous: dict,
     if embeddings:
         return dict(entry, kept="embeddings")
     if number(previous.get("embed_retry_after")) > time.time():
-        # Still inside the day a failed embeddings build bought: say so, and keep the date.
-        entry.update(kept="no embeddings, see refresh.log", embed_retry_after=previous["embed_retry_after"])
-    return entry
+        # Still inside the day a failed embeddings build bought: say so.
+        entry["kept"] = "no embeddings, see refresh.log"
+    return keep_retry(entry, previous)
 
 
 def refresh(root: pathlib.Path, cfg: dict, found: dict, only: tuple = ()) -> None:
@@ -640,12 +656,13 @@ def refresh(root: pathlib.Path, cfg: dict, found: dict, only: tuple = ()) -> Non
         state = read_state(root)
         _, listing = git(found, root, "ls-files", timeout=30)
         count = len(listing.splitlines())
+        earlier = state.get("codanna") if isinstance(state.get("codanna"), dict) else {}
         if count > cfg["max_files"]:
             note = f"{count} tracked files, over the {cfg['max_files']} limit"
             state.update({key: {"ok": False, "note": note}
                           for key in ("codanna", "graphify", "semble")})
+            keep_retry(state["codanna"], earlier)
         else:
-            earlier = state.get("codanna") if isinstance(state.get("codanna"), dict) else {}
             # Embeddings only where the first build stays short enough to run unasked.
             embed = (bool(cfg["codanna_embeddings"]) and count <= cfg["embed_max_files"]
                      and number(earlier.get("embed_retry_after")) < time.time())
@@ -670,6 +687,8 @@ def refresh(root: pathlib.Path, cfg: dict, found: dict, only: tuple = ()) -> Non
                     except Exception as error:  # one engine failing must not lose the others
                         log(f"{key} raised for {root}: {error!r}")
                         state[key] = {"ok": False, "note": "last build failed"}
+                        if key == "codanna":
+                            keep_retry(state[key], earlier)
         state.update(root=str(root), refreshed_at=time.time())
         write_state(root, state)
         log(f"refreshed {root}")
@@ -787,7 +806,8 @@ def symbol_cards(found: dict, root: pathlib.Path, name: str) -> list[dict]:
                 continue
             links = item.get("relationships") if isinstance(item.get("relationships"), dict) else {}
             callers: dict[tuple, dict] = {}
-            for pair in links.get("called_by") or []:
+            called_by = links.get("called_by")
+            for pair in called_by if isinstance(called_by, list) else ():
                 # One entry per call site: a function that calls three times is one caller.
                 caller = card_of(pair[0] if isinstance(pair, list) and pair else pair)
                 if caller:
@@ -826,8 +846,8 @@ def lookup_about(found: dict, root: pathlib.Path, name: str) -> list[str]:
         where = lookup_def(found, root, name)
         if where == ["not found"]:
             return [f"{name}: not found"]
-        callers = lookup_callers(found, root, name)
-        callers = [] if callers in (["none"], ["not found"]) else callers
+        callers = [row for row in lookup_callers(found, root, name)
+                   if row not in ("none", "not found") and not row.startswith("# ")]
         return where + [f"  {len(callers)} caller{'' if len(callers) == 1 else 's'}"
                         + (":" if callers else "")] + ["    " + row for row in callers]
     rows = []
@@ -850,7 +870,8 @@ def rust_cards(found: dict, root: pathlib.Path, query: str, limit: int) -> list[
         data = json.loads(out).get("data") or []
     except (ValueError, AttributeError):
         return []
-    cards = [card_of(item.get("symbol")) for item in data if isinstance(item, dict)]
+    cards = [card_of(item.get("symbol")) for item in (data if isinstance(data, list) else ())
+             if isinstance(item, dict)]
     return [card for card in cards if card]
 
 
@@ -959,7 +980,15 @@ def hybrid(found: dict, root: pathlib.Path, query: str, limit: int) -> list:
         by_meaning = (pool.submit(rust_cards, found, root, query, deep)
                       if built_with_embeddings(root) else None)
         by_text = cards_for(found, root, semble_rows(found, root, query, deep, ""))
-        ranked = [by_text, by_name.result()] + ([by_meaning.result()] if by_meaning else [])
+
+        def settled(future) -> list:
+            try:  # one engine failing must not lose what the others found
+                return future.result()
+            except Exception as error:
+                log(f"search engine raised for {root}: {error!r}")
+                return []
+
+        ranked = [by_text, settled(by_name)] + ([settled(by_meaning)] if by_meaning else [])
     score: dict = {}
     kept: dict = {}
     for cards in ranked:
@@ -987,7 +1016,8 @@ def located(found: dict, root: pathlib.Path, rows: list[str]) -> list[tuple[str,
             continue
         path, where = str(node.get("source_file") or "").replace("\\", "/"), str(node.get("source_location") or "")
         label = str(node.get("label") or "")
-        label = label[:-2] if label.endswith("()") else label
+        # The graph writes a function as `name()` and a method as `.name()`.
+        label = (label[:-2] if label.endswith("()") else label).lstrip(".")
         if where[:1] == "L" and where[1:].isdigit() and label and label != path.rsplit("/", 1)[-1]:
             starts.setdefault(path, []).append((int(where[1:]), label))
     out = []
@@ -1027,6 +1057,17 @@ def megabytes(path: pathlib.Path) -> float:
     return total / 1e6
 
 
+def gone_for_good(root: str) -> bool:
+    """A folder that no longer exists on a drive that does. A repository on an
+    unplugged drive or an unreachable share is only away, and keeps its index."""
+    path = pathlib.Path(root)
+    try:
+        return (path.is_absolute() and bool(path.anchor) and pathlib.Path(path.anchor).exists()
+                and not path.exists())
+    except OSError:
+        return False
+
+
 def orphans() -> dict[str, list[pathlib.Path]]:
     """Index data kept outside a repository that has since been moved or deleted,
     by the folder it was built for. Nothing else removes it: semble keeps one
@@ -1037,7 +1078,7 @@ def orphans() -> dict[str, list[pathlib.Path]]:
             root = json.loads(state.read_text(encoding="utf-8-sig")).get("root")
         except (OSError, ValueError, AttributeError):
             continue
-        if isinstance(root, str) and not pathlib.Path(root).exists():
+        if isinstance(root, str) and gone_for_good(root):
             rust = BASE / "codanna" / state.stem
             gone.setdefault(root, []).extend([state] + ([rust] if rust.is_dir() else []))
     cache = semble_cache()
@@ -1051,7 +1092,7 @@ def orphans() -> dict[str, list[pathlib.Path]]:
             except (OSError, ValueError, AttributeError):
                 roots.add(None)
         # An orphan only when every index in the entry names a folder that is gone.
-        if roots and all(isinstance(root, str) and not pathlib.Path(root).exists() for root in roots):
+        if roots and all(isinstance(root, str) and gone_for_good(root) for root in roots):
             gone.setdefault(sorted(roots)[0], []).append(entry)
     return gone
 
@@ -1084,6 +1125,16 @@ ASK = ("def", "callers", "about", "find")
 def answer(kind: str, what: str, found: dict, root: pathlib.Path) -> list[str]:
     """The lines one question is answered with. `what` is a symbol name, or for
     `find` a description."""
+    if kind == "find":
+        # A description is words. Leading dashes would reach the engines as options.
+        what = " ".join(word.lstrip("-") for word in what.split()).strip()
+        if not what:
+            return ["none"]
+    elif what.startswith("-") or re.match(r"[A-Za-z_]+:(?!:)", what):
+        # A symbol name never starts with a dash or with `word:`. An engine would
+        # read the first as an option and the second as a selector such as
+        # `symbol_id:7`, not as a name. (`Type::method` is a name and passes.)
+        return [f"{what}: not found"]
     if kind == "def":
         rows = lookup_def(found, root, what)
         return [f"{what}: not found"] if rows == ["not found"] else rows
@@ -1164,7 +1215,11 @@ def front_end(verb: str, rest: list[str], opened_in: pathlib.Path, cfg: dict,
     if root is None:
         say(["not in a git repository"])
     elif verb == "find":
-        query = " ".join(args.words)
+        # Words only: a leading dash would reach the engines as an option.
+        query = " ".join(word.lstrip("-") for word in " ".join(args.words).split()).strip()
+        if not query or args.limit < 1:
+            say(["none" if args.limit >= 1 else "usage: lx find \"words\" -k N, with N at least 1"])
+            return 0 if args.limit >= 1 else 2
         content = "all" if args.all else "docs" if args.docs else ""
         # The Rust index can only search by meaning when it was built with embeddings.
         embedded = bool(built_with_embeddings(root)) and not content
@@ -1179,7 +1234,11 @@ def front_end(verb: str, rest: list[str], opened_in: pathlib.Path, cfg: dict,
             say(card_rows(cards_for(found, root, semble_rows(found, root, query, args.limit, "")))
                 or ["none"])
         else:
-            say(lookup_find(found, root, query, args.limit, content))
+            rows = lookup_find(found, root, query, args.limit, content)
+            if args.rust and not content:
+                # Asked for by name and not possible: say so rather than answer as if it were.
+                rows = ["# this index has no Rust embeddings: searched with semble"] + rows
+            say(rows)
     else:
         if verb == "refresh":
             refresh(root, cfg, found)

@@ -57,14 +57,17 @@ code, out = apply(home)
 claude = (home / ".claude" / "CLAUDE.md").read_bytes()
 text = claude.decode("utf-8-sig")
 check("originals: applies cleanly", code == 0, out.strip().splitlines()[-1][:80])
-check("originals: byte-order mark kept", claude[:3] == bom_before == b"\xef\xbb\xbf")
+# Whatever the original had: a byte-order mark stays, and none is added.
+check("originals: byte-order mark kept as it was", (claude[:3] == b"\xef\xbb\xbf") == (bom_before == b"\xef\xbb\xbf"))
 check("originals: no Master Repo lines, one of each block",
       "Master Repo" not in text.split("# PROTECTED RULES")[1] and "MASTER-REPO-USE" not in text
       and text.count("protected-rules-begin") == 1 and text.count("NO-COMPRESS:BEGIN") == 1)
 head = text.split("<!-- protected-rules-begin -->")[0]
 original_head = (BACKUP / "claude-CLAUDE.md").read_bytes().decode("utf-8-sig").replace("\r\n", "\n").split("<!-- MASTER-REPO-USE:BEGIN -->")[0]
 check("originals: everything above the blocks is byte-identical", head.replace("\r\n", "\n").rstrip("\n") == original_head.rstrip("\n"))
-check("originals: graphify section still follows", text.rstrip().endswith("before doing anything else."))
+original_text = (BACKUP / "claude-CLAUDE.md").read_bytes().decode("utf-8-sig").replace("\r\n", "\n")
+last_line = [line for line in original_text.split("<!-- MASTER-REPO-USE:END -->")[-1].splitlines() if line.strip()][-1:]
+check("originals: what followed the blocks still ends the file", not last_line or text.rstrip().endswith(last_line[0].rstrip()))
 snap = snapshot(home)
 code, out = apply(home)
 check("second run changes nothing", snapshot(home) == snap and "wrote" not in out, out.count("unchanged"))
@@ -145,3 +148,4 @@ check("claude builder defaults to the coder alias", "model: sonnet" in front, fr
 
 failed = [name for name, ok in results if not ok]
 print("\n%d checks, %d failed%s" % (len(results), len(failed), ": " + "; ".join(failed) if failed else ""))
+sys.exit(1 if failed else 0)

@@ -52,7 +52,7 @@ pinned wheels, graphify 0.9.72 only when no graphify is found, codanna 0.16.0
 as one release file whose SHA-256 must match the pinned value, and the semble
 embedding model once. Only the Windows build of codanna is pinned: on other
 systems it is skipped, `lx` answers from the graphify graph, `--rust` and
-`codanna_embeddings` do nothing, and `--hybrid` searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30.
+`codanna_embeddings` do nothing, and `--hybrid` searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30 when the environment's pip has the date filter, and warns when it does not.
 With `--no-tools` nothing is downloaded and `lx` is still created.
 
 ## The engines
@@ -137,7 +137,8 @@ python setup/tests/check_hook.py setup/local-index/session_index.py EMPTY_DIR
 python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR
 ```
 
-The first drives the hook and `lx` against small throwaway repositories. The
+These two run from a checkout of the repository; the one-file installer does
+not carry them. The first drives the hook and `lx` against small throwaway repositories. The
 second installs over copies of real client files in throwaway home directories;
 those originals are personal, so you supply your own. `build_install.py`
 repacks `INSTALL.txt` and re-renders `rendered/` after any edit here.
@@ -151,6 +152,15 @@ repacks `INSTALL.txt` and re-renders `rendered/` after any edit here.
   not have that guard, which is one reason the rules forbid it.
 - codanna's release file is not code-signed. `tools.py` accepts it only when
   its SHA-256 matches the pinned value.
+- The rules and the skills were written by their author for his own machines
+  and are published as they are installed there. Two lines name him ("Only
+  Charles removes one", "Only Charles asking ... lifts it"), and some skills
+  mention files of another repository of his (`repo-lists/skill-upstreams.json`,
+  `scripts/harness_goal.py`). Read `rules/no-compress.md` and the files under
+  `skills/` before installing, and put your own name where his is.
+- `apply.py` also removes an older wrapper block, marked `MASTER-REPO-USE`,
+  that the author's previous setup wrote into the same files. On a machine
+  that never had it, that step finds nothing and changes nothing.
 - Copilot loads extra instruction folders named in the user variable
   `COPILOT_CUSTOM_INSTRUCTIONS_DIRS`. `apply.py` reports any whose file still
   carries the older wrapper block this setup replaces, and prints the command

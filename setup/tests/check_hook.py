@@ -17,7 +17,10 @@ import time
 SCRIPT = pathlib.Path(sys.argv[1])
 WORK = pathlib.Path(sys.argv[2])
 PY = sys.executable
-GRAPHIFY = str(pathlib.Path.home() / ".graphify" / "venv" / "Scripts" / "graphify.exe")
+# The graphify the hook itself would find: on PATH first, then this setup's own environment.
+GRAPHIFY = shutil.which("graphify") or str(
+    pathlib.Path.home() / ".graphify" / "venv" / ("Scripts" if os.name == "nt" else "bin")
+    / ("graphify.exe" if os.name == "nt" else "graphify"))
 results = []
 
 
@@ -175,6 +178,10 @@ code, out, _ = lx("ask", "def:check_token", "callers:check_token", cwd=plain)
 check("lx ask: each answer under its own header", out.rstrip().split("\n") == ["== def:check_token", "check_token pkg/auth.py:1-2 (t)", "== callers:check_token", "1 caller of check_token:", "handle app.py:3-4"], repr(out.strip()))
 code, out, _ = lx("ask", "nonsense:check_token", cwd=plain)
 check("lx ask: an unknown kind is refused with usage", code == 2 and out.startswith("usage: lx ask"), repr(out.strip()[:60]))
+code, out, _ = lx("ask", "def:--config=C:/elsewhere.toml", "callers:-x", cwd=plain)
+check("lx ask: a name that looks like an option is never handed to an engine", out.rstrip().split("\n") == ["== def:--config=C:/elsewhere.toml", "--config=C:/elsewhere.toml: not found", "== callers:-x", "-x: not found"], repr(out.strip()))
+code, out, _ = lx("ask", "find:--help check a token", cwd=plain)
+check("lx ask: option-like words in a description are searched as words", code == 0 and "check_token pkg/auth.py:1-2 (t)" in out.split("\n"), repr(out.strip()))
 code, out, _ = lx("callers", "a&b|c", cwd=plain)
 check("lx callers: shell metacharacters are just a name", out.strip() == "a&b|c: not found", repr(out.strip()))
 code, out, _ = lx("def", "x", cwd=WORK.parent.parent)
@@ -233,6 +240,26 @@ check("lookup: its files are still there afterwards", (folder / "index" / "marke
 check("lookup: settings that disagree with how the index was built are not trusted", module.lookup_settings(probe) is None)
 (folder / "layout").write_text("0", encoding="utf-8")
 check("lookup: an index from an older layout is not trusted", module.lookup_settings(probe) is None and module.built_with_embeddings(probe) is None)
+# And when it is not trusted, a lookup leaves it exactly as it is: it answers
+# as if there were no Rust index, and deleting or re-stamping is refresh's job.
+started = []
+module.run = lambda argv, **options: started.append(argv) or (0, "")
+tools = module.Tools(dict(module.DEFAULTS, codanna_cmd=sys.executable))
+answer = module.codanna(tools, probe, "retrieve", "symbol", "x")
+check("lookup: an untrusted index is neither read, emptied nor re-stamped",
+      answer == (127, "") and not started and (folder / "layout").read_text(encoding="utf-8") == "0"
+      and (folder / "index" / "marker").read_text(encoding="utf-8") == "kept", repr(answer))
+fresh = WORK / "never-indexed"
+check("lookup: a repository never refreshed gets no index folder",
+      module.codanna(tools, fresh, "retrieve", "symbol", "x") == (127, "")
+      and not (module.BASE / "codanna" / module.state_path(fresh).stem).exists())
+check("ask: a selector is not a name", module.answer("def", "symbol_id:7", tools, probe) == ["symbol_id:7: not found"] and not started)
+later = {"embed_retry_after": time.time() + 3600}
+check("embeddings: the retry date survives a failed build", module.keep_retry({"ok": False}, later).get("embed_retry_after") == later["embed_retry_after"]
+      and "embed_retry_after" not in module.keep_retry({"ok": False}, {"embed_retry_after": time.time() - 5}))
+check("prune: a folder on a drive that is not attached is not gone", not module.gone_for_good("Q:\\no-such-drive\\repo") and not module.gone_for_good("relative/path")
+      and module.gone_for_good(str(WORK / "definitely-not-here")) and not module.gone_for_good(str(WORK)))
 
 failed = [name for name, ok in results if not ok]
 print("\n%d checks, %d failed%s" % (len(results), len(failed), ": " + "; ".join(failed) if failed else ""))
+sys.exit(1 if failed else 0)
