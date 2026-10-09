@@ -1,0 +1,184 @@
+{
+ "dataset": "86 Python files, 2.97 MB (graphify 0.9.61 source). Windows 11, 8 cores. Seconds are wall clock.",
+ "stacks": [
+  {
+   "id": "py",
+   "name": "graphify + semble",
+   "detail": "Python stack, before the Rust index",
+   "cold": 21,
+   "unchanged": 3.9,
+   "one_file": 9.3,
+   "disk": 19.9,
+   "parts": {
+    "graphify": 8.0,
+    "semble": 11.9
+   }
+  },
+  {
+   "id": "rust",
+   "name": "Rust index alone, embeddings off",
+   "detail": "codanna: symbols and call graph only",
+   "cold": 7.3,
+   "unchanged": 0.2,
+   "one_file": 2.7,
+   "disk": 5.6,
+   "parts": {
+    "codanna": 5.6
+   },
+   "note": "range over runs: cold 5.6 to 9 s, one file 2.1 to 3.3 s"
+  },
+  {
+   "id": "rust-emb",
+   "name": "Rust index alone, embeddings on",
+   "detail": "codanna with its own embedding model",
+   "cold": 100,
+   "unchanged": 1.9,
+   "one_file": 17.4,
+   "disk": 7.1,
+   "parts": {
+    "codanna": 7.1
+   },
+   "note": "mean of two runs: cold 93 and 108 s"
+  },
+  {
+   "id": "combo",
+   "name": "Combined (lx default)",
+   "detail": "Rust symbols + graphify + semble, built in parallel",
+   "cold": 12.1,
+   "unchanged": 2.1,
+   "one_file": 6.7,
+   "disk": 26.2,
+   "parts": {
+    "codanna": 5.7,
+    "graphify": 8.6,
+    "semble": 11.9
+   },
+   "note": "an earlier run of the same harness: 14 s, 2.5 s, 7.8 s, 25.5 MB"
+  },
+  {
+   "id": "combo-lean",
+   "name": "Combined, graph on demand",
+   "detail": "Rust symbols + semble; graphify built only by lx graph",
+   "cold": 7.4,
+   "unchanged": 1.9,
+   "one_file": 2.8,
+   "disk": 17.6,
+   "parts": {
+    "codanna": 5.7,
+    "semble": 11.9
+   },
+   "note": "measured in the same minute as the row above, on a fresh copy"
+  },
+  {
+   "id": "combo-emb",
+   "name": "Combined + Rust embeddings",
+   "detail": "Rust symbols and embeddings + graphify + semble",
+   "cold": 130,
+   "unchanged": 8.1,
+   "one_file": 28.9,
+   "disk": 27.8,
+   "parts": {
+    "codanna": 7.3,
+    "graphify": 8.6,
+    "semble": 11.9
+   }
+  },
+  {
+   "id": "combo-emb-nosemble",
+   "name": "Combined + Rust embeddings, no semble",
+   "detail": "Rust symbols and embeddings + graphify",
+   "cold": 143,
+   "unchanged": 5.0,
+   "one_file": 32.2,
+   "disk": 15.9,
+   "parts": {
+    "codanna": 7.3,
+    "graphify": 8.6
+   }
+  },
+  {
+   "id": "token-goat",
+   "name": "token-goat index --embed",
+   "detail": "its own symbol index and embeddings, WebAssembly runtime",
+   "cold": 1230,
+   "unchanged": null,
+   "one_file": null,
+   "disk": 29.4,
+   "parts": {
+    "token-goat database": 29.4
+   },
+   "note": "one run, started while two other index builds were still running; 85 files"
+  }
+ ],
+ "graphify_parts": {
+  "graph.json": 3.0,
+  "extraction cache": 5.5
+ },
+ "semble_parts": {
+  "vectors.npy": 5.0,
+  "chunks.json (a copy of the source text)": 3.6,
+  "bm25 index": 3.0
+ },
+ "search_quality": {
+  "queries": 30,
+  "rows": [
+   {
+    "engine": "semble",
+    "query": "the function's docstring",
+    "top1": 0.7,
+    "top5": 0.9
+   },
+   {
+    "engine": "Rust embeddings",
+    "query": "the function's docstring",
+    "top1": 1.0,
+    "top5": 1.0
+   },
+   {
+    "engine": "semble",
+    "query": "the function's name as words",
+    "top1": 0.4,
+    "top5": 0.6
+   },
+   {
+    "engine": "Rust embeddings",
+    "query": "the function's name as words",
+    "top1": 0.5,
+    "top5": 0.7
+   }
+  ],
+  "note": "The Rust index embeds docstrings, so a docstring query finds itself: the name-as-words rows are the fair comparison."
+ },
+ "lookup": [
+  {
+   "what": "who calls X",
+   "graphify": "0.80 s, 146 tokens",
+   "rust_raw": "0.09 s, 622 tokens",
+   "lx": "0.05 to 0.15 s, 101 tokens"
+  },
+  {
+   "what": "where is X defined",
+   "graphify": "1.15 s, 196 tokens",
+   "rust_raw": "0.08 s, about 60 tokens",
+   "lx": "0.05 s (0.2 s through lx.exe), 11 tokens before signatures were added"
+  },
+  {
+   "what": "search by meaning",
+   "graphify": "semble: 2.7 s, 14 tokens",
+   "rust_raw": "1.4 s, 220 tokens",
+   "lx": "semble 2.7 s; --rust 1.4 s, about 45 tokens"
+  }
+ ],
+ "models": [
+  {
+   "name": "Rust index embedding model",
+   "mb": 87,
+   "note": "shared by every repository; only when embeddings are on"
+  },
+  {
+   "name": "token-goat embedding model",
+   "mb": 46.7,
+   "note": "shared; fetched on first index --embed"
+  }
+ ]
+}

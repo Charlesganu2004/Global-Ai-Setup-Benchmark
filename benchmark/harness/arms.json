@@ -1,0 +1,92 @@
+{
+ "groups": [
+  {"id": "baseline", "name": "Round 1 methods", "detail": "The ten methods of the first round: no index, each engine alone, and the first three builds of lx."},
+  {"id": "lx", "name": "Improved lx", "detail": "Round 2: the round 1 build searching the Rust index, four improved versions, and the same commands on an index without Rust embeddings."},
+  {"id": "shipped", "name": "Shipped lx", "detail": "Round 3: the build that ships, measured on the default index and on one with Rust embeddings."},
+  {"id": "combo", "name": "Combinations", "detail": "Fifteen mixes of the Rust index, token-goat, graphify, semble and the new lx commands."}
+ ],
+ "commands": {
+  "grep": "Grep, Glob and Read tools only, no shell commands",
+  "graphify": "graphify explain \"<symbol>\"            definition line, then every caller (<--) and callee (-->)",
+  "semble": "semble search \"<description>\" . -k 5 --max-snippet-lines 0 --format text      search by meaning, prints path:first-last",
+  "rust_symbol": "codanna retrieve symbol <name>         definition, signature and callers",
+  "rust_callers": "codanna retrieve callers <name>        every function that calls it",
+  "rust_semantic": "codanna mcp semantic_search_docs \"query:<description>\" limit:5      search by meaning",
+  "lx1_def": "lx def <name>                where a function or class is defined, printed as: name path:first-last",
+  "lx1_callers": "lx callers <name>            every function that calls it, one per line: name path:first-last",
+  "lx1_find": "lx find \"<description>\"      search by meaning, prints path:first-last",
+  "lx1_rust": "lx find --rust \"<description>\"      search by meaning, prints: name path:first-last",
+  "lx2_def": "lx def <name>                where a function or class is defined, printed as: name path:first-last signature",
+  "lx2_find": "lx find \"<description>\"      search by meaning, prints: path:first-last, then the functions those lines belong to",
+  "lx3_def": "lx def <name>...             where each is defined, printed as: name path:first-last signature",
+  "lx3_callers": "lx callers <name>...         prints \"N callers of <name>:\" and then one caller per line: name path:first-last",
+  "lx3_find": "lx find \"<description>\"      search by meaning, prints: path:first-last of the matching lines, then name:line for each function those lines sit in, where line is the line that function starts on",
+  "lx_rust": "lx find --rust \"<description>\"      search by meaning in the Rust index, prints: name path:first-last",
+  "lx_about": "lx about <name>...           one answer per name: its definition as name path:first-last signature, its doc line, then \"N callers:\" and one caller per line",
+  "lx_cards": "lx find --cards \"<description>\"      search by meaning, prints each hit as the definition it sits in: name path:first-last signature, then that definition's doc line",
+  "lx_rust_cards": "lx find --rust --cards \"<description>\"      search by meaning in the Rust index, prints: name path:first-last signature, then the doc line",
+  "lx_hybrid": "lx find --hybrid \"<description>\"      search by meaning with two engines merged, prints: name path:first-last signature, then the doc line",
+  "lx_hybrid_plain": "lx find --hybrid \"<description>\"      search by meaning, prints: name path:first-last signature, then the doc line",
+  "lx_ask": "lx ask <kind>:<what>...      several questions in one call, each answer under its own \"== kind:what\" header. Kinds: def, callers, about (definition, signature, doc line and callers together) and find (search by meaning; quote the whole argument). Example: lx ask about:parse_config callers:load \"find:where tokens expire\"",
+  "tg_symbol": "token-goat symbol <name>               where a symbol is defined",
+  "tg_callers": "token-goat callers <name>              every function that calls it",
+  "tg_semantic": "token-goat semantic \"<description>\"    search by meaning",
+  "tg_read": "token-goat read \"<file>::<symbol>\"     the body of one symbol"
+ },
+ "arms": [
+  {"id": "A0", "group": "baseline", "control": true, "name": "No index", "detail": "The client's own search and read tools. The control every other method is compared with.", "uses": ["grep"]},
+  {"id": "A1", "group": "baseline", "name": "graphify + semble", "detail": "The Python stack before the Rust index: the code graph for symbols, semble for meaning.", "uses": ["graphify", "semble"]},
+  {"id": "A2", "group": "baseline", "name": "Rust index alone, embeddings on", "detail": "codanna's own commands with its output unfiltered.", "uses": ["rust_symbol", "rust_callers", "rust_semantic"]},
+  {"id": "A3", "group": "baseline", "name": "lx, first version", "detail": "Rust symbols, graphify and semble behind one short command, as it stood when the test began.", "uses": ["lx1_def", "lx1_callers", "lx1_find"]},
+  {"id": "A4", "group": "baseline", "name": "lx first version + Rust embeddings", "detail": "The first version, searching by meaning in the Rust index.", "uses": ["lx1_def", "lx1_callers", "lx1_rust"]},
+  {"id": "A7", "group": "baseline", "name": "lx, improved", "detail": "lx def adds the signature and lx find adds function names.", "uses": ["lx2_def", "lx1_callers", "lx2_find"]},
+  {"id": "A8", "group": "baseline", "name": "lx improved + Rust embeddings", "detail": "The improved build, searching by meaning in the Rust index.", "uses": ["lx2_def", "lx1_callers", "lx1_rust"]},
+  {"id": "A5", "group": "baseline", "name": "token-goat alone", "detail": "token-goat's symbol, callers, semantic and read commands.", "uses": ["tg_symbol", "tg_callers", "tg_semantic", "tg_read"]},
+  {"id": "A6", "group": "baseline", "name": "token-goat + lx improved", "detail": "Both command sets, the agent chooses.", "uses": ["tg_symbol", "tg_callers", "tg_semantic", "tg_read", "lx2_def", "lx1_callers", "lx2_find"]},
+  {"id": "A9", "group": "baseline", "name": "lx, as shipped after round 1", "detail": "Adds caller counts and headers, several names per call, and the line each function starts on.", "uses": ["lx3_def", "lx3_callers", "lx3_find"]},
+
+  {"id": "R1", "group": "lx", "name": "lx shipped + Rust embeddings", "detail": "The shipped build, searching by meaning in the Rust index. Round 1 measured this pairing only on the improved build.", "uses": ["lx3_def", "lx3_callers", "lx_rust"]},
+  {"id": "L1", "group": "lx", "name": "lx + about", "detail": "New command: one answer holds a symbol's definition, signature, doc line and callers.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx3_find"]},
+  {"id": "L2", "group": "lx", "name": "lx + cards", "detail": "Search hits come back as definitions: name, range, signature and doc line, so a hit needs no file opened to be understood.", "uses": ["lx3_def", "lx3_callers", "lx_cards"]},
+  {"id": "L3", "group": "lx", "name": "lx + hybrid search", "detail": "semble and the Rust index answer the same search together and their rankings are merged.", "uses": ["lx3_def", "lx3_callers", "lx_hybrid"]},
+  {"id": "L4", "group": "lx", "name": "lx ask, one call", "detail": "One command takes every question at once and answers each under its own header. Its search uses both engines, because this index has Rust embeddings.", "uses": ["lx_ask"]},
+  {"id": "N1", "group": "lx", "name": "lx ask, no Rust embeddings", "detail": "The same one-call command on the default index, built without Rust embeddings: its search is semble alone.", "uses": ["lx_ask"], "index": "no Rust embeddings"},
+  {"id": "N2", "group": "lx", "name": "lx, every new command, no Rust embeddings", "detail": "The round 2 build with def, callers, about, find --hybrid and ask, on the default index built without Rust embeddings: its search is semble alone.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_hybrid_plain", "lx_ask"], "index": "no Rust embeddings"},
+
+  {"id": "S1", "group": "shipped", "name": "Shipped: lx ask, default index", "detail": "The final build. Its search merges semble with the Rust index's name and doc search, which needs no embeddings. One-call command, default index.", "uses": ["lx_ask"], "index": "no Rust embeddings"},
+  {"id": "S2", "group": "shipped", "name": "Shipped: all commands, default index", "detail": "The final build with every command the shipped rules teach (def, callers, about, find --hybrid, ask), on the default index.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_hybrid_plain", "lx_ask"], "index": "no Rust embeddings"},
+  {"id": "S3", "group": "shipped", "name": "Shipped: lx ask, embeddings on", "detail": "The final build's one-call command on an index with Rust embeddings: its search merges three engines.", "uses": ["lx_ask"], "index": "Rust embeddings"},
+  {"id": "S4", "group": "shipped", "name": "Shipped: all commands, embeddings on", "detail": "The final build with every command the shipped rules teach, on an index with Rust embeddings.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_hybrid_plain", "lx_ask"], "index": "Rust embeddings"},
+
+  {"id": "C1", "group": "combo", "name": "Rust index + token-goat + graphify + semble", "detail": "All four engines with their own commands, nothing wrapped.", "uses": ["rust_symbol", "rust_callers", "rust_semantic", "tg_symbol", "tg_callers", "tg_semantic", "tg_read", "graphify", "semble"]},
+  {"id": "C2", "group": "combo", "name": "lx + Rust embeddings + token-goat", "detail": "The shipped lx searching the Rust index, with token-goat beside it.", "uses": ["lx3_def", "lx3_callers", "lx_rust", "tg_symbol", "tg_callers", "tg_semantic", "tg_read"]},
+  {"id": "C3", "group": "combo", "name": "lx shipped + token-goat", "detail": "The shipped lx with token-goat beside it.", "uses": ["lx3_def", "lx3_callers", "lx3_find", "tg_symbol", "tg_callers", "tg_semantic", "tg_read"]},
+  {"id": "C4", "group": "combo", "name": "Rust index + token-goat", "detail": "codanna's own commands with token-goat.", "uses": ["rust_symbol", "rust_callers", "rust_semantic", "tg_symbol", "tg_callers", "tg_semantic", "tg_read"]},
+  {"id": "C5", "group": "combo", "name": "Rust index + graphify + semble", "detail": "The three engines lx wraps, used directly.", "uses": ["rust_symbol", "rust_callers", "rust_semantic", "graphify", "semble"]},
+  {"id": "C6", "group": "combo", "name": "token-goat + graphify + semble", "detail": "token-goat with the Python stack.", "uses": ["tg_symbol", "tg_callers", "tg_semantic", "tg_read", "graphify", "semble"]},
+  {"id": "C7", "group": "combo", "name": "token-goat + semble", "detail": "token-goat with semble for search by meaning.", "uses": ["tg_symbol", "tg_callers", "tg_semantic", "tg_read", "semble"]},
+  {"id": "C8", "group": "combo", "name": "token-goat + graphify", "detail": "token-goat with the code graph.", "uses": ["tg_symbol", "tg_callers", "tg_semantic", "tg_read", "graphify"]},
+  {"id": "C9", "group": "combo", "name": "lx finds, token-goat reads", "detail": "The shipped lx for every lookup; code is read one symbol at a time through token-goat, never with the Read tool.", "uses": ["lx3_def", "lx3_callers", "lx3_find", "tg_read"], "reads": "token-goat read"},
+  {"id": "C10", "group": "combo", "name": "lx about + cards", "detail": "The two new answer shapes together.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_cards"]},
+  {"id": "C11", "group": "combo", "name": "lx about + Rust cards", "detail": "about for symbols, card-style search in the Rust index.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_rust_cards"]},
+  {"id": "C12", "group": "combo", "name": "lx about + hybrid", "detail": "about for symbols, merged two-engine search.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_hybrid"]},
+  {"id": "C13", "group": "combo", "name": "lx, every new command", "detail": "def, callers, about, cards, hybrid and ask all offered at once.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_cards", "lx_hybrid", "lx_ask"]},
+  {"id": "C14", "group": "combo", "name": "lx, every new command + token-goat", "detail": "Everything lx offers and everything token-goat offers.", "uses": ["lx3_def", "lx3_callers", "lx_about", "lx_cards", "lx_hybrid", "lx_ask", "tg_symbol", "tg_callers", "tg_semantic", "tg_read"]},
+  {"id": "C15", "group": "combo", "name": "lx ask + token-goat read", "detail": "One-call lookups through lx; code is read one symbol at a time through token-goat, never with the Read tool.", "uses": ["lx_ask", "tg_read"], "reads": "token-goat read"}
+ ],
+ "tiers": [
+  {"id": "C", "name": "Tier C, scout", "model": "Haiku class at low effort"},
+  {"id": "B", "name": "Tier B, coder", "model": "Sonnet class at medium effort"},
+  {"id": "A", "name": "Tier A, apex", "model": "Opus class at maximum effort"}
+ ],
+ "setups": [
+  {"id": "single", "name": "One agent", "detail": "One agent answers all three questions."},
+  {"id": "parallel", "name": "Three subagents", "detail": "Three subagents started together, one question each. Cheapest tier only, nobody reviews the answers."},
+  {"id": "orch", "name": "Orchestrator + subagents", "detail": "A top-tier orchestrator writes three briefs, three subagents answer, the orchestrator checks and corrects. The tier shown is the subagents' tier."}
+ ],
+ "questions": [
+  {"id": "q1", "text": "Which functions call `_get_backend_api_key`? Give the bare name of every calling function in the repository.", "truth": "7 callers across 4 files: dispatch_command, _llm_tiebreak, _call_llm, detect_backend, extract_files_direct, _resolve_triage_backend, triage_with_opus", "graded": "F1 score of the set of names"},
+  {"id": "q2", "text": "Where is the function `dispatch_command` defined (file, and the line its `def` is on), what are its parameter names, and which functions call it?", "truth": "cli.py, line 1064, parameters [cmd], called by _run_cli", "graded": "four checks, a quarter each"},
+  {"id": "q3", "text": "Which function registers the git merge driver for graph.json? Give its name, its file, the line its `def` is on, and the name of the function that removes that registration again.", "truth": "_register_merge_driver, hooks.py, line 736, removed by _unregister_merge_driver", "graded": "four checks, a quarter each"}
+ ]
+}
