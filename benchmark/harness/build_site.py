@@ -41,6 +41,11 @@ def money(value: float) -> str:
     return f"${value:.2f}" if value >= 1 else f"${value:.3f}" if value >= 0.1 else f"${value:.4f}"
 
 
+def share(value: float) -> str:
+    """A share as a whole percentage, never rounded up to 100%: 99.6% is 99%."""
+    return "100%" if value >= 0.9995 else f"{min(99, int(value * 100 + 0.5))}%"
+
+
 def tokens(value: float) -> str:
     return f"{value / 1e6:.2f}M" if value >= 1e6 else f"{round(value / 1e3)}k"
 
@@ -102,7 +107,8 @@ def ranked(points: list[dict], setup: str, tier: str, minimum: int = 1) -> list[
     return sorted(rows, key=lambda p: p["tokens"])
 
 
-def text_of(points: list[dict], agents: list[dict], index: dict, arms: dict, start: float) -> dict:
+def text_of(points: list[dict], cells: list[dict], agents: list[dict], index: dict, arms: dict,
+            start: float) -> dict:
     total = sum(a["input"] + a["output"] + a["cache_read"] + a["cache_write"] for a in agents)
     reads = sum(a["cache_read"] for a in agents)
     writes = sum(a["cache_write"] for a in agents)
@@ -125,7 +131,7 @@ def text_of(points: list[dict], agents: list[dict], index: dict, arms: dict, sta
 
     def line(p: dict) -> str:
         return (f"{p['arm']} {name[p['arm']]}: {tokens(p['tokens'])} tokens, {p['requests']:.1f} turns, "
-                f"{p['quality']:.0%} correct over {p['n']} run{'s' if p['n'] > 1 else ''}")
+                f"{p['spread']['perfect_runs']} of {p['n']} run{'s' if p['n'] > 1 else ''} fully correct")
 
     findings = [
         f"An agent starts with about {tokens(start)} tokens of context before it reads one line of code, and every "
@@ -153,9 +159,17 @@ def text_of(points: list[dict], agents: list[dict], index: dict, arms: dict, sta
                  and p["spread"]["requests"][1] <= 2 and p["quality"] >= 0.999]
         if every:
             listed = ", ".join(f"{p['arm']} {name[p['arm']]}" for p in sorted(every, key=lambda p: p["tokens"]))
+            few, many = min(p["n"] for p in every), max(p["n"] for p in every)
+            counted = f"{few}" if few == many else f"{few} to {many}"
             findings.append(
                 f"Two turns is the floor for this task: one to ask and one to answer. On {tier['name']}, "
-                f"{len(every)} methods took exactly two turns in every run and answered everything correctly: {listed}.")
+                f"{len(every)} methods took exactly two turns and answered everything correctly in each of their "
+                f"{counted} runs: {listed}.")
+
+    def spread(p: dict) -> str:
+        low, high = p["spread"]["requests"]
+        turns = f"{low} turns" if low == high else f"{low} to {high} turns"
+        return f"{turns} over {p['n']} run{'s' if p['n'] > 1 else ''}"
 
     def compare(label: str, pairs: list[tuple[str, str]], tiers: str = "CB") -> None:
         for tier in tiers:
@@ -163,10 +177,8 @@ def text_of(points: list[dict], agents: list[dict], index: dict, arms: dict, sta
             for first, second in pairs:
                 one, two = row(first, "single", tier), row(second, "single", tier)
                 if one and two:
-                    parts.append(f"{name[first]} {tokens(one['tokens'])} and {one['requests']:.1f} turns "
-                                 f"({one['n']} run{'s' if one['n'] > 1 else ''}), against {name[second]} "
-                                 f"{tokens(two['tokens'])} and {two['requests']:.1f} turns "
-                                 f"({two['n']} run{'s' if two['n'] > 1 else ''})")
+                    parts.append(f"{name[first]} {tokens(one['tokens'])} ({spread(one)}), against "
+                                 f"{name[second]} {tokens(two['tokens'])} ({spread(two)})")
             if parts:
                 findings.append(f"{label}. Tier {tier}, one agent: " + "; ".join(parts) + ".")
 
@@ -182,34 +194,42 @@ def text_of(points: list[dict], agents: list[dict], index: dict, arms: dict, sta
             [("C13", "C5"), ("C13", "C1"), ("C13", "C4")])
     for tier in arms["tiers"]:
         base = row("A0", "single", tier["id"])
-        full = [p for p in single if p["tier"] == tier["id"] and p["arm"] != "A0" and p["quality"] >= 0.999]
-        # A single run is an example, not a result: prefer methods run more than once.
-        full = [p for p in full if p["n"] >= 2] or full
+        others = [p for p in single if p["tier"] == tier["id"] and p["arm"] != "A0"]
+        # A single run is an example, not a result: the comparison is among methods run at least twice.
+        full = [p for p in others if p["n"] >= 2 and p["quality"] >= 0.999]
         if base and full:
             best = min(full, key=lambda p: p["tokens"])
+            once = [p for p in others if p["n"] == 1 and p["quality"] >= 0.999]
+            lowest = min(once, key=lambda p: p["tokens"]) if once else None
             findings.append(
                 f"{tier['name']}, one agent: no index used {tokens(base['tokens'])} tokens and "
-                f"{money(base['cost_warm'])} over {base['n']} run{'s' if base['n'] > 1 else ''}; the leanest "
-                f"method that never answered wrongly was {name[best['arm']]} at {tokens(best['tokens'])} tokens and "
-                f"{money(best['cost_warm'])} over {best['n']} run{'s' if best['n'] > 1 else ''}, "
-                f"{1 - best['tokens'] / base['tokens']:.0%} fewer tokens.")
+                f"{money(base['cost_warm'])} over {base['n']} run{'s' if base['n'] > 1 else ''}. "
+                + (f"Among the {len(full)} methods run at least twice and fully correct every time, the leanest was "
+                   if len(full) > 1 else "Only one method was run twice on this tier and was fully correct both times: ")
+                + f"{name[best['arm']]} at {tokens(best['tokens'])} tokens and {money(best['cost_warm'])} over "
+                f"{best['n']} runs, {1 - best['tokens'] / base['tokens']:.0%} fewer tokens."
+                + (f" Most methods ran once on this tier; the lowest single run was {name[lowest['arm']]} at "
+                   f"{tokens(lowest['tokens'])} tokens." if lowest and lowest["tokens"] < best["tokens"] else ""))
     c, b, a = (row("A0", "single", t) for t in TIER_ORDER)
     if c and b and a:
         findings.append(
-            f"The model tier moves cost far more than the method does. The same no-index job cost "
-            f"{money(c['cost_warm'])} on Tier C, {money(b['cost_warm'])} on Tier B and {money(a['cost_warm'])} on "
-            "Tier A, for the same correct answers. Send lookups to the cheapest tier.")
+            f"The model tier moves cost far more than the method does. With the start-up context cached, the same "
+            f"no-index job cost {money(c['cost_warm'])} on Tier C ({share(c['quality'])} correct), "
+            f"{money(b['cost_warm'])} on Tier B ({share(b['quality'])}) and {money(a['cost_warm'])} on Tier A "
+            f"({share(a['quality'])}). Send lookups to the cheapest tier.")
     orch = [p for p in points if p["setup"] == "orch"]
     lowest = [p for p in orch if p["tier"] == "C"]
     if lowest:
-        share = statistics.fmean(p["orchestrator_cost_warm"] / p["cost_warm"] for p in lowest)
-        par = [p for p in points if p["setup"] == "parallel"]
-        flawed = [p for p in par if p["quality"] < 0.999]
+        orch_share = statistics.fmean(p["orchestrator_cost_warm"] / p["cost_warm"] for p in lowest)
+        # Counted in runs, not in methods: a method run twice is two runs.
+        par = [c for c in cells if c["setup"] == "parallel" and c["complete"]]
+        flawed = [c for c in par if c["quality"] < 0.999]
+        checked = [c for c in cells if c["setup"] == "orch" and c["complete"]]
         findings.append(
             f"Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two "
-            f"calls were {share:.0%} of the run's cost. Without a reviewer, {len(flawed)} of {len(par)} three-subagent "
-            f"runs returned a wrong detail; with the orchestrator checking, {sum(p['quality'] >= 0.999 for p in orch)} "
-            f"of {len(orch)} orchestrated runs ended fully correct.")
+            f"calls were {orch_share:.0%} of the run's cost. Without a reviewer, {len(flawed)} of {len(par)} "
+            f"three-subagent runs returned a wrong detail; with the orchestrator checking, "
+            f"{sum(c['quality'] >= 0.999 for c in checked)} of {len(checked)} orchestrated runs ended fully correct.")
     findings.append(
         f"A cold start costs far more than a warm one. Writing the {tokens(start)} start-up context to the cache "
         f"costs {money(cold['A'])} on Tier A against {money(warm['A'])} to read it back, {cold['A'] / warm['A']:.0f} "
@@ -267,8 +287,8 @@ def text_of(points: list[dict], agents: list[dict], index: dict, arms: dict, sta
             "is charged the mean of the measured planning calls.",
             "Limits. One repository, one language, three easy questions, and between one and six runs per cell: a "
             "difference of one turn between two methods is inside the noise, and a single-run cell is an example, not "
-            "an average. Every agent carried this machine's client, skills and connectors, so the start-up figure is "
-            "this setup's, not a constant. Wall-clock seconds in round 2 were taken while another job held every "
+            "an average. Every agent carried the test machine's client, skills and connectors, so the start-up "
+            "figure belongs to that machine and is not a constant. Wall-clock seconds in round 2 were taken while another job held every "
             "processor core, so only round 1 timings mean anything; token counts do not depend on machine load.",
             "lx changed during the test and each row names the build it was measured with: first version, improved, "
             "shipped after round 1, the round 2 commands (about, cards, hybrid, ask), and the build that ships, "
@@ -296,7 +316,7 @@ def markdown(points: list[dict], index: dict, arms: dict, text: dict) -> str:
         for p in rows:
             out.append(f"| {p['arm']} {name[p['arm']]} | {p['tier']} | {p['n']} | {p['requests']:.1f} | "
                        f"{p['start']:,.0f} | {p['reread']:,.0f} | {p['added']:,.0f} | {p['output']:,.0f} | "
-                       f"{p['tokens']:,.0f} | {money(p['cost_warm'])} | {money(p['cost_cold'])} | {p['quality']:.0%} |")
+                       f"{p['tokens']:,.0f} | {money(p['cost_warm'])} | {money(p['cost_cold'])} | {share(p['quality'])} |")
     out += ["", "## Index build and size", "", index["dataset"], "",
             "| Index stack | First build, s | Nothing changed, s | One file changed, s | Disk, MB |",
             "|---|---:|---:|---:|---:|"]
@@ -321,7 +341,7 @@ def readme_block(points: list[dict], arms: dict, text: dict) -> str:
            "| # | Method | Runs | Turns | Tokens | Cost, cache warm | Correct |", "|---:|---|---:|---:|---:|---:|---:|"]
     for place, p in enumerate(board, 1):
         out.append(f"| {place} | {p['arm']} {name[p['arm']]} | {p['n']} | {p['requests']:.1f} | "
-                   f"{p['tokens']:,.0f} | {money(p['cost_warm'])} | {p['quality']:.0%} |")
+                   f"{p['tokens']:,.0f} | {money(p['cost_warm'])} | {share(p['quality'])} |")
     # The README carries the short list; RESULTS.md and the site carry all of it.
     short = [line for line in text["findings"] if line.startswith(README_FINDINGS)]
     out += [""] + [f"- {line}" for line in short]
@@ -360,7 +380,7 @@ def main() -> int:
     if used - known:
         raise SystemExit(f"measured but not described in arms.json: {sorted(used - known)}")
     start = statistics.fmean(a["start"] for a in agents if a["role"] in ("all", "q1", "q2", "q3"))
-    text = text_of(points, agents, index, arms, start)
+    text = text_of(points, cells, agents, index, arms, start)
     order = [arm["id"] for arm in arms["arms"]]
     setups = [s["id"] for s in arms["setups"]]
     described = []

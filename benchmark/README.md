@@ -49,11 +49,14 @@ benchmark/
 The harness runs inside Claude Code, because the thing being measured is a
 Claude Code agent with its real start-up context.
 
-1. Make the fixture: any git repository works. Ours is the source tree of
-   graphify 0.9.61 (86 Python files, 2.97 MB) committed once. Pass its path as
-   `repo` in the workflow's arguments (and as `repoPlain` a second copy indexed
-   without Rust embeddings, for the methods that need one), and regenerate the
-   ground truth with `python harness/truth.py REPO NAME...` if you change the questions.
+1. Make the fixture. The three questions and their graded answers are written
+   for ours: the source tree of graphify 0.9.61 (86 Python files, 2.97 MB),
+   committed once. Pass its path as `repo` in the workflow's arguments, and as
+   `repoPlain` a second copy indexed without Rust embeddings, for the methods
+   that need one. Another repository needs its own questions in the workflow
+   script and its own answers in `TRUTH` in `bench_parse.py` and in
+   `arms.json`; `python benchmark/harness/truth.py REPO NAME...` prints, from
+   the syntax tree, where each named function is defined and who calls it.
 2. Build every index the methods use, from the fixture's root: `lx refresh`
    (with `codanna_embeddings` on for the methods that search the Rust index),
    `codanna init` then `codanna index .` for the methods that use codanna
@@ -68,14 +71,16 @@ python benchmark/harness/bench_parse.py benchmark/data/results.json TRANSCRIPT_D
 python benchmark/harness/build_site.py
 ```
 
-The index timings come from the three `*_bench.py` scripts, which take a source
-folder and a scratch folder and print JSON; `index.json` holds what they printed.
+The index timings come from the three `*_bench.py` scripts. Each takes a name,
+a source folder, a work folder and the path to codanna, prints JSON, and
+expects the tools where `setup/tools.py` puts them on Windows; `index.json`
+holds what they printed.
 
 ## Reading the numbers
 
 - One repository, one language, three easy questions. Most cells are one to
   six runs. A difference of one turn between two methods is noise.
-- The start-up context (about 62k tokens here) belongs to the machine the test
+- The start-up context (about 63k tokens here) belongs to the machine the test
   ran on: its client, skills and connected tools. Yours will differ.
 - Costs are list prices applied to measured tokens, shown with the start-up
   context already cached ("warm") and not cached ("cold").

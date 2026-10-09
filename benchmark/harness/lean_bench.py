@@ -1,4 +1,4 @@
-"""Time the combined index with and without the graphify graph. Scratch helper.
+"""Time the combined index with and without the graphify graph. Windows only.
 
 lean_bench.py NAME SRC WORK CODANNA   prints JSON: first build, nothing changed,
 one file changed (seconds) and megabytes on disk, for both variants, each on
@@ -12,6 +12,9 @@ import shutil
 import subprocess
 import sys
 import time
+
+if len(sys.argv) != 5:
+    sys.exit("usage: lean_bench.py NAME SOURCE_DIR WORK_DIR PATH_TO_CODANNA   (Windows; the tools where setup/tools.py puts them)")
 
 HOME = pathlib.Path.home()
 NAME, SRC, WORK = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])

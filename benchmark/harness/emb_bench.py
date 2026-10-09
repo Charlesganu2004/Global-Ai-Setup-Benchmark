@@ -1,6 +1,7 @@
-"""Rust-with-embeddings builds, disk breakdown and search quality. Scratch harness.
+"""Rust-with-embeddings builds, disk breakdown and search quality.
 
-emb_bench.py <name> <source dir> <work dir> <codanna exe>
+Usage: emb_bench.py NAME SOURCE_DIR WORK_DIR PATH_TO_CODANNA
+Windows only: it expects graphify and semble where setup/tools.py puts them.
 """
 import ast
 import json
@@ -11,6 +12,9 @@ import shutil
 import subprocess
 import sys
 import time
+
+if len(sys.argv) != 5:
+    sys.exit("usage: emb_bench.py NAME SOURCE_DIR WORK_DIR PATH_TO_CODANNA   (Windows; the tools where setup/tools.py puts them)")
 
 HOME = pathlib.Path.home()
 NAME, SRC, WORK, CODANNA = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3]), sys.argv[4]

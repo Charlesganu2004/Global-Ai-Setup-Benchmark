@@ -1,6 +1,7 @@
 """Benchmark: graphify + semble, codanna (Rust, embeddings off), and all three combined.
 
-Scratch harness, not a deliverable. Usage: combo_bench.py <name> <source dir> <work dir>
+Usage: combo_bench.py NAME SOURCE_DIR WORK_DIR PATH_TO_CODANNA
+Windows only: it expects graphify, semble, ast-grep and ripgrep where setup/tools.py puts them.
 """
 import collections
 import json
@@ -12,6 +13,9 @@ import statistics
 import subprocess
 import sys
 import time
+
+if len(sys.argv) != 5:
+    sys.exit("usage: combo_bench.py NAME SOURCE_DIR WORK_DIR PATH_TO_CODANNA   (Windows; the tools where setup/tools.py puts them)")
 
 HOME = pathlib.Path.home()
 NAME, SRC, WORK = sys.argv[1], pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])

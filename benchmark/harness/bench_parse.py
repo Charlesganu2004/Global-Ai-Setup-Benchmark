@@ -1,4 +1,4 @@
-"""Turn workflow transcripts into benchmark rows. Scratch helper.
+"""Turn workflow transcripts into benchmark rows.
 
     bench_parse.py OUT.json TRANSCRIPT_DIR...
 
@@ -68,8 +68,10 @@ NO_READ_TOOL = {"C9", "C15"}
 
 
 def bare(name) -> str:
-    """`pkg.mod.fn()` and `fn` are the same answer."""
-    return str(name).strip().strip("`").split("(")[0].split(".")[-1].split("::")[-1].strip()
+    """`pkg.mod.fn()`, `cli.py:fn`, `fn (cli.py:10-20)` and `fn` are the same answer."""
+    words = str(name).replace("`", " ").split("(")[0].split()
+    first = words[0] if words else ""
+    return first.split("::")[-1].split(":")[-1].split(".")[-1].strip()
 
 
 def f1(given, truth: set) -> float:
@@ -84,7 +86,13 @@ def f1(given, truth: set) -> float:
 
 
 def same_file(given, truth: str) -> bool:
-    return str(given or "").replace("\\", "/").rstrip("/").split("/")[-1] == truth
+    """The right file, whatever folder prefix, backticks or `:line` came with it."""
+    name = str(given or "").replace("`", "").strip().replace("\\", "/").rstrip("/").split("/")[-1]
+    return re.sub(r":\d+(-\d+)?$", "", name) == truth
+
+
+def same_line(given, truth: int) -> bool:
+    return str(given).strip().isdigit() and int(str(given).strip()) == truth
 
 
 def grade(question: str, answer) -> float | None:
@@ -95,13 +103,13 @@ def grade(question: str, answer) -> float | None:
     if question == "q2":
         want = TRUTH["q2"]
         return sum([same_file(answer.get("file"), want["file"]),
-                    answer.get("line") == want["line"],
+                    same_line(answer.get("line"), want["line"]),
                     [bare(p) for p in answer.get("parameters") or []] == want["parameters"],
                     {bare(c) for c in answer.get("called_by") or []} == want["called_by"]]) / 4
     want = TRUTH["q3"]
     return sum([bare(answer.get("function")) == want["function"],
                 same_file(answer.get("file"), want["file"]),
-                answer.get("line") == want["line"],
+                same_line(answer.get("line"), want["line"]),
                 bare(answer.get("removed_by")) == want["removed_by"]]) / 4
 
 
