@@ -1,0 +1,15 @@
+{
+  "max_files": 20000,
+  "min_refresh_seconds": 120,
+  "codanna": true,
+  "graphify": true,
+  "semble": true,
+  "graph_on_demand": false,
+  "codanna_embeddings": false,
+  "embed_max_files": 600,
+  "find_engine": "semble",
+  "skip_roots": [],
+  "codanna_cmd": "",
+  "graphify_cmd": "",
+  "semble_cmd": ""
+}
