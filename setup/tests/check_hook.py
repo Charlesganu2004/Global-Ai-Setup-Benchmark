@@ -261,6 +261,33 @@ check("embeddings: the retry date survives a failed build", module.keep_retry({"
 check("prune: a folder on a drive that is not attached is not gone", not module.gone_for_good("Q:\\no-such-drive\\repo") and not module.gone_for_good("relative/path")
       and module.gone_for_good(str(WORK / "definitely-not-here")) and not module.gone_for_good(str(WORK)))
 
+# The merged search: with `find_engine: codanna` and an index that has embeddings, the Rust index
+# does all of the searching and semble is never started. Without embeddings semble still runs.
+card = lambda name: {"name": name, "path": "a.py", "first": 1, "last": 2, "signature": "", "doc": ""}
+asked = []
+kept = (module.semble_rows, module.name_cards, module.rust_cards, module.cards_for, module.built_with_embeddings)
+module.semble_rows = lambda *args: asked.append("semble") or []
+module.cards_for = lambda found, root, rows: [card("from_text")] if "semble" in asked else []
+module.name_cards = lambda *args: [card("by_name")]
+module.rust_cards = lambda *args: asked.append("rust") or [card("by_meaning")]
+try:
+    module.built_with_embeddings = lambda root: True
+    rust_only = module.Tools(dict(module.DEFAULTS, find_engine="codanna"))
+    names = [c["name"] for c in module.hybrid(rust_only, probe, "anything", 5)]
+    check("merged search: find_engine codanna on an index with embeddings never starts semble",
+          "semble" not in asked and sorted(names) == ["by_meaning", "by_name"], repr((asked, names)))
+    asked.clear()
+    names = [c["name"] for c in module.hybrid(module.Tools(dict(module.DEFAULTS)), probe, "anything", 5)]
+    check("merged search: the default asks semble and the Rust index together",
+          "semble" in asked and sorted(names) == ["by_meaning", "by_name", "from_text"], repr((asked, names)))
+    asked.clear()
+    module.built_with_embeddings = lambda root: False
+    names = [c["name"] for c in module.hybrid(rust_only, probe, "anything", 5)]
+    check("merged search: without embeddings find_engine codanna still asks semble",
+          asked == ["semble"] and sorted(names) == ["by_name", "from_text"], repr((asked, names)))
+finally:
+    module.semble_rows, module.name_cards, module.rust_cards, module.cards_for, module.built_with_embeddings = kept
+
 failed = [name for name, ok in results if not ok]
 print("\n%d checks, %d failed%s" % (len(results), len(failed), ": " + "; ".join(failed) if failed else ""))
 sys.exit(1 if failed else 0)

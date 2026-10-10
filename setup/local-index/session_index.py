@@ -975,11 +975,14 @@ def hybrid(found: dict, root: pathlib.Path, query: str, limit: int) -> list:
     one that only a single engine found is still there."""
     import concurrent.futures
     deep = limit * 2   # each engine's second five often hold what another ranked first
+    embedded = built_with_embeddings(root)
+    # With `find_engine: codanna` and an index that has embeddings, the Rust index does all
+    # of the searching and semble, which takes about twice as long to start, is left out.
+    rust_only = bool(embedded) and getattr(found, "cfg", {}).get("find_engine") == "codanna"
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
         by_name = pool.submit(name_cards, found, root, query, deep)
-        by_meaning = (pool.submit(rust_cards, found, root, query, deep)
-                      if built_with_embeddings(root) else None)
-        by_text = cards_for(found, root, semble_rows(found, root, query, deep, ""))
+        by_meaning = pool.submit(rust_cards, found, root, query, deep) if embedded else None
+        by_text = [] if rust_only else cards_for(found, root, semble_rows(found, root, query, deep, ""))
 
         def settled(future) -> list:
             try:  # one engine failing must not lose what the others found
