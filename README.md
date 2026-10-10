@@ -18,7 +18,7 @@ across every way the setup can answer a lookup.
 setup/        the installable package
   INSTALL.txt     one file: instructions on top, the whole package below. python INSTALL.txt
   apply.py        installs rules, agents and the hook for each client
-  tools.py        installs the search tools and the lx command
+  tools.py        installs the search tools and the lx command; token-goat only when asked
   local-index/    the session hook and lx (session_index.py) and its options
   rules/          the global rules, one source rendered per client
   agents/         the three crew agents, one source rendered per client
@@ -35,7 +35,7 @@ docs/         the site (GitHub Pages)
 ## Results in short
 
 <!-- results:start -->
-502 agent runs on one repository: three lookup questions, 36 ways of finding the answer, three model tiers, three ways of organising the agents. 97.9 million tokens measured, 85% of them cache reads.
+787 agent runs on one repository: three lookup questions, 36 ways of finding the answer, three model tiers, three ways of organising the agents. 150.5 million tokens measured, 86% of them cache reads.
 
 One agent on the cheapest model tier, fewest tokens first (methods run at least three times):
 
@@ -57,30 +57,32 @@ One agent on the cheapest model tier, fewest tokens first (methods run at least 
 | 14 | L2 lx + cards | 3 | 2.3 | 152,991 | $0.0024 | 100% |
 | 15 | R1 lx shipped + Rust embeddings | 3 | 2.7 | 175,536 | $0.0029 | 100% |
 | 16 | C2 lx + Rust embeddings + token-goat | 3 | 2.7 | 176,514 | $0.0028 | 100% |
-| 17 | C6 token-goat + graphify + semble | 3 | 2.7 | 180,129 | $0.0031 | 100% |
-| 18 | A9 lx, as shipped after round 1 | 6 | 3.0 | 197,045 | $0.0028 | 99% |
-| 19 | S4 Shipped: all commands, embeddings on | 3 | 3.0 | 197,588 | $0.0028 | 100% |
-| 20 | C10 lx about + cards | 3 | 3.3 | 219,611 | $0.0029 | 100% |
-| 21 | L1 lx + about | 3 | 3.3 | 219,739 | $0.0031 | 100% |
-| 22 | C9 lx finds, token-goat reads | 3 | 3.3 | 220,870 | $0.0032 | 100% |
-| 23 | C3 lx shipped + token-goat | 3 | 3.7 | 242,156 | $0.0031 | 100% |
-| 24 | C8 token-goat + graphify | 3 | 3.7 | 248,739 | $0.0037 | 100% |
-| 25 | C4 Rust index + token-goat | 3 | 4.0 | 281,589 | $0.0050 | 100% |
-| 26 | C5 Rust index + graphify + semble | 3 | 4.0 | 289,122 | $0.0056 | 100% |
-| 27 | C1 Rust index + token-goat + graphify + semble | 3 | 4.3 | 310,595 | $0.0052 | 99% |
-| 28 | A0 No index | 5 | 5.0 | 364,508 | $0.0074 | 98% |
+| 17 | A5 token-goat alone | 3 | 2.7 | 177,144 | $0.0027 | 100% |
+| 18 | C6 token-goat + graphify + semble | 3 | 2.7 | 180,129 | $0.0031 | 100% |
+| 19 | A9 lx, as shipped after round 1 | 6 | 3.0 | 197,045 | $0.0028 | 99% |
+| 20 | S4 Shipped: all commands, embeddings on | 3 | 3.0 | 197,588 | $0.0028 | 100% |
+| 21 | C10 lx about + cards | 3 | 3.3 | 219,611 | $0.0029 | 100% |
+| 22 | L1 lx + about | 3 | 3.3 | 219,739 | $0.0031 | 100% |
+| 23 | C9 lx finds, token-goat reads | 3 | 3.3 | 220,870 | $0.0032 | 100% |
+| 24 | C3 lx shipped + token-goat | 3 | 3.7 | 242,156 | $0.0031 | 100% |
+| 25 | C8 token-goat + graphify | 3 | 3.7 | 248,739 | $0.0037 | 100% |
+| 26 | C4 Rust index + token-goat | 3 | 4.0 | 281,589 | $0.0050 | 100% |
+| 27 | C5 Rust index + graphify + semble | 3 | 4.0 | 289,122 | $0.0056 | 100% |
+| 28 | C1 Rust index + token-goat + graphify + semble | 3 | 4.3 | 310,595 | $0.0052 | 99% |
+| 29 | A0 No index | 5 | 5.0 | 364,508 | $0.0074 | 98% |
 
-- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 502 agents measured, 85% of all tokens were cache reads, 14% were cache writes and 0.6% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
-- Where the shipped build, the round 1 leaders and the control stand among those 28 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 18; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 15; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 28.
+- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 787 agents measured, 86% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
+- Where the shipped build, the round 1 leaders and the control stand among those 29 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 19; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 15; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 29.
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier C, one agent: Shipped: lx ask, embeddings on 130k (2 turns over 3 runs), against Shipped: lx ask, default index 130k (2 turns over 3 runs); Shipped: all commands, embeddings on 198k (2 to 4 turns over 3 runs), against Shipped: all commands, default index 130k (2 turns over 3 runs).
-- The shipped build on an index with Rust embeddings and on the default index without them. Tier B, one agent: Shipped: lx ask, embeddings on 129k (2 turns over 3 runs), against Shipped: lx ask, default index 196k (3 turns over 3 runs); Shipped: all commands, embeddings on 130k (2 turns over 3 runs), against Shipped: all commands, default index 196k (3 turns over 3 runs).
+- The shipped build on an index with Rust embeddings and on the default index without them. Tier B, one agent: Shipped: lx ask, embeddings on 129k (2 turns over 3 runs), against Shipped: lx ask, default index 196k (3 turns over 6 runs); Shipped: all commands, embeddings on 130k (2 turns over 3 runs), against Shipped: all commands, default index 196k (3 turns over 3 runs).
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier A, one agent: Shipped: lx ask, embeddings on 199k (3 turns over 1 run), against Shipped: lx ask, default index 201k (3 turns over 1 run); Shipped: all commands, embeddings on 199k (3 turns over 1 run), against Shipped: all commands, default index 199k (3 turns over 1 run).
 - Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Tier C, one agent: lx, as shipped after round 1 197k (2 to 5 turns over 6 runs), against lx shipped + token-goat 242k (3 to 5 turns over 3 runs); lx shipped + Rust embeddings 176k (2 to 3 turns over 3 runs), against lx + Rust embeddings + token-goat 177k (2 to 3 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against lx, every new command + token-goat 131k (2 turns over 3 runs); lx ask, one call 130k (2 turns over 3 runs), against lx ask + token-goat read 130k (2 turns over 3 runs).
 - Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Tier B, one agent: lx, as shipped after round 1 217k (3 to 4 turns over 3 runs), against lx shipped + token-goat 196k (3 turns over 2 runs); lx shipped + Rust embeddings 129k (2 turns over 2 runs), against lx + Rust embeddings + token-goat 129k (2 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against lx, every new command + token-goat 130k (2 turns over 2 runs); lx ask, one call 129k (2 turns over 2 runs), against lx ask + token-goat read 129k (2 turns over 2 runs).
 - Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier C, one agent: lx, every new command 130k (2 turns over 3 runs), against Rust index + graphify + semble 289k (3 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat + graphify + semble 311k (4 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat 282k (3 to 5 turns over 3 runs).
 - Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier B, one agent: lx, every new command 130k (2 turns over 2 runs), against Rust index + graphify + semble 428k (5 to 7 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat + graphify + semble 314k (3 to 6 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat 393k (5 to 6 turns over 2 runs).
-- The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.294 on Tier A (100%). Send lookups to the cheapest tier.
-- Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a reviewer, 4 of 38 three-subagent runs returned a wrong detail; with the orchestrator checking, 44 of 44 orchestrated runs ended fully correct.
+- The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.
+- Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything.
+- token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.
 <!-- results:end -->
 
 The full tables, the three model tiers, the three agent setups and the limits

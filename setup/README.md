@@ -55,6 +55,76 @@ systems it is skipped, `lx` answers from the graphify graph, `--rust` and
 `codanna_embeddings` do nothing, and `--hybrid` searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30 when the environment's pip has the date filter, and warns when it does not.
 With `--no-tools` nothing is downloaded and `lx` is still created.
 
+## Optional: token-goat hooks
+
+token-goat is a separate tool with its own index and its own hooks. It is not
+part of this setup and nothing here needs it. One flag adds it:
+
+```
+python INSTALL.txt --token-goat                  # every client folder in your home
+python INSTALL.txt --client claude --token-goat  # one client
+python setup/tools.py --token-goat codex,copilot # from a checkout, named clients
+```
+
+The flag installs token-goat 2.9.30 from the npm registry when the command is
+not there yet. It needs Node.js 22.16 or newer and is about 350 MB installed.
+Only that package is pinned: npm picks its dependencies on the day, and some
+of them run install scripts. It then runs token-goat's own installer for each
+client with `--no-index`, and that installer writes:
+
+| Client | What token-goat writes |
+| --- | --- |
+| Claude Code | hooks in `~/.claude/settings.json`, a routing block in `~/.claude/CLAUDE.md`, a skill in `~/.claude/skills/token-goat` |
+| Codex | hooks and trust entries for them in `~/.codex/config.toml`, so they run without the `/hooks` approval; a routing block in `~/.codex/AGENTS.md` |
+| Copilot | hooks in `~/.copilot/hooks/token-goat.json`, a routing block in `~/.copilot/copilot-instructions.md`, an MCP server entry in `~/.copilot/mcp-config.json` |
+
+token-goat makes its own `.bak` copies of what it edits; this step does not
+add them to `~/.local-index/backups/`. To undo it:
+
+```
+token-goat uninstall
+token-goat uninstall --codex
+token-goat uninstall --copilot
+npm uninstall -g token-goat
+```
+
+Read these before adding the flag:
+
+- token-goat is under the PolyForm Noncommercial licence. Do not install it on
+  a machine used for commercial work.
+- In Claude Code the hooks run on every Read, Grep, Glob, Write, Bash, web,
+  skill, subagent and MCP tool call, and on session and prompt events
+  (`benchmark/data/hooks.json` has the exact matchers). They may replace what
+  a call returns with a shorter version, swap text they take for a secret for
+  a redaction marker, and refuse a read of lines the session has already read.
+- "Every client folder" means `~/.claude`, `~/.codex` and `~/.copilot`,
+  whichever exist. This installer creates all three on its first run, so on a
+  later run name the client you use with `--client`.
+- Claude Code's hooks do not match its PowerShell tool, which is how that
+  client sends shell commands on Windows unless told otherwise, so `lx`
+  commands sent that way pass through untouched. Codex and Copilot were not
+  measured, and there token-goat does hook the shell tool.
+- The routing block is about 4,600 bytes in each rules file, roughly 1,200
+  tokens that every request of every agent then carries. The skill entry and,
+  for Copilot, the MCP server's tool definitions add to that and were not
+  measured.
+
+What it changed when measured (the Hooks page of the site and
+`benchmark/RESULTS.md` have every row): nothing that shows in the token
+counts, and one thing that shows in the answers. With no index, where an agent
+works through the client's own Grep, Glob and Read, the hooks ran on every
+call and rewrote a few tool results a run, and the token totals stayed inside
+the spread between repeats of one prompt. But some rewritten results carried
+a redaction marker over a line of source the hook took for a secret, and the
+agents that searched for the callers of a function then missed the caller on
+that line in about half of those runs. With `lx` sent through PowerShell the
+hooks ran only in the runs where an agent also opened a file. With `lx` sent
+through Bash they ran on every call and rewrote nothing.
+
+Those lookups return short results. A session that reads long files or long
+command output gives a hook that shortens tool results something to shorten,
+and that was not measured here. The cost that is certain is the routing block.
+
 ## The engines
 
 | Layer | Tool | Answers | Where its index lives |
@@ -135,12 +205,15 @@ Changing an option never empties an index a lookup is about to read: only
 ```
 python setup/tests/check_hook.py setup/local-index/session_index.py EMPTY_DIR
 python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR
+python setup/tests/check_token_goat_step.py setup/tools.py
 ```
 
-These two run from a checkout of the repository; the one-file installer does
+These run from a checkout of the repository; the one-file installer does
 not carry them. The first drives the hook and `lx` against small throwaway repositories. The
 second installs over copies of real client files in throwaway home directories;
-those originals are personal, so you supply your own. `build_install.py`
+those originals are personal, so you supply your own. The third drives the
+optional token-goat step with every outside command faked, so it installs
+nothing. `build_install.py`
 repacks `INSTALL.txt` and re-renders `rendered/` after any edit here.
 
 ## Limits worth knowing
@@ -165,6 +238,6 @@ repacks `INSTALL.txt` and re-renders `rendered/` after any edit here.
 - Codex asks for new hooks to be trusted before it runs them: open `/hooks`
   once and approve the session-start entries.
 - Claude Code reads a new `~/.claude/agents/` folder only after a restart.
-- token-goat, rtk and the caveman-autocompress hook are not installed by this
-  setup. The rules name them as "where installed", so the same files work on a
-  machine that has them.
+- rtk and the caveman-autocompress hook are not installed by this setup, and
+  token-goat only when `--token-goat` is given. The rules name them as "where
+  installed", so the same files work on a machine that has them.

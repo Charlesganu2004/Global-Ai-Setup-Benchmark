@@ -1,0 +1,29 @@
+{
+ "version": "token-goat 2.9.30, installed with `token-goat install --no-index`, and again with `--codex` and `--copilot`",
+ "licence": "PolyForm Noncommercial: not for commercial use",
+ "installed_size_mb": 348,
+ "claude_events": [
+  "SessionStart",
+  "UserPromptSubmit",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "PreCompact",
+  "PostCompact",
+  "SubagentStop"
+ ],
+ "pre_tool_matcher": "^Read$|^Grep$|^Glob$|^Write$|^WebFetch$|^Skill$|^Bash$|^mcp__|^WebSearch$|^Agent$|^task$|^Task$",
+ "post_tool_matcher": "^Read$|^Grep$|^Glob$|^Write$|^Edit$|^MultiEdit$|^NotebookEdit$|^WebFetch$|^Skill$|^Bash$|^BashOutput$|^TaskOutput$|^ExitPlanMode$|^mcp__|^WebSearch$|^Agent$|^task$|^Task$",
+ "not_matched": "PowerShell. On Windows the client sends shell commands through its PowerShell tool unless told otherwise, so the hooks never see lx, token-goat or any other command run that way.",
+ "redaction_note": "In these runs the marker was `[REDACTED:generic_secret_assignment]`, written over the call itself on two lines of the fixture's prs.py that assign its result to something named api_key. Both lines sit in one function, and that function is the caller the incomplete answers lack. Traced in the transcripts: the lines an agent was shown, and the caller its answer left out.",
+ "block_bytes": {
+  "~/.claude/CLAUDE.md": 4661,
+  "~/.codex/AGENTS.md": 4731,
+  "~/.copilot/copilot-instructions.md": 4564
+ },
+ "block_tokens_estimate": 1200,
+ "block_note": "The routing block token-goat adds to each rules file is read on every request of every agent. The benchmark agents did not carry it: the client had loaded the rules before the block was written. Its cost is therefore an estimate, at about four characters a token, and is not in any measured figure.",
+ "skill_note": "The install also adds a token-goat skill to the client. Its name, without a description, was in the skill list of every agent measured with the hooks on: a few tokens of start-up context their twins did not have.",
+ "context_note": "The two sides of a pair share one prompt, word for word, but not one start-up context. Every round's agents inherit what the session had loaded when the round ran: the version of the global rules file, the request the session relays to its agents, the skill list. The runs with the hooks were all made in one round, the runs without them before and after it, and the start-up context differs by a few hundred tokens between rounds. The start-up columns of the table show it pair by pair. The Bash pair has one more difference from the PowerShell methods, the same on both of its sides: on this machine two unrelated hooks of the owner's own setup are launched before every Bash call, which adds to a Bash method's seconds and not to its tokens.",
+ "how_measured": "The runs without the hooks come from the earlier rounds, made before the hooks were ever installed, and from a round made after they were uninstalled again. The runs with the hooks were made in between, in one round. The client applies hook changes at once, so no restart was needed. A hook run that let a call through is a row in the agent's transcript, and its answer says whether it rewrote the result. A note the hook added beside a result is a row of its own. A call the hook refused leaves no hook row: the agent gets an error in place of the result, starting `PreToolUse:<Tool> hook error`, and each of those is counted as one hook run and one refused call."
+}

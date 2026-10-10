@@ -13,7 +13,7 @@
 <body data-page="setup">
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
+<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
 <main class="wrap" id="main">
   <h1>Setup: local index first</h1>
   <p class="lede">One set of rules, three helper agents, the skills the rules name and one session-start hook, installed for Claude Code, Codex and GitHub Copilot.</p>
@@ -47,6 +47,36 @@ python setup/tools.py           # the search tools and the lx command</code></pr
   </div></div>
   <p>No agent file names a model version. Work is routed by tier: Tier A is the strongest model on offer at its highest reasoning setting, Tier B the fast coding class, Tier C the lightest. Claude Code reaches them through its <code>inherit</code>, <code>sonnet</code> and <code>haiku</code> aliases, which follow new releases. Codex and Copilot agents set no model and inherit the model of the session.</p>
   <p><code>tools.py</code> is the part that downloads: semble 0.6.1 and ast-grep 0.45.3 as pinned wheels, graphify 0.9.72 only when no graphify is found, codanna 0.16.0 as one release file whose SHA-256 must match the pinned value, and the semble embedding model once. Only the Windows build of codanna is pinned. On other systems it is skipped, <code>lx</code> answers from the graphify graph, <code>--rust</code> and <code>codanna_embeddings</code> do nothing, and <code>--hybrid</code> searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30. With <code>--no-tools</code> nothing is downloaded and <code>lx</code> is still created.</p>
+
+  <h2>Optional: token-goat hooks</h2>
+  <p>token-goat is a separate tool with its own index and its own hooks. Nothing here needs it, and it is left out unless one flag asks for it. What the hooks changed when measured is on the <a href="hooks.html">Hooks</a> page.</p>
+<pre><code>python INSTALL.txt --token-goat                  # every client folder in your home
+python INSTALL.txt --client claude --token-goat  # one client
+python setup/tools.py --token-goat codex,copilot # from a checkout, named clients</code></pre>
+  <p>The flag installs token-goat 2.9.30 from the npm registry when the command is not there yet. It needs Node.js 22.16 or newer and is about 350 MB installed. Only that package is pinned: npm picks its dependencies on the day, and some of them run install scripts. It then runs token-goat's own installer for each client, which writes:</p>
+  <div class="card"><div class="scroll" tabindex="0" role="region" aria-label="What token-goat writes for each client">
+    <table>
+      <caption class="visually-hidden">What token-goat writes for each client</caption>
+      <thead><tr><th scope="col">Client</th><th scope="col">What token-goat writes</th></tr></thead>
+      <tbody>
+        <tr><td>Claude Code</td><td class="wide">Hooks in <code>~/.claude/settings.json</code>, a routing block in <code>~/.claude/CLAUDE.md</code>, a skill in <code>~/.claude/skills/token-goat</code>.</td></tr>
+        <tr><td>Codex</td><td class="wide">Hooks and trust entries for them in <code>~/.codex/config.toml</code>, so they run without the <code>/hooks</code> approval, and a routing block in <code>~/.codex/AGENTS.md</code>.</td></tr>
+        <tr><td>Copilot</td><td class="wide">Hooks in <code>~/.copilot/hooks/token-goat.json</code>, a routing block in <code>~/.copilot/copilot-instructions.md</code>, an MCP server entry in <code>~/.copilot/mcp-config.json</code>.</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+  <ul class="plain">
+    <li>token-goat is under the PolyForm Noncommercial licence. Do not install it on a machine used for commercial work.</li>
+    <li>In Claude Code the hooks run on every Read, Grep, Glob, Write, Bash, web, skill, subagent and MCP tool call, and on session and prompt events. They may replace what a call returns with a shorter version, swap text they take for a secret for a redaction marker, and refuse a read of lines the session has already read.</li>
+    <li>"Every client folder" means <code>~/.claude</code>, <code>~/.codex</code> and <code>~/.copilot</code>, whichever exist. This installer creates all three on its first run, so on a later run name the client you use with <code>--client</code>.</li>
+    <li>Claude Code's hooks do not match its PowerShell tool, so <code>lx</code> commands sent that way pass through untouched. Codex and Copilot were not measured, and there token-goat does hook the shell tool.</li>
+    <li>The routing block is about 4,600 bytes in each rules file, roughly 1,200 tokens that every request of every agent then carries. The skill entry and, for Copilot, the tool definitions of the MCP server add to that and were not measured.</li>
+    <li>token-goat makes its own <code>.bak</code> copies of what it edits. This step does not add them to <code>~/.local-index/backups/</code>.</li>
+  </ul>
+<pre><code>token-goat uninstall             # undo, Claude Code
+token-goat uninstall --codex     # undo, Codex
+token-goat uninstall --copilot   # undo, Copilot
+npm uninstall -g token-goat      # remove the package itself</code></pre>
 
   <h2>The engines</h2>
   <div class="card"><div class="scroll" tabindex="0" role="region" aria-label="The engines">
@@ -136,8 +166,9 @@ rg -n -F 'check_token(' . -g '!graphify-out'</code></pre>
 
   <h2>Checks</h2>
 <pre><code>python setup/tests/check_hook.py setup/local-index/session_index.py EMPTY_DIR
-python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR</code></pre>
-  <p>The first drives the hook and <code>lx</code> against small throwaway repositories. The second installs over copies of real client files in throwaway home directories. Those originals are personal, so you supply your own. <code>build_install.py</code> repacks <code>INSTALL.txt</code> and renders <code>rendered/</code> again after any edit to the setup.</p>
+python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR
+python setup/tests/check_token_goat_step.py setup/tools.py</code></pre>
+  <p>The first drives the hook and <code>lx</code> against small throwaway repositories. The second installs over copies of real client files in throwaway home directories. Those originals are personal, so you supply your own. The third drives the optional token-goat step with every outside command faked, so it installs nothing. <code>build_install.py</code> repacks <code>INSTALL.txt</code> and renders <code>rendered/</code> again after any edit to the setup.</p>
 
   <h2>Limits worth knowing</h2>
   <ul class="plain">
@@ -146,7 +177,7 @@ python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR</code></pre>
     <li>Copilot loads extra instruction folders named in the user variable <code>COPILOT_CUSTOM_INSTRUCTIONS_DIRS</code>. <code>apply.py</code> reports any whose file still carries the older wrapper block this setup replaces, and prints the command that clears the variable. It never changes the variable itself.</li>
     <li>Codex asks for new hooks to be trusted before it runs them: open <code>/hooks</code> once and approve the session-start entries.</li>
     <li>Claude Code reads a new <code>~/.claude/agents/</code> folder only after a restart.</li>
-    <li>token-goat, rtk and the caveman-autocompress hook are not installed by this setup. The rules name them as "where installed", so the same files work on a machine that has them.</li>
+    <li>rtk and the caveman-autocompress hook are not installed by this setup, and token-goat only when <code>--token-goat</code> is given. The rules name them as "where installed", so the same files work on a machine that has them.</li>
   </ul>
 </main>
 <footer class="site-footer" id="site-footer"></footer>

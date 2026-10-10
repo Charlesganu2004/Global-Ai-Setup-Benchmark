@@ -14,8 +14,9 @@ import subprocess
 import sys
 import time
 
-SCRIPT = pathlib.Path(sys.argv[1])
-WORK = pathlib.Path(sys.argv[2])
+# Resolved once: later steps run the script from inside the throwaway repositories.
+SCRIPT = pathlib.Path(sys.argv[1]).resolve()
+WORK = pathlib.Path(sys.argv[2]).resolve()
 PY = sys.executable
 # The graphify the hook itself would find: on PATH first, then this setup's own environment.
 GRAPHIFY = shutil.which("graphify") or str(

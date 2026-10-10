@@ -12,6 +12,8 @@
   var PAGES = [
     { id: 'home', href: 'index.html', name: 'Home' },
     { id: 'results', href: 'results.html', name: 'Results' },
+    { id: 'orchestration', href: 'orchestration.html', name: 'Orchestration' },
+    { id: 'hooks', href: 'hooks.html', name: 'Hooks' },
     { id: 'methods', href: 'methods.html', name: 'Methods' },
     { id: 'setup', href: 'setup.html', name: 'Setup' },
     { id: 'how', href: 'how.html', name: 'How it was measured' }
@@ -65,9 +67,10 @@
     var used = list('groups').filter(function (g) { return list('arms').some(function (a) { return a.group === g.id; }); });
     return [{ id: 'all', name: 'All methods' }].concat(used.map(function (g) { return { id: g.id, name: g.name }; }));
   }
-  // One row per method for a setup and a tier, fewest tokens first.
+  // One row per method for a setup and a tier, fewest tokens first. A rerun made to test
+  // token-goat's hooks is not a method: those are compared on the hooks page.
   function leaderboard(setupId, tierId) {
-    var rows = pointsFor(setupId).filter(function (p) { return p.tier === tierId && typeof p.tokens === 'number'; });
+    var rows = pointsFor(setupId).filter(function (p) { return p.tier === tierId && typeof p.tokens === 'number' && arm(p.arm).group !== 'hooks'; });
     rows.sort(function (a, b) { return a.tokens - b.tokens || armOrder(a.arm) - armOrder(b.arm); });
     var max = rows.reduce(function (m, p) { return Math.max(m, p.tokens); }, 0);
     return rows.map(function (p, i) {

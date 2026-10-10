@@ -472,6 +472,113 @@
       }), 'Index build time and size by stack');
   }
 
+  /* ---------- parts of a whole, one bar per row, all on one scale ----------
+     rows: [{ label, parts: [a number per spec.parts entry], total, tip: function -> tooltip rows }]
+     spec: { parts: [[name, colour]], format: function, label: string } */
+  function drawStack(hosts, rows, spec) {
+    var host = hosts.host;
+    rows = (rows || []).filter(function (r) { return r.total > 0; });
+    if (!rows.length) return empty(hosts);
+    host.replaceChildren();
+    S.legend(hosts.legend, spec.parts);
+    var width = widthOf(host), narrow = width < 640;
+    var gutter = narrow ? 0 : Math.min(300, Math.round(width * 0.3)), right = 64, rowH = narrow ? 46 : 30, bar = 16;
+    // Round steps, so every gridline sits on the value its label prints.
+    var ticks = niceTicks(0, Math.max.apply(null, rows.map(function (r) { return r.total; })), 4);
+    var max = ticks[ticks.length - 1];
+    var plotW = Math.max(60, width - gutter - right);
+    var x = function (v) { return (typeof v === 'number' && v > 0 ? v : 0) / max * plotW; };
+    var plotH = rows.length * rowH, height = plotH + 26;
+    var svg = chartSvg(width, height, spec.label);
+    ticks.forEach(function (v, i) {
+      var gx = gutter + x(v);
+      svg.appendChild(svgEl('line', { class: i ? 'grid' : 'axis', x1: gx, x2: gx, y1: 0, y2: plotH }));
+      svg.appendChild(svgEl('text', { class: 'tick', x: gx, y: plotH + 16, 'text-anchor': i ? 'middle' : 'start' }, spec.format(v)));
+    });
+    var hits = rows.map(function (row, r) {
+      var top = r * rowH + (narrow ? 20 : (rowH - bar) / 2);
+      var group = svgEl('g', { class: 'mark' });
+      svg.appendChild(svgEl('text', narrow ? { x: 0, y: r * rowH + 13 } : { x: gutter - 10, y: top + bar / 2 + 4, 'text-anchor': 'end' },
+        fit(row.label, narrow ? width : gutter - 14)));
+      var widths = row.parts.map(x), end = -1;
+      widths.forEach(function (w, s) { if (w > 0.5) end = s; });
+      var cursor = gutter;
+      widths.forEach(function (w, s) {
+        var color = 'var(' + spec.parts[s][1] + ')', size = s === end ? w : w - 2;   // the 2px gap that separates segments
+        if (s === end) group.appendChild(svgEl('path', { d: barPath(cursor, top, size, bar, 4), fill: color }));
+        else if (s < end && size > 0.5) group.appendChild(svgEl('rect', { x: cursor, y: top, width: size, height: bar, fill: color }));
+        cursor += w;
+      });
+      svg.appendChild(group);
+      svg.appendChild(svgEl('text', { class: 'strong', x: cursor + 8, y: top + bar / 2 + 4 }, spec.format(row.total)));
+      var hit = svgEl('rect', { class: 'hit', x: 0, y: r * rowH, width: width, height: rowH, role: 'img', 'aria-label': row.label + ': ' + spec.format(row.total) });
+      svg.appendChild(hit);
+      return S.bindTip(hit, row.label, function () {
+        return spec.parts.map(function (part, s) { return { color: 'var(' + part[1] + ')', value: spec.format(row.parts[s]), label: part[0] }; })
+          .concat(row.tip ? row.tip() : []);
+      });
+    });
+    S.roving(svg, hits);
+    host.appendChild(svg);
+  }
+
+  /* ---------- a few values per row, one dot each ----------
+     rows: [{ label, dots: [{ series: index into spec.series, value, label: its own name when the row's is not
+     right for it, tip: function -> tooltip rows }] }]
+     spec: { series: [[name, colour]], format: function, unit: string, label: string, log: boolean }
+     The dots of a row sit on their own lines inside it, so two equal values stay visible. */
+  function drawDots(hosts, rows, spec) {
+    var host = hosts.host;
+    rows = (rows || []).map(function (row) {
+      return { label: row.label, dots: row.dots.filter(function (d) { return typeof d.value === 'number' && isFinite(d.value) && d.value > 0; }) };
+    }).filter(function (row) { return row.dots.length; });
+    if (!rows.length) return empty(hosts);
+    host.replaceChildren();
+    // Only the series that have a dot in these rows.
+    S.legend(hosts.legend, spec.series.filter(function (series, i) {
+      return rows.some(function (row) { return row.dots.some(function (d) { return d.series === i; }); });
+    }), true);
+    // A lane is as tall as a dot's pointer target, so one dot's target never covers the dot of the next lane.
+    var width = widthOf(host), narrow = width < 640, lanes = spec.series.length, lane = 14, reach = lane / 2;
+    var gutter = narrow ? 0 : Math.min(300, Math.round(width * 0.3)), right = 28;
+    var rowH = Math.max(30, lanes * lane + 12) + (narrow ? 16 : 0);
+    var values = rows.reduce(function (all, row) { return all.concat(row.dots.map(function (d) { return d.value; })); }, []);
+    var scale, ticks;
+    if (spec.log) {
+      var xs = logScale(values, gutter + 12, width - right);
+      scale = xs.scale; ticks = xs.ticks;
+    } else {
+      ticks = niceTicks(0, Math.max.apply(null, values), 4);
+      var max = ticks[ticks.length - 1], lo = gutter + 12, hi = width - right;
+      scale = function (v) { return lo + v / max * (hi - lo); };
+    }
+    var plotH = rows.length * rowH, height = plotH + 26;
+    var svg = chartSvg(width, height, spec.label);
+    ticks.forEach(function (v) {
+      svg.appendChild(svgEl('line', { class: 'grid', x1: scale(v), x2: scale(v), y1: 0, y2: plotH }));
+      svg.appendChild(svgEl('text', { class: 'tick', x: scale(v), y: plotH + 16, 'text-anchor': 'middle' }, spec.format(v)));
+    });
+    var hits = [];
+    rows.forEach(function (row, r) {
+      var mid = r * rowH + (narrow ? 16 : 0) + (rowH - (narrow ? 16 : 0)) / 2;
+      svg.appendChild(svgEl('text', narrow ? { x: 0, y: r * rowH + 13 } : { x: gutter - 10, y: mid + 4, 'text-anchor': 'end' }, fit(row.label, narrow ? width : gutter - 14)));
+      if (r) svg.appendChild(svgEl('line', { class: 'grid', x1: 0, x2: width, y1: r * rowH, y2: r * rowH }));
+      row.dots.forEach(function (d) {
+        var name = spec.series[d.series][0], color = 'var(' + spec.series[d.series][1] + ')';
+        var cx = scale(d.value), cy = mid + (d.series - (lanes - 1) / 2) * lane;
+        svg.appendChild(svgEl('circle', { class: 'mark', cx: cx, cy: cy, r: 5, fill: color, stroke: 'var(--surface)', 'stroke-width': 2 }));
+        var title = (d.label || row.label) + ', ' + name;
+        var hit = svgEl('circle', { class: 'hit', cx: cx, cy: cy, r: reach, role: 'img', 'aria-label': title + ': ' + spec.format(d.value) });
+        hits.push(S.bindTip(hit, title, function () {
+          return [{ color: color, value: spec.format(d.value), label: spec.unit || '' }].concat(d.tip ? d.tip() : []);
+        }));
+        svg.appendChild(hit);
+      });
+    });
+    S.roving(svg, hits);
+    host.appendChild(svg);
+  }
+
   api.drawBubble = drawBubble; api.drawTokens = drawTokens; api.drawCost = drawCost;
-  api.drawContext = drawContext; api.drawIndex = drawIndex;
+  api.drawContext = drawContext; api.drawIndex = drawIndex; api.drawStack = drawStack; api.drawDots = drawDots;
 })();

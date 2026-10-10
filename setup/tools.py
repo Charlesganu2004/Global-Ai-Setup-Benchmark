@@ -2,6 +2,7 @@
 """Install the local index tools and the `lx` front-end that agents type.
 
     python tools.py [--offline] [--bin DIR] [--skip-model] [--home DIR]
+                    [--token-goat [CLIENTS]]
 
 What it installs, each only when it is not already there:
   semble 0.6.1 and ast-grep 0.45.3   pinned prebuilt wheels from PyPI, in a
@@ -20,7 +21,20 @@ What it installs, each only when it is not already there:
 --offline skips every download and still makes `lx`, which then answers from
 whichever engines the machine already has.
 
-Nothing is compiled, no PATH entry is edited, and it is safe to run again.
+--token-goat is optional and off unless asked for. It installs token-goat
+2.9.30 from the npm registry when the command is not there yet (it needs
+Node.js 22.16 or newer, and is about 350 MB installed; only that package is
+pinned, npm picks its dependencies on the day and some run install scripts).
+It then runs token-goat's own installer for each client, which writes that
+client's hooks and a routing block in its rules file, and also a skill for
+Claude Code, trust entries for its hooks in Codex's config.toml, and an MCP
+server entry in Copilot's mcp-config.json. token-goat is under the PolyForm
+Noncommercial licence, so it is not for commercial use. Undo it with
+`token-goat uninstall`, again with --codex and with --copilot, then
+`npm uninstall -g token-goat`.
+
+The index tools above are never compiled, no PATH entry is edited, and it is
+safe to run again.
 """
 from __future__ import annotations
 
@@ -43,6 +57,11 @@ PINS = {
     "graphify": "graphifyy==0.9.72",
 }
 CUTOFF = "2026-09-30T00:00:00Z"
+# Optional, only with --token-goat. The version the benchmark was run with, and
+# the oldest Node.js that package says it runs on.
+TOKEN_GOAT = "token-goat@2.9.30"
+TOKEN_GOAT_NODE = (22, 16)
+TOKEN_GOAT_FLAGS = {"claude": [], "codex": ["--codex"], "copilot": ["--copilot"]}
 
 # The publisher's own checksum for this exact file, read from the release's
 # SHA256SUMS on 2026-10-08. The binary is unsigned, so this pin is the check.
@@ -83,9 +102,11 @@ MAKE_LAUNCHER = ("import sys; from pip._vendor.distlib.scripts import ScriptMake
                  "maker.make('lx = local_index_front:main')")
 
 
-def run(argv: list[str], env: dict | None = None, timeout: int = 1800) -> tuple[int, str]:
+def run(argv: list[str], env: dict | None = None, timeout: int = 1800,
+        cwd: pathlib.Path | None = None) -> tuple[int, str]:
     try:
         done = subprocess.run([str(part) for part in argv], env=env, timeout=timeout,
+                              cwd=str(cwd) if cwd else None,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                               stdin=subprocess.DEVNULL)
         return done.returncode, done.stdout.decode("utf-8", "replace")
@@ -206,7 +227,7 @@ def install_semble_and_ast_grep(home: pathlib.Path, bin_dir: pathlib.Path,
 def install_graphify(home: pathlib.Path, bin_dir: pathlib.Path, offline: bool) -> None:
     own = home / ".graphify" / "venv" / SCRIPTS / f"graphify{EXE}"
     if not own.is_file():
-        if offline or shutil.which("graphify"):
+        if offline or on_search_path("graphify"):
             return  # nothing to fetch, or installed some other way and on PATH
         python = ensure_venv(home / ".graphify" / "venv")
         if python is None or not pip_install(python, PINS["graphify"]) or not own.is_file():
@@ -287,7 +308,7 @@ def report(home: pathlib.Path, bin_dir: pathlib.Path) -> bool:
     }
     complete = True
     for name, path in engines.items():
-        target = str(path) if path.is_file() else (shutil.which(name) or "")
+        target = str(path) if path.is_file() else on_search_path(name)
         if not target:
             print(f"MISSING    {name}")
             complete = False
@@ -309,6 +330,117 @@ def report(home: pathlib.Path, bin_dir: pathlib.Path) -> bool:
     return complete
 
 
+def on_search_path(name: str) -> str:
+    """Where a command lives on PATH, never in the folder this was started from.
+
+    shutil.which looks in the current directory first on Windows, so a file
+    named like the command and lying there would be run in place of the real one.
+    """
+    here = pathlib.Path.cwd().resolve()
+    endings = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if WINDOWS else [""]
+    for folder in os.environ.get("PATH", "").split(os.pathsep):
+        try:
+            if not folder or pathlib.Path(folder).resolve() == here:
+                continue
+        except OSError:
+            continue
+        for ending in endings:
+            candidate = pathlib.Path(folder) / (name + ending.lower())
+            if candidate.is_file() and (WINDOWS or os.access(candidate, os.X_OK)):
+                return str(candidate)
+    return ""
+
+
+def shim_safe(command: str) -> bool:
+    """npm's Windows commands are .cmd files, which cmd.exe runs: it splits an
+    unquoted path at these characters, and Python quotes a path only for a space."""
+    return not (command.lower().endswith((".cmd", ".bat")) and any(mark in command for mark in '&^%!<>|"'))
+
+
+def node_version() -> tuple[int, ...] | None:
+    node = on_search_path("node")
+    if not node:
+        return None
+    _, out = run([node, "--version"], timeout=60)
+    try:
+        return tuple(int(part) for part in out.strip().lstrip("v").split(".")[:2])
+    except ValueError:
+        return None
+
+
+def install_token_goat(home: pathlib.Path, wanted: str, offline: bool) -> bool:
+    """The optional step: token-goat itself, then its own installer for each client.
+
+    token-goat writes into the real home directory whatever it is told, so this
+    never runs when --home points somewhere else: a trial install must not put
+    hooks into the clients you actually use.
+
+    Returns False only for a failure, and prints a line starting FAILED for
+    each one. A step that was rightly left out prints `skipped` and is not a failure.
+    """
+    if home != pathlib.Path.home().resolve():
+        print("skipped    token-goat: --home is not your home directory, and its hooks "
+              "always go to the real one")
+        return True
+    named = [name.strip().lower() for name in wanted.split(",") if name.strip()]
+    unknown = [name for name in named if name != "all" and name not in TOKEN_GOAT_FLAGS]
+    if unknown or not named:
+        print("FAILED     token-goat: " + (f"unknown client {', '.join(unknown)}" if unknown else "no client named")
+              + f"; name all, or any of {', '.join(TOKEN_GOAT_FLAGS)}")
+        return False
+    clients = [name for name in TOKEN_GOAT_FLAGS
+               if name in named or ("all" in named and (home / f".{name}").is_dir())]
+    if not clients:
+        print("skipped    token-goat: none of ~/.claude, ~/.codex and ~/.copilot exists")
+        return True
+    exe = on_search_path("token-goat")
+    if not exe:
+        if offline:
+            print("skipped    token-goat: it is not installed, and --offline downloads nothing")
+            return True
+        npm, node = on_search_path("npm"), node_version()
+        floor = ".".join(str(part) for part in TOKEN_GOAT_NODE)
+        if not npm or node is None:
+            print(f"FAILED     token-goat: npm and node are not both on PATH; it needs Node.js {floor} or newer")
+            return False
+        if node < TOKEN_GOAT_NODE:
+            print(f"FAILED     token-goat: Node.js {'.'.join(str(part) for part in node)} found; "
+                  f"it needs {floor} or newer")
+            return False
+        if not shim_safe(npm):
+            print(f"FAILED     token-goat: cannot run npm safely from {npm}")
+            return False
+        print(f"installing {TOKEN_GOAT} from the npm registry into this user's global packages. Only that "
+              "package is pinned: npm picks its dependencies today, and some run install scripts.", flush=True)
+        # From the home folder: npm reads the .npmrc of the folder it is started in, even for -g.
+        code, out = run([npm, "install", "-g", TOKEN_GOAT], cwd=home)
+        exe = on_search_path("token-goat")
+        if code != 0 or not exe:
+            said = out.strip().splitlines()[-1][:200] if out.strip() else "no output"
+            print(f"FAILED     token-goat: npm did not leave a token-goat command on PATH ({plain(said)})")
+            return False
+    if not shim_safe(exe):
+        print(f"FAILED     token-goat: cannot run it safely from {exe}")
+        return False
+    ok = True
+    for client in clients:
+        # --no-index: installing hooks must not start indexing whatever folder this runs in.
+        code, out = run([exe, "install", *TOKEN_GOAT_FLAGS[client], "--no-index"], timeout=600, cwd=home)
+        ok = ok and code == 0
+        print(("installed  " if code == 0 else "FAILED     ") + f"token-goat for {client}")
+        for line in out.strip().splitlines()[-8:]:
+            print("           " + plain(line)[:200])     # what it wrote, or why it could not
+    print("note       token-goat is under the PolyForm Noncommercial licence: not for commercial use. "
+          "Undo with `token-goat uninstall`, `token-goat uninstall --codex` and `token-goat uninstall "
+          "--copilot`, then `npm uninstall -g token-goat` to remove the package itself.")
+    return ok
+
+
+def plain(text: str) -> str:
+    """Another program's output, safe to print on a console with any code page."""
+    return text.encode("ascii", "replace").decode("ascii")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--offline", action="store_true",
@@ -317,6 +449,9 @@ def main() -> int:
                         "the first of ~/bin, ~/.local/bin, WindowsApps that is on PATH)")
     parser.add_argument("--skip-model", action="store_true")
     parser.add_argument("--home", type=pathlib.Path, default=pathlib.Path.home())
+    parser.add_argument("--token-goat", nargs="?", const="all", default=None, metavar="CLIENTS",
+                        help="optional: also install token-goat and its hooks, for every client "
+                             "folder found or for a comma-separated list of claude, codex, copilot")
     args = parser.parse_args()
     home = args.home.resolve()
     bin_dir = pick_bin(home, args.bin)
@@ -329,7 +464,9 @@ def main() -> int:
     if not args.offline and not args.skip_model:
         print(f"semble     {warm_model(home)}")
     complete = report(home, bin_dir)
-    return 0 if complete or args.offline else 1
+    wanted = args.token_goat is None or install_token_goat(home, args.token_goat, args.offline)
+    # --offline forgives an index tool it was told not to fetch. It never forgives the optional step.
+    return 0 if wanted and (complete or args.offline) else 1
 
 
 if __name__ == "__main__":

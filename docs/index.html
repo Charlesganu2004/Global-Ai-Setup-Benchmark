@@ -13,7 +13,7 @@
 <body data-page="home">
 <a class="skip" href="#main">Skip to content</a>
 <header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
+<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
 <main class="wrap" id="main">
   <h1>Local index token benchmark</h1>
   <p class="lede" id="lede"></p>
@@ -21,7 +21,7 @@
   <div class="tiles" id="tiles"></div>
 
   <h2>Leaderboard</h2>
-  <p>One row per method, fewest tokens first. Each row is the mean of the complete runs of that method, and the Runs column says how many that is. Pick a setup and a model tier. A <a href="how.html">model tier</a> is a class of model, from the lightest (C) to the strongest (A). The row tagged control used no index, only the search and read tools every agent has.</p>
+  <p>One row per method, fewest tokens first. Each row is the mean of the complete runs of that method, and the Runs column says how many that is. Pick a setup and a model tier. A <a href="how.html">model tier</a> is a class of model, from the lightest (C) to the strongest (A). The row tagged control used no index, only the search and read tools every agent has. Reruns made to test token-goat's hooks are left out of this list and compared on the <a href="hooks.html">Hooks</a> page.</p>
   <div class="filters" role="group" aria-label="Leaderboard filters">
     <div class="filter"><span class="name" id="board-setup-name">Setup</span><div class="seg" id="board-setup" role="group" aria-labelledby="board-setup-name"></div></div>
     <div class="filter"><span class="name" id="board-tier-name">Model tier</span><div class="seg" id="board-tier" role="group" aria-labelledby="board-tier-name"></div></div>
@@ -36,6 +36,8 @@
   <h2>Where to go next</h2>
   <div class="navcards">
     <a class="navcard" href="results.html"><strong>Results</strong><span>Charts of cost, tokens and accuracy for every method, and a table of every single run.</span></a>
+    <a class="navcard" href="orchestration.html"><strong>Orchestration</strong><span>An orchestrator and three subagents against one agent: tokens and cost by role, what the review changed, and who should review.</span></a>
+    <a class="navcard" href="hooks.html"><strong>Hooks</strong><span>The same prompts with token-goat's hooks off and on: tokens, turns, cost, and how often the hooks ran.</span></a>
     <a class="navcard" href="methods.html"><strong>Methods</strong><span>What each method is, the exact commands the agents were given, and the questions they answered.</span></a>
     <a class="navcard" href="setup.html"><strong>Setup</strong><span>How to install the local index setup, the lx commands, and what each index costs to build and store.</span></a>
     <a class="navcard" href="how.html"><strong>How it was measured</strong><span>The model tiers, the prices, where the start-up context comes from, and what this test cannot tell you.</span></a>

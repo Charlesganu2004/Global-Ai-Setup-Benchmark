@@ -33,6 +33,23 @@ WHAT IT SETS UP
          installed only if its SHA-256 matches the value pinned in tools.py.
        - one 33 MB embedding model from huggingface.co, fetched once.
      After that, nothing here uses the network.
+  6. Optional, and only when --token-goat is given: token-goat 2.9.30 from the
+     npm registry. It needs Node.js 22.16 or newer and is about 350 MB
+     installed. Only that package is pinned: npm picks its dependencies on
+     the day, and some of them run install scripts. token-goat's own installer
+     then writes, for each client folder that exists (~/.claude, ~/.codex,
+     ~/.copilot: all three once this installer has run, so name one with
+     --client on a later run):
+       - its hooks, and a routing block in the client's rules file
+       - Claude Code: also a skill, ~/.claude/skills/token-goat
+       - Codex: also trust entries in ~/.codex/config.toml, so its hooks run
+         without the /hooks approval
+       - Copilot: also an MCP server entry in ~/.copilot/mcp-config.json
+     In Claude Code the hooks run on every Read, Grep, Glob, Write, Bash, web,
+     skill, subagent and MCP tool call, and on session and prompt events.
+     They may shorten what a call returns, replace text they take for a
+     secret with a redaction marker, and refuse a read of lines already read. token-goat is under the PolyForm Noncommercial licence: do not add
+     this flag on a machine used for commercial work.
 
 STEPS
   1. Check for Python 3.10 or newer and for git:
@@ -48,6 +65,8 @@ STEPS
          python INSTALL.txt --client copilot     one client: copilot, codex or claude
          python INSTALL.txt --no-tools           no downloads
          python INSTALL.txt --dry-run            show what would change, write nothing
+     Add --token-goat to any of the first two only if the owner asked for
+     item 6. With --dry-run it only names that step.
   4. Read the summary it prints. A line starting FAILED, MISSING, REFUSED or
      ACTION needs attention: report it to the owner word for word. Do not work
      around a FAILED download by fetching the package from anywhere else.
@@ -67,12 +86,17 @@ WHAT IT NEVER DOES
   No model and no remote index sees repository content. No PATH entry and no
   system setting is changed. No existing rule, skill, hook or MCP server is
   removed. Every file it changes is first copied to
-  ~/.local-index/backups/<timestamp>/.
+  ~/.local-index/backups/<timestamp>/. The one exception is item 6: token-goat
+  edits the clients' files itself and keeps its own .bak copies beside them.
 
 UNDO
   Copy the files back from ~/.local-index/backups/<timestamp>/, delete the
   cavecrew-* files from each client's agents folder, and remove the
-  session_index.py entries from the hook files.
+  session_index.py entries from the hook files. Item 6 has its own undo:
+      token-goat uninstall
+      token-goat uninstall --codex
+      token-goat uninstall --copilot
+      npm uninstall -g token-goat
 
 The files unpack to ~/global-ai-setup (change with --dir). Run it again at any
 time: every step replaces only what it owns.

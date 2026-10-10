@@ -62,6 +62,8 @@ ALLOWED = {   # first word of a shell command each arm may run
     "C15": {"lx", "token-goat"},
     "N1": {"lx"}, "N2": {"lx"},
     "S1": {"lx"}, "S2": {"lx"}, "S3": {"lx"}, "S4": {"lx"},
+    "H0": set(), "H9": {"lx"}, "H1": {"lx"}, "H3": {"lx"}, "H5": {"token-goat"},
+    "SB": {"lx"}, "HB": {"lx"},
 }
 # Arms told to read code through token-goat, never the Read tool.
 NO_READ_TOOL = {"C9", "C15"}
@@ -128,8 +130,46 @@ def family(model: str) -> str:
     return next((name for name in ("opus", "sonnet", "haiku") if name in model), model)
 
 
+# What token-goat's hooks write over text they redact, as in `[REDACTED:generic_secret_assignment]`.
+REDACTED = "[REDACTED:"
+# How the client words the result of a tool call that a hook refused before it ran.
+REFUSED = re.compile(r"\s*PreToolUse:\w+ hook error")
+
+
+def count_hook_row(note: dict, hooks: dict) -> None:
+    """Add one transcript row about a hook to the counters, when the hook is token-goat's.
+
+    A run that went through is a `hook_success` row with the hook's answer as JSON in stdout. A note
+    the hook added beside a result is a row of its own, `hook_additional_context`, with no command.
+    A run that blocked is a `hook_blocking_error` row with the command inside `blockingError`.
+    """
+    kind = str(note.get("type", ""))
+    if kind == "hook_additional_context":
+        hooks["hook_notes"] += "token-goat" in str(note.get("content", ""))
+        return
+    if kind == "hook_blocking_error":
+        blocked = note.get("blockingError") if isinstance(note.get("blockingError"), dict) else {}
+        if "token-goat" in str(blocked.get("command", "")):
+            hooks["hook_calls"] += 1
+            hooks["hook_denials"] += 1
+        return
+    if not kind.startswith("hook") or "token-goat" not in str(note.get("command", "")):
+        return
+    hooks["hook_calls"] += 1
+    try:
+        said = json.loads(note.get("stdout") or "{}")
+    except ValueError:
+        return
+    if not isinstance(said, dict):
+        return
+    specific = said.get("hookSpecificOutput") if isinstance(said.get("hookSpecificOutput"), dict) else {}
+    hooks["hook_rewrites"] += "updatedToolOutput" in specific or "updatedInput" in specific
+    hooks["hook_denials"] += specific.get("permissionDecision") == "deny" or said.get("decision") == "block"
+
+
 def read_agent(path: pathlib.Path) -> dict:
     usage, calls, results, stamps, model = {}, {}, {}, [], ""
+    hooks = dict(hook_calls=0, hook_rewrites=0, hook_denials=0, hook_notes=0, hook_redactions=0)
     for line in path.open(encoding="utf-8", errors="replace"):
         try:
             row = json.loads(line)
@@ -137,6 +177,9 @@ def read_agent(path: pathlib.Path) -> dict:
             continue
         if isinstance(row.get("timestamp"), str):
             stamps.append(row["timestamp"])
+        note = row.get("attachment") if row.get("type") == "attachment" else None
+        if isinstance(note, dict):
+            count_hook_row(note, hooks)
         message = row.get("message")
         if not isinstance(message, dict):
             continue
@@ -160,6 +203,12 @@ def read_agent(path: pathlib.Path) -> dict:
                     text = body if isinstance(body, str) else "".join(
                         piece.get("text", "") for piece in body or [] if isinstance(piece, dict))
                     results[part.get("tool_use_id")] = len(text)
+                    # Places where a hook put a marker in place of source text it took for a secret.
+                    hooks["hook_redactions"] += text.count(REDACTED)
+                    if REFUSED.match(text) and ("[tg]" in text or "token-goat" in text):
+                        # A call the hook refused leaves no hook row, only this error in place of the result.
+                        hooks["hook_calls"] += 1
+                        hooks["hook_denials"] += 1
 
     kind = family(model)
     # start: the whole prompt of the first request, the context an agent is born
@@ -215,9 +264,10 @@ def read_agent(path: pathlib.Path) -> dict:
     if len(stamps) > 1:
         when = sorted(datetime.datetime.fromisoformat(s.replace("Z", "+00:00")) for s in stamps)
         seconds = round((when[-1] - when[0]).total_seconds(), 1)
-    return dict(total, model=model, requests=len(usage), tools=tools, shell=shell,
+    # The class of model, never its version: opus, sonnet or haiku.
+    return dict(total, model=kind, requests=len(usage), tools=tools, shell=shell,
                 tool_calls=sum(tools.values()), tool_output_chars=returned,
-                answer=answer, seconds=seconds)
+                answer=answer, seconds=seconds, began=min(stamps) if stamps else "", **hooks)
 
 
 HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb)?)[\\/]*")
@@ -235,8 +285,11 @@ def portable(value):
     return value
 
 
-def off_policy(arm: str, row: dict) -> list[str]:
+def off_policy(arm: str, row: dict, setup: str = "", role: str = "") -> list[str]:
     """Tool use the arm's policy did not allow."""
+    if setup == "orch-notools" and role == "verify":
+        # This reviewer is told to call nothing but the structured output.
+        return sorted(row["tools"])
     found = [f"shell:{word}" for word in row["shell"] if word not in ALLOWED.get(arm, set())]
     if arm == "A0" and row["shell"]:
         found = [f"shell:{word}" for word in row["shell"]]
@@ -262,22 +315,50 @@ def main() -> int:
                 continue
             arm, setup, tier, role, rep = bits
             row = read_agent(log)
+            # The callers this agent's own answer to question 1 left out: None when it was not asked.
+            own = row["answer"] if isinstance(row["answer"], dict) else None
+            asked = (own or {}).get("q1") if role in ("all", "verify") else own if role in ("q1", "w-q1") else None
+            row["missed_callers"] = (sorted(TRUTH["q1"] - {bare(c) for c in asked.get("callers") or []})
+                                     if isinstance(asked, dict) else None)
             row.update(arm=arm, setup=setup, tier=tier, role=role, rep=rep, run=folder.name,
-                       off_policy=off_policy(arm, row), answer=portable(row["answer"]))
+                       off_policy=off_policy(arm, row, setup, role), answer=portable(row["answer"]))
             agents.append(row)
+
+    # A round that was stopped and resumed runs most of its agents a second time
+    # and leaves both transcripts under one label. The later one is the run,
+    # because it is the one the resumed round went on to use, and the earlier
+    # one is left out whether it was cut off or had answered. A later one that
+    # never answered is kept too: its cell is then incomplete, which is right,
+    # and an earlier answer is never put in its place beside agents that did
+    # not see it.
+    twins: dict[tuple, list[dict]] = {}
+    for row in agents:
+        twins.setdefault((row["run"], row["arm"], row["setup"], row["tier"], row["role"], row["rep"]), []).append(row)
+    superseded = []
+    for rows in twins.values():
+        if len(rows) > 1:
+            kept = max(rows, key=lambda r: r["began"])
+            superseded += [r for r in rows if r is not kept]
+    if superseded:
+        agents = [row for row in agents if not any(row is gone for gone in superseded)]
+        print(f"left out {len(superseded)} earlier transcripts of agents that a resumed round ran again "
+              f"({sum(r['answer'] is None for r in superseded)} of them cut off before answering)")
+    for row in agents:
+        del row["began"]
 
     # The planning prompt is identical for every method and tier, so it was run
     # a few times and its briefs reused. A cell that reused them is charged the
     # mean of the planning calls that were measured.
     SUMMED = ("input", "output", "cache_read", "cache_write", "cost", "requests",
               "tool_calls", "tool_output_chars", "start", "start_cached", "reread", "added",
-              "cost_warm", "cost_cold")
+              "cost_warm", "cost_cold", "hook_calls", "hook_rewrites", "hook_denials", "hook_notes",
+              "hook_redactions")
     plans = [row for row in agents if row["role"] == "plan"]
     mean_plan = None
     if plans:
         mean_plan = {field: sum(row[field] for row in plans) / len(plans) for field in SUMMED}
         mean_plan.update(role="plan", seconds=sum(row["seconds"] or 0 for row in plans) / len(plans),
-                         off_policy=[], answer=None, imputed=True)
+                         off_policy=[], answer=None, imputed=True, missed_callers=None)
 
     cells = {}
     for row in agents:
@@ -285,7 +366,8 @@ def main() -> int:
     table = []
     for (arm, setup, tier, rep), rows in sorted(cells.items()):
         measured = len(rows)
-        if setup == "orch" and mean_plan and not any(row["role"] == "plan" for row in rows):
+        orch = setup.startswith("orch")
+        if orch and mean_plan and not any(row["role"] == "plan" for row in rows):
             rows = rows + [mean_plan]
         by_role = {row["role"]: row for row in rows}
         if setup == "single":
@@ -296,7 +378,7 @@ def main() -> int:
             final = (by_role.get("verify") or {}).get("answer") or {}
         scores = {q: grade(q, final.get(q)) for q in ("q1", "q2", "q3")}
         workers = {q: grade(q, (by_role.get("w-" + q) or {}).get("answer")) for q in ("q1", "q2", "q3")}
-        expected = {"single": 1, "parallel": 3, "orch": 5}[setup]
+        expected = 5 if orch else {"single": 1, "parallel": 3}[setup]
         # Complete means every agent of the cell ran to its structured answer: a
         # transcript still being written, or one that died, must not count as a run.
         answered = all(row.get("answer") is not None for row in rows if not row.get("imputed"))
@@ -304,7 +386,10 @@ def main() -> int:
                     complete=len(rows) == expected and answered,
                     plan_imputed=len(rows) != measured, scores=scores,
                     quality=round(sum(v or 0 for v in scores.values()) / 3, 4),
-                    worker_scores=workers if setup == "orch" else None,
+                    worker_scores=workers if orch else None,
+                    # What the agent that looked question 1 up left out, before any review.
+                    lookup_missed=next((row["missed_callers"] for row in rows
+                                        if row["role"] in ("all", "q1", "w-q1") and row["missed_callers"] is not None), None),
                     off_policy=sorted({item for row in rows for item in row["off_policy"]}),
                     wall_seconds=max((row["seconds"] or 0) for row in rows) if setup == "parallel"
                     else round(sum(row["seconds"] or 0 for row in rows if row["role"] in ("all", "plan", "verify"))
@@ -315,11 +400,32 @@ def main() -> int:
             if not field.startswith("cost"):
                 cell[field] = round(cell[field])
         cell["tokens"] = cell["input"] + cell["output"] + cell["cache_read"] + cell["cache_write"]
-        if setup == "orch":
+        if orch:
             lead = [row for row in rows if row["role"] in ("plan", "verify")]
             cell["orchestrator_tokens"] = sum(r["input"] + r["output"] + r["cache_read"] + r["cache_write"] for r in lead)
             cell["orchestrator_cost"] = round(sum(r["cost"] for r in lead), 6)
             cell["orchestrator_cost_warm"] = round(sum(r["cost_warm"] for r in lead), 6)
+
+            def part(members: list) -> dict:
+                """What one role of the run used: the planner, the three workers together, the reviewer."""
+                return {"tokens": round(sum(r["input"] + r["output"] + r["cache_read"] + r["cache_write"] for r in members)),
+                        "requests": round(sum(r["requests"] for r in members), 2),
+                        "tool_calls": round(sum(r["tool_calls"] for r in members), 2),
+                        "output": round(sum(r["output"] for r in members)),
+                        "cost_warm": round(sum(r["cost_warm"] for r in members), 6),
+                        "cost_cold": round(sum(r["cost_cold"] for r in members), 6),
+                        "seconds": round(max([r["seconds"] or 0 for r in members] or [0]), 1)}
+
+            cell["roles"] = {"plan": part([r for r in rows if r["role"] == "plan"]),
+                             "workers": part([r for r in rows if r["role"].startswith("w-")]),
+                             "verify": part([r for r in rows if r["role"] == "verify"])}
+            # What the review changed, question by question.
+            right = lambda value: (value or 0) >= 0.999
+            cell["worker_quality"] = round(sum(v or 0 for v in workers.values()) / 3, 4)
+            cell["fixed"] = sum(1 for q in scores if not right(workers[q]) and right(scores[q]))
+            cell["broken"] = sum(1 for q in scores if right(workers[q]) and not right(scores[q]))
+            cell["still_wrong"] = sum(1 for q in scores if not right(workers[q]) and not right(scores[q]))
+            cell["reviewer"] = family((by_role.get("verify") or {}).get("model") or "")
         table.append(cell)
 
     out.write_text(json.dumps({"agents": agents, "cells": table}, indent=1), encoding="utf-8")

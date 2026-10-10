@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Orchestration: Local index token benchmark</title>
+<meta name="description" content="What an orchestrator and three subagents cost against one agent: tokens and money by role, what the review changed, and who should review.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
+<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body data-page="orchestration">
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header" id="site-header"></header>
+<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
+<main class="wrap" id="main">
+  <h1>Orchestrator and subagents</h1>
+  <p class="lede">An orchestrated run has three parts: the strongest model writes three briefs, three subagents answer one question each, and a reviewer checks the three answers and returns the final ones.</p>
+  <p>The tier named on this page is the tier of the subagents. The orchestrator is always the strongest model, except under "Who reviews, and with what" and in the run list below it, where the reviewer is varied on purpose. Costs are at list prices with the start-up context already cached.</p>
+  <ul class="plain" id="o-findings"></ul>
+
+  <div class="filters sticky" role="group" aria-label="Filters for this page">
+    <div class="filter"><span class="name" id="o-tier-name">Subagent tier</span><div class="seg" id="o-tier" role="group" aria-labelledby="o-tier-name"></div></div>
+    <div class="filter"><span class="name" id="o-measure-name">Measure</span><div class="seg" id="o-measure" role="group" aria-labelledby="o-measure-name"></div></div>
+    <div class="filter"><span class="name" id="o-group-name">Methods</span><div class="seg" id="o-group" role="group" aria-labelledby="o-group-name"></div></div>
+  </div>
+  <p class="note" id="o-note" aria-live="polite"></p>
+
+  <h2>Who used what inside a run</h2>
+  <section class="card" aria-labelledby="roles-title">
+    <h3 id="roles-title">One orchestrated run, split by role</h3>
+    <p class="sub">One bar per method: the planning call, the three subagents together, and the review. The number at the end of a bar is the whole run. Switch the measure above between tokens and dollars: the subagents use most of the tokens, and on the cheaper tiers the orchestrator is most of the bill.</p>
+    <div class="legend" id="roles-legend"></div>
+    <div class="chart" id="roles"></div>
+    <details open><summary>Table view</summary><div id="roles-table"></div></details>
+  </section>
+
+  <h2>What the review changed</h2>
+  <p>Each run asks three questions, so answers are counted per question. An answer counts as wrong when it is not fully right: a corrected answer was wrong and came out fully right, a broken one was fully right and came out wrong. The two score columns are mean scores, where a partly right answer earns part credit, so one wrong answer in three can still read 92%.</p>
+  <div class="card">
+    <div id="review-table"></div>
+    <h3 class="gap">Which question the subagents got wrong</h3>
+    <p class="sub">Every method together, standard reviewer. This table ignores the filters above.</p>
+    <div id="questions-table"></div>
+  </div>
+
+  <h2>One agent, three subagents, or an orchestrated run</h2>
+  <section class="card" aria-labelledby="setups-title">
+    <h3 id="setups-title">The same method on the same tier, three ways</h3>
+    <p class="sub">One row per method, one dot per setup. Log scale: each gridline is ten times the one before. Three subagents with no review each pay the start-up context that one agent pays once; the orchestrated run adds the strongest model twice.</p>
+    <div class="legend" id="setups-legend"></div>
+    <div class="chart" id="setups"></div>
+    <details open><summary>Table view</summary><div id="setups-table"></div></details>
+  </section>
+  <section class="card" aria-labelledby="correct-title">
+    <h3 id="correct-title">What one correct answer cost</h3>
+    <p class="sub">The tokens and the money of a run divided by three times its mean score, so a partly right answer counts in part. Seconds is the wall clock of a run, with subagents running side by side.</p>
+    <div id="correct-table"></div>
+  </section>
+
+  <h2>Who reviews, and with what</h2>
+  <p>The standard reviewer is the strongest model with the method's own tools. Three variants were run on the cheapest subagents: the same model with no tools, so it can only read the three answers, and the mid-tier and the cheapest model with tools. These tables ignore the tier and group filters.</p>
+  <div class="card">
+    <h3>Added up by reviewer</h3>
+    <div id="tally-table"></div>
+    <h3 class="gap">By method</h3>
+    <div id="reviewers-table"></div>
+  </div>
+
+  <h2>Every orchestrated run</h2>
+  <p>One row per run, before any averaging. "Shared" in the plan column marks a run that reused the planning call measured in other runs, charged at the mean of the measured ones.</p>
+  <p class="note" id="o-runs-note" aria-live="polite"></p>
+  <div class="card"><div id="o-runs-table"></div></div>
+</main>
+<footer class="site-footer" id="site-footer"></footer>
+<script src="data/benchmark.js"></script>
+<script src="assets/site.js"></script>
+<script src="assets/charts.js"></script>
+<script src="assets/orchestration.js"></script>
+</body>
+</html>

@@ -87,6 +87,9 @@ svg :focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 20px; margin: 16px 0; min-width: 0; }
 @media (max-width: 520px) { .card { padding: 14px; } }
 .card > p.sub { margin: 0 0 12px; font-size: 14px; }
+.card h3.gap { margin-top: 28px; }
+/* A mark that takes the keyboard focus is scrolled clear of the sticky filter bar. */
+@media (min-width: 861px) and (min-height: 640px) { html:has(.filters.sticky) { scroll-padding-top: 120px; } }
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; margin: 28px 0; }
 .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r); padding: 16px 18px; }
 .tile .value { font-size: 30px; font-weight: 650; line-height: 1.15; }

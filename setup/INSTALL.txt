@@ -34,6 +34,23 @@ WHAT IT SETS UP
          installed only if its SHA-256 matches the value pinned in tools.py.
        - one 33 MB embedding model from huggingface.co, fetched once.
      After that, nothing here uses the network.
+  6. Optional, and only when --token-goat is given: token-goat 2.9.30 from the
+     npm registry. It needs Node.js 22.16 or newer and is about 350 MB
+     installed. Only that package is pinned: npm picks its dependencies on
+     the day, and some of them run install scripts. token-goat's own installer
+     then writes, for each client folder that exists (~/.claude, ~/.codex,
+     ~/.copilot: all three once this installer has run, so name one with
+     --client on a later run):
+       - its hooks, and a routing block in the client's rules file
+       - Claude Code: also a skill, ~/.claude/skills/token-goat
+       - Codex: also trust entries in ~/.codex/config.toml, so its hooks run
+         without the /hooks approval
+       - Copilot: also an MCP server entry in ~/.copilot/mcp-config.json
+     In Claude Code the hooks run on every Read, Grep, Glob, Write, Bash, web,
+     skill, subagent and MCP tool call, and on session and prompt events.
+     They may shorten what a call returns, replace text they take for a
+     secret with a redaction marker, and refuse a read of lines already read. token-goat is under the PolyForm Noncommercial licence: do not add
+     this flag on a machine used for commercial work.
 
 STEPS
   1. Check for Python 3.10 or newer and for git:
@@ -49,6 +66,8 @@ STEPS
          python INSTALL.txt --client copilot     one client: copilot, codex or claude
          python INSTALL.txt --no-tools           no downloads
          python INSTALL.txt --dry-run            show what would change, write nothing
+     Add --token-goat to any of the first two only if the owner asked for
+     item 6. With --dry-run it only names that step.
   4. Read the summary it prints. A line starting FAILED, MISSING, REFUSED or
      ACTION needs attention: report it to the owner word for word. Do not work
      around a FAILED download by fetching the package from anywhere else.
@@ -68,12 +87,17 @@ WHAT IT NEVER DOES
   No model and no remote index sees repository content. No PATH entry and no
   system setting is changed. No existing rule, skill, hook or MCP server is
   removed. Every file it changes is first copied to
-  ~/.local-index/backups/<timestamp>/.
+  ~/.local-index/backups/<timestamp>/. The one exception is item 6: token-goat
+  edits the clients' files itself and keeps its own .bak copies beside them.
 
 UNDO
   Copy the files back from ~/.local-index/backups/<timestamp>/, delete the
   cavecrew-* files from each client's agents folder, and remove the
-  session_index.py entries from the hook files.
+  session_index.py entries from the hook files. Item 6 has its own undo:
+      token-goat uninstall
+      token-goat uninstall --codex
+      token-goat uninstall --copilot
+      npm uninstall -g token-goat
 
 The files unpack to ~/global-ai-setup (change with --dir). Run it again at any
 time: every step replaces only what it owns.
@@ -130,6 +154,9 @@ def main() -> int:
                         help="skip the package and model downloads")
     parser.add_argument("--dry-run", action="store_true",
                         help="show what would change and write nothing")
+    parser.add_argument("--token-goat", action="store_true",
+                        help="optional: also install token-goat and its hooks "
+                             "(npm package, noncommercial licence)")
     parser.add_argument("--dir", type=pathlib.Path,
                         default=pathlib.Path.home() / "global-ai-setup")
     parser.add_argument("--home", type=pathlib.Path, default=None, help=argparse.SUPPRESS)
@@ -138,18 +165,36 @@ def main() -> int:
     if sys.version_info < (3, 10):
         raise SystemExit("FAILED     Python 3.10 or newer is needed")
     extra = ["--home", str(args.home)] if args.home else []
+    # The optional step goes to every client folder that exists before apply.py
+    # runs, which makes all three: on a first run that is the clients the machine
+    # really has, on a later run all three unless --client names one.
+    home = args.home or pathlib.Path.home()
+    goat = {"gpt": "codex"}.get(args.client, args.client)
+    if goat == "all":
+        goat = ",".join(name for name in ("claude", "codex", "copilot") if (home / f".{name}").is_dir())
 
     if args.dry_run:
         with tempfile.TemporaryDirectory() as scratch:
             unpack(pathlib.Path(scratch))
-            return step(pathlib.Path(scratch) / "apply.py", "--client", args.client,
-                        "--dry-run", *extra)
+            status = step(pathlib.Path(scratch) / "apply.py", "--client", args.client,
+                          "--dry-run", *extra)
+        if args.token_goat and goat:
+            print(f"would run  the token-goat step for {goat}: npm install of the pinned token-goat when the "
+                  "command is missing, then token-goat's own installer for each client (hooks, a rules-file "
+                  "block, a skill, Codex trust entries, a Copilot MCP entry)")
+        elif args.token_goat:
+            print("skipped    token-goat: no client folder exists; name one with --client")
+        return status
 
     print(f"unpacked   {unpack(args.dir)} files to {args.dir}", flush=True)
     failed = step(args.dir / "apply.py", "--client", args.client, *extra)
     flags = ["--offline"] if args.no_tools else []
     if args.bin:
         flags += ["--bin", args.bin]
+    if args.token_goat and goat:
+        flags += ["--token-goat", goat]
+    elif args.token_goat:
+        print("skipped    token-goat: no client folder exists; name one with --client", flush=True)
     if args.no_tools:
         print("skipped    tool downloads (--no-tools); lx is still set up", flush=True)
     failed = step(args.dir / "tools.py", *flags, *extra) or failed
@@ -219,6 +264,76 @@ if __name__ == "__main__":
 #|systems it is skipped, `lx` answers from the graphify graph, `--rust` and
 #|`codanna_embeddings` do nothing, and `--hybrid` searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30 when the environment's pip has the date filter, and warns when it does not.
 #|With `--no-tools` nothing is downloaded and `lx` is still created.
+#|
+#|## Optional: token-goat hooks
+#|
+#|token-goat is a separate tool with its own index and its own hooks. It is not
+#|part of this setup and nothing here needs it. One flag adds it:
+#|
+#|```
+#|python INSTALL.txt --token-goat                  # every client folder in your home
+#|python INSTALL.txt --client claude --token-goat  # one client
+#|python setup/tools.py --token-goat codex,copilot # from a checkout, named clients
+#|```
+#|
+#|The flag installs token-goat 2.9.30 from the npm registry when the command is
+#|not there yet. It needs Node.js 22.16 or newer and is about 350 MB installed.
+#|Only that package is pinned: npm picks its dependencies on the day, and some
+#|of them run install scripts. It then runs token-goat's own installer for each
+#|client with `--no-index`, and that installer writes:
+#|
+#|| Client | What token-goat writes |
+#|| --- | --- |
+#|| Claude Code | hooks in `~/.claude/settings.json`, a routing block in `~/.claude/CLAUDE.md`, a skill in `~/.claude/skills/token-goat` |
+#|| Codex | hooks and trust entries for them in `~/.codex/config.toml`, so they run without the `/hooks` approval; a routing block in `~/.codex/AGENTS.md` |
+#|| Copilot | hooks in `~/.copilot/hooks/token-goat.json`, a routing block in `~/.copilot/copilot-instructions.md`, an MCP server entry in `~/.copilot/mcp-config.json` |
+#|
+#|token-goat makes its own `.bak` copies of what it edits; this step does not
+#|add them to `~/.local-index/backups/`. To undo it:
+#|
+#|```
+#|token-goat uninstall
+#|token-goat uninstall --codex
+#|token-goat uninstall --copilot
+#|npm uninstall -g token-goat
+#|```
+#|
+#|Read these before adding the flag:
+#|
+#|- token-goat is under the PolyForm Noncommercial licence. Do not install it on
+#|  a machine used for commercial work.
+#|- In Claude Code the hooks run on every Read, Grep, Glob, Write, Bash, web,
+#|  skill, subagent and MCP tool call, and on session and prompt events
+#|  (`benchmark/data/hooks.json` has the exact matchers). They may replace what
+#|  a call returns with a shorter version, swap text they take for a secret for
+#|  a redaction marker, and refuse a read of lines the session has already read.
+#|- "Every client folder" means `~/.claude`, `~/.codex` and `~/.copilot`,
+#|  whichever exist. This installer creates all three on its first run, so on a
+#|  later run name the client you use with `--client`.
+#|- Claude Code's hooks do not match its PowerShell tool, which is how that
+#|  client sends shell commands on Windows unless told otherwise, so `lx`
+#|  commands sent that way pass through untouched. Codex and Copilot were not
+#|  measured, and there token-goat does hook the shell tool.
+#|- The routing block is about 4,600 bytes in each rules file, roughly 1,200
+#|  tokens that every request of every agent then carries. The skill entry and,
+#|  for Copilot, the MCP server's tool definitions add to that and were not
+#|  measured.
+#|
+#|What it changed when measured (the Hooks page of the site and
+#|`benchmark/RESULTS.md` have every row): nothing that shows in the token
+#|counts, and one thing that shows in the answers. With no index, where an agent
+#|works through the client's own Grep, Glob and Read, the hooks ran on every
+#|call and rewrote a few tool results a run, and the token totals stayed inside
+#|the spread between repeats of one prompt. But some rewritten results carried
+#|a redaction marker over a line of source the hook took for a secret, and the
+#|agents that searched for the callers of a function then missed the caller on
+#|that line in about half of those runs. With `lx` sent through PowerShell the
+#|hooks ran only in the runs where an agent also opened a file. With `lx` sent
+#|through Bash they ran on every call and rewrote nothing.
+#|
+#|Those lookups return short results. A session that reads long files or long
+#|command output gives a hook that shortens tool results something to shorten,
+#|and that was not measured here. The cost that is certain is the routing block.
 #|
 #|## The engines
 #|
@@ -300,12 +415,15 @@ if __name__ == "__main__":
 #|```
 #|python setup/tests/check_hook.py setup/local-index/session_index.py EMPTY_DIR
 #|python setup/tests/check_installer.py setup EMPTY_DIR ORIGINALS_DIR
+#|python setup/tests/check_token_goat_step.py setup/tools.py
 #|```
 #|
-#|These two run from a checkout of the repository; the one-file installer does
+#|These run from a checkout of the repository; the one-file installer does
 #|not carry them. The first drives the hook and `lx` against small throwaway repositories. The
 #|second installs over copies of real client files in throwaway home directories;
-#|those originals are personal, so you supply your own. `build_install.py`
+#|those originals are personal, so you supply your own. The third drives the
+#|optional token-goat step with every outside command faked, so it installs
+#|nothing. `build_install.py`
 #|repacks `INSTALL.txt` and re-renders `rendered/` after any edit here.
 #|
 #|## Limits worth knowing
@@ -330,9 +448,9 @@ if __name__ == "__main__":
 #|- Codex asks for new hooks to be trusted before it runs them: open `/hooks`
 #|  once and approve the session-start entries.
 #|- Claude Code reads a new `~/.claude/agents/` folder only after a restart.
-#|- token-goat, rtk and the caveman-autocompress hook are not installed by this
-#|  setup. The rules name them as "where installed", so the same files work on a
-#|  machine that has them.
+#|- rtk and the caveman-autocompress hook are not installed by this setup, and
+#|  token-goat only when `--token-goat` is given. The rules name them as "where
+#|  installed", so the same files work on a machine that has them.
 #@@FILE apply.py
 #|#!/usr/bin/env python3
 #|"""Install the global rules, the CaveCrew agents and the local-index hook for
@@ -779,6 +897,7 @@ if __name__ == "__main__":
 #|"""Install the local index tools and the `lx` front-end that agents type.
 #|
 #|    python tools.py [--offline] [--bin DIR] [--skip-model] [--home DIR]
+#|                    [--token-goat [CLIENTS]]
 #|
 #|What it installs, each only when it is not already there:
 #|  semble 0.6.1 and ast-grep 0.45.3   pinned prebuilt wheels from PyPI, in a
@@ -797,7 +916,20 @@ if __name__ == "__main__":
 #|--offline skips every download and still makes `lx`, which then answers from
 #|whichever engines the machine already has.
 #|
-#|Nothing is compiled, no PATH entry is edited, and it is safe to run again.
+#|--token-goat is optional and off unless asked for. It installs token-goat
+#|2.9.30 from the npm registry when the command is not there yet (it needs
+#|Node.js 22.16 or newer, and is about 350 MB installed; only that package is
+#|pinned, npm picks its dependencies on the day and some run install scripts).
+#|It then runs token-goat's own installer for each client, which writes that
+#|client's hooks and a routing block in its rules file, and also a skill for
+#|Claude Code, trust entries for its hooks in Codex's config.toml, and an MCP
+#|server entry in Copilot's mcp-config.json. token-goat is under the PolyForm
+#|Noncommercial licence, so it is not for commercial use. Undo it with
+#|`token-goat uninstall`, again with --codex and with --copilot, then
+#|`npm uninstall -g token-goat`.
+#|
+#|The index tools above are never compiled, no PATH entry is edited, and it is
+#|safe to run again.
 #|"""
 #|from __future__ import annotations
 #|
@@ -820,6 +952,11 @@ if __name__ == "__main__":
 #|    "graphify": "graphifyy==0.9.72",
 #|}
 #|CUTOFF = "2026-09-30T00:00:00Z"
+#|# Optional, only with --token-goat. The version the benchmark was run with, and
+#|# the oldest Node.js that package says it runs on.
+#|TOKEN_GOAT = "token-goat@2.9.30"
+#|TOKEN_GOAT_NODE = (22, 16)
+#|TOKEN_GOAT_FLAGS = {"claude": [], "codex": ["--codex"], "copilot": ["--copilot"]}
 #|
 #|# The publisher's own checksum for this exact file, read from the release's
 #|# SHA256SUMS on 2026-10-08. The binary is unsigned, so this pin is the check.
@@ -860,9 +997,11 @@ if __name__ == "__main__":
 #|                 "maker.make('lx = local_index_front:main')")
 #|
 #|
-#|def run(argv: list[str], env: dict | None = None, timeout: int = 1800) -> tuple[int, str]:
+#|def run(argv: list[str], env: dict | None = None, timeout: int = 1800,
+#|        cwd: pathlib.Path | None = None) -> tuple[int, str]:
 #|    try:
 #|        done = subprocess.run([str(part) for part in argv], env=env, timeout=timeout,
+#|                              cwd=str(cwd) if cwd else None,
 #|                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
 #|                              stdin=subprocess.DEVNULL)
 #|        return done.returncode, done.stdout.decode("utf-8", "replace")
@@ -983,7 +1122,7 @@ if __name__ == "__main__":
 #|def install_graphify(home: pathlib.Path, bin_dir: pathlib.Path, offline: bool) -> None:
 #|    own = home / ".graphify" / "venv" / SCRIPTS / f"graphify{EXE}"
 #|    if not own.is_file():
-#|        if offline or shutil.which("graphify"):
+#|        if offline or on_search_path("graphify"):
 #|            return  # nothing to fetch, or installed some other way and on PATH
 #|        python = ensure_venv(home / ".graphify" / "venv")
 #|        if python is None or not pip_install(python, PINS["graphify"]) or not own.is_file():
@@ -1064,7 +1203,7 @@ if __name__ == "__main__":
 #|    }
 #|    complete = True
 #|    for name, path in engines.items():
-#|        target = str(path) if path.is_file() else (shutil.which(name) or "")
+#|        target = str(path) if path.is_file() else on_search_path(name)
 #|        if not target:
 #|            print(f"MISSING    {name}")
 #|            complete = False
@@ -1086,6 +1225,117 @@ if __name__ == "__main__":
 #|    return complete
 #|
 #|
+#|def on_search_path(name: str) -> str:
+#|    """Where a command lives on PATH, never in the folder this was started from.
+#|
+#|    shutil.which looks in the current directory first on Windows, so a file
+#|    named like the command and lying there would be run in place of the real one.
+#|    """
+#|    here = pathlib.Path.cwd().resolve()
+#|    endings = os.environ.get("PATHEXT", ".COM;.EXE;.BAT;.CMD").split(os.pathsep) if WINDOWS else [""]
+#|    for folder in os.environ.get("PATH", "").split(os.pathsep):
+#|        try:
+#|            if not folder or pathlib.Path(folder).resolve() == here:
+#|                continue
+#|        except OSError:
+#|            continue
+#|        for ending in endings:
+#|            candidate = pathlib.Path(folder) / (name + ending.lower())
+#|            if candidate.is_file() and (WINDOWS or os.access(candidate, os.X_OK)):
+#|                return str(candidate)
+#|    return ""
+#|
+#|
+#|def shim_safe(command: str) -> bool:
+#|    """npm's Windows commands are .cmd files, which cmd.exe runs: it splits an
+#|    unquoted path at these characters, and Python quotes a path only for a space."""
+#|    return not (command.lower().endswith((".cmd", ".bat")) and any(mark in command for mark in '&^%!<>|"'))
+#|
+#|
+#|def node_version() -> tuple[int, ...] | None:
+#|    node = on_search_path("node")
+#|    if not node:
+#|        return None
+#|    _, out = run([node, "--version"], timeout=60)
+#|    try:
+#|        return tuple(int(part) for part in out.strip().lstrip("v").split(".")[:2])
+#|    except ValueError:
+#|        return None
+#|
+#|
+#|def install_token_goat(home: pathlib.Path, wanted: str, offline: bool) -> bool:
+#|    """The optional step: token-goat itself, then its own installer for each client.
+#|
+#|    token-goat writes into the real home directory whatever it is told, so this
+#|    never runs when --home points somewhere else: a trial install must not put
+#|    hooks into the clients you actually use.
+#|
+#|    Returns False only for a failure, and prints a line starting FAILED for
+#|    each one. A step that was rightly left out prints `skipped` and is not a failure.
+#|    """
+#|    if home != pathlib.Path.home().resolve():
+#|        print("skipped    token-goat: --home is not your home directory, and its hooks "
+#|              "always go to the real one")
+#|        return True
+#|    named = [name.strip().lower() for name in wanted.split(",") if name.strip()]
+#|    unknown = [name for name in named if name != "all" and name not in TOKEN_GOAT_FLAGS]
+#|    if unknown or not named:
+#|        print("FAILED     token-goat: " + (f"unknown client {', '.join(unknown)}" if unknown else "no client named")
+#|              + f"; name all, or any of {', '.join(TOKEN_GOAT_FLAGS)}")
+#|        return False
+#|    clients = [name for name in TOKEN_GOAT_FLAGS
+#|               if name in named or ("all" in named and (home / f".{name}").is_dir())]
+#|    if not clients:
+#|        print("skipped    token-goat: none of ~/.claude, ~/.codex and ~/.copilot exists")
+#|        return True
+#|    exe = on_search_path("token-goat")
+#|    if not exe:
+#|        if offline:
+#|            print("skipped    token-goat: it is not installed, and --offline downloads nothing")
+#|            return True
+#|        npm, node = on_search_path("npm"), node_version()
+#|        floor = ".".join(str(part) for part in TOKEN_GOAT_NODE)
+#|        if not npm or node is None:
+#|            print(f"FAILED     token-goat: npm and node are not both on PATH; it needs Node.js {floor} or newer")
+#|            return False
+#|        if node < TOKEN_GOAT_NODE:
+#|            print(f"FAILED     token-goat: Node.js {'.'.join(str(part) for part in node)} found; "
+#|                  f"it needs {floor} or newer")
+#|            return False
+#|        if not shim_safe(npm):
+#|            print(f"FAILED     token-goat: cannot run npm safely from {npm}")
+#|            return False
+#|        print(f"installing {TOKEN_GOAT} from the npm registry into this user's global packages. Only that "
+#|              "package is pinned: npm picks its dependencies today, and some run install scripts.", flush=True)
+#|        # From the home folder: npm reads the .npmrc of the folder it is started in, even for -g.
+#|        code, out = run([npm, "install", "-g", TOKEN_GOAT], cwd=home)
+#|        exe = on_search_path("token-goat")
+#|        if code != 0 or not exe:
+#|            said = out.strip().splitlines()[-1][:200] if out.strip() else "no output"
+#|            print(f"FAILED     token-goat: npm did not leave a token-goat command on PATH ({plain(said)})")
+#|            return False
+#|    if not shim_safe(exe):
+#|        print(f"FAILED     token-goat: cannot run it safely from {exe}")
+#|        return False
+#|    ok = True
+#|    for client in clients:
+#|        # --no-index: installing hooks must not start indexing whatever folder this runs in.
+#|        code, out = run([exe, "install", *TOKEN_GOAT_FLAGS[client], "--no-index"], timeout=600, cwd=home)
+#|        ok = ok and code == 0
+#|        print(("installed  " if code == 0 else "FAILED     ") + f"token-goat for {client}")
+#|        for line in out.strip().splitlines()[-8:]:
+#|            print("           " + plain(line)[:200])     # what it wrote, or why it could not
+#|    print("note       token-goat is under the PolyForm Noncommercial licence: not for commercial use. "
+#|          "Undo with `token-goat uninstall`, `token-goat uninstall --codex` and `token-goat uninstall "
+#|          "--copilot`, then `npm uninstall -g token-goat` to remove the package itself.")
+#|    return ok
+#|
+#|
+#|def plain(text: str) -> str:
+#|    """Another program's output, safe to print on a console with any code page."""
+#|    return text.encode("ascii", "replace").decode("ascii")
+#|
+#|
 #|def main() -> int:
 #|    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
 #|    parser.add_argument("--offline", action="store_true",
@@ -1094,6 +1344,9 @@ if __name__ == "__main__":
 #|                        "the first of ~/bin, ~/.local/bin, WindowsApps that is on PATH)")
 #|    parser.add_argument("--skip-model", action="store_true")
 #|    parser.add_argument("--home", type=pathlib.Path, default=pathlib.Path.home())
+#|    parser.add_argument("--token-goat", nargs="?", const="all", default=None, metavar="CLIENTS",
+#|                        help="optional: also install token-goat and its hooks, for every client "
+#|                             "folder found or for a comma-separated list of claude, codex, copilot")
 #|    args = parser.parse_args()
 #|    home = args.home.resolve()
 #|    bin_dir = pick_bin(home, args.bin)
@@ -1106,7 +1359,9 @@ if __name__ == "__main__":
 #|    if not args.offline and not args.skip_model:
 #|        print(f"semble     {warm_model(home)}")
 #|    complete = report(home, bin_dir)
-#|    return 0 if complete or args.offline else 1
+#|    wanted = args.token_goat is None or install_token_goat(home, args.token_goat, args.offline)
+#|    # --offline forgives an index tool it was told not to fetch. It never forgives the optional step.
+#|    return 0 if wanted and (complete or args.offline) else 1
 #|
 #|
 #|if __name__ == "__main__":

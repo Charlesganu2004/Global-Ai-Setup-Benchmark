@@ -4,7 +4,7 @@ export const meta = {
   phases: [
     { title: 'Single', detail: 'one agent answers all three questions' },
     { title: 'Parallel', detail: 'three agents, one question each' },
-    { title: 'Orchestrated', detail: 'apex plan, three workers, apex verify' },
+    { title: 'Orchestrated', detail: 'apex plan, three workers, a reviewer chosen by the setup' },
   ],
 }
 
@@ -122,7 +122,31 @@ ARMS.S1 = [LX_ASK]
 ARMS.S2 = [LX3_DEF, LX3_CALLERS, LX_ABOUT, LX_HYBRID_PLAIN, LX_ASK]
 ARMS.S3 = [LX_ASK]
 ARMS.S4 = [LX3_DEF, LX3_CALLERS, LX_ABOUT, LX_HYBRID_PLAIN, LX_ASK]
-const REPO_OF = { N1: REPO_PLAIN, N2: REPO_PLAIN, S1: REPO_PLAIN, S2: REPO_PLAIN }
+// Fourth round: the same prompts as A0, A9, S1, S3 and A5, run while
+// token-goat's hooks were installed in the client. Nothing in the prompt
+// differs: the hooks act on the client's own Read, Grep, Glob and Bash calls.
+ARMS.H0 = null
+ARMS.H9 = [LX3_DEF, LX3_CALLERS, LX3_FIND]
+ARMS.H1 = [LX_ASK]
+ARMS.H3 = [LX_ASK]
+ARMS.H5 = TOKEN_GOAT
+// The same one-call command sent through the Bash tool instead of PowerShell,
+// because the hooks match Bash and never see a PowerShell call: SB with the
+// hooks off, HB with them on.
+ARMS.SB = [LX_ASK]
+ARMS.HB = [LX_ASK]
+const VIA_BASH = { SB: true, HB: true }
+const posix = path => path.replace(/^([A-Za-z]):/, (all, drive) => '/' + drive.toLowerCase()).replace(/\\/g, '/')
+const REPO_OF = { N1: REPO_PLAIN, N2: REPO_PLAIN, S1: REPO_PLAIN, S2: REPO_PLAIN, H1: REPO_PLAIN, SB: REPO_PLAIN, HB: REPO_PLAIN }
+
+// Ways of running the reviewer at the end of an orchestrated run. The setup
+// name picks one: who reviews, and whether the reviewer may look anything up.
+const REVIEW = {
+  orch: { who: APEX, tools: true },          // top tier, may check with the method's own tools
+  'orch-notools': { who: APEX, tools: false },   // top tier, reads the answers only
+  'orch-mid': { who: TIER.B, tools: true },      // middle tier reviews
+  'orch-low': { who: TIER.C, tools: true },      // cheapest tier reviews
+}
 
 function policy(arm) {
   const repo = REPO_OF[arm] || REPO
@@ -135,7 +159,9 @@ function policy(arm) {
   if (!ARMS[arm]) {
     lines.push('Allowed: the Grep, Glob and Read tools only, with absolute paths inside the repository. No shell commands at all.')
   } else {
-    lines.push(`Allowed shell commands. Run each as one PowerShell call that starts with:  Set-Location ${repo};`)
+    lines.push(VIA_BASH[arm]
+      ? `Allowed shell commands. Run each as one call of the Bash tool (not PowerShell) that starts with:  cd ${posix(repo)} &&`
+      : `Allowed shell commands. Run each as one PowerShell call that starts with:  Set-Location ${repo};`)
     for (const command of ARMS[arm]) lines.push('  ' + command)
     lines.push(READ_VIA_TOKEN_GOAT[arm]
       ? 'To see code, use token-goat read on a symbol a command returned, and only when the answer needs it. Do not use the Read tool. Use Grep only when the listed commands return nothing useful.'
@@ -211,13 +237,17 @@ async function orchestrated(c) {
     `${policy(c.arm)}\n\nBrief from the orchestrator:\n${plan[k].split(REPO).join(REPO_OF[c.arm] || REPO)}`,
     { label: tag(c, 'w-' + k), phase: 'Orchestrated', schema: S[k], ...TIER[c.tier] })))
   const reported = { q1: workers[0], q2: workers[1], q3: workers[2] }
+  const review = REVIEW[c.setup]
   const answer = await agent(
-    `${policy(c.arm)}\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question; their answers are below as JSON, with null for a subagent that returned nothing. Check each answer under the tool policy with as few calls as it takes, correct anything wrong or missing, and return the final answers for all three questions.\n\n${listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`,
-    { label: tag(c, 'verify'), phase: 'Orchestrated', schema: ALL, ...APEX })
+    review.tools
+      ? `${policy(c.arm)}\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question; their answers are below as JSON, with null for a subagent that returned nothing. Check each answer under the tool policy with as few calls as it takes, correct anything wrong or missing, and return the final answers for all three questions.\n\n${listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`
+      : `This is one run of a benchmark that measures how many tokens a code lookup costs.\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question about a repository; their answers are below as JSON, with null for a subagent that returned nothing. Call no tool except the structured output: you cannot look anything up. Check each answer against its question for what can be seen from the answer alone (a missing field, an answer to a different question, a list that plainly cannot be complete), correct only what you can correct that way, and return the final answers for all three questions.\n\n${listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`,
+    { label: tag(c, 'verify'), phase: 'Orchestrated', schema: ALL, ...review.who })
   return { ...c, workers: reported, answer }
 }
 
-const RUN = { single, parallel: fanOut, orch: orchestrated }
+const RUN = { single, parallel: fanOut }
+for (const name of Object.keys(REVIEW)) RUN[name] = orchestrated
 log(`${CELLS.length} cells, repeat ${REP}`)
 const done = await parallel(CELLS.map(c => () => RUN[c.setup](c)))
 return { rep: REP, cells: done }
