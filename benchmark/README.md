@@ -44,7 +44,7 @@ benchmark/
     arms.json                     what each method is and the commands it was given
     truth.py                      ground truth for the questions, from the syntax tree
     bench_parse.py                transcripts to results.json: tokens, cost, tools, grades
-    build_site.py                 results.json to docs/data/benchmark.js and RESULTS.md
+    build_site.py                 results.json to the site's data files, the answers written into its pages, and RESULTS.md
     combo_bench.py                build time, lookup time and answer size per engine
     emb_bench.py                  the same with the Rust index's embeddings on, and search quality
     lean_bench.py                 the combined index with and without the graph

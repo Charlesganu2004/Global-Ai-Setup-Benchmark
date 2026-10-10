@@ -7,26 +7,63 @@
 <meta name="description" content="Model tiers, prices, the start-up context every agent carries, and the limits of this benchmark.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
-<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css?v=b51f132b">
 </head>
 <body data-page="how">
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
-<main class="wrap" id="main">
+<header class="topbar" id="site-header">
+  <div class="topbar-in">
+    <a class="brand" href="index.html">Local index benchmark</a>
+    <div class="tools" id="site-tools"></div>
+  </div>
+</header>
+<div class="shell">
+<nav class="sidenav" id="site-nav" aria-label="Site">
+  <p class="nav-group" id="nav-g1">Findings</p>
+  <ul aria-labelledby="nav-g1">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="results.html">Results</a></li>
+    <li><a href="orchestration.html">Orchestration</a></li>
+    <li><a href="hooks.html">Hooks</a></li>
+  </ul>
+  <p class="nav-group" id="nav-g2">Method and setup</p>
+  <ul aria-labelledby="nav-g2">
+    <li><a href="methods.html">Methods</a></li>
+    <li><a href="setup.html">Setup</a></li>
+    <li><a href="how.html" aria-current="page">How it was measured</a></li>
+  </ul>
+  <p class="nav-out"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" rel="noopener">Repository</a></p>
+</nav>
+<main id="main">
+  <noscript><p class="note">The charts and tables of this site are drawn with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository.</p></noscript>
+  <p class="eyebrow">Method and setup, page 7 of 7</p>
   <h1>How it was measured</h1>
   <p class="lede">What was counted, how it was priced, and what this test cannot tell you.</p>
   <ul class="plain" id="method"></ul>
 
-  <h2>The agent setups</h2>
+  <h2 id="terms">Terms used on this site</h2>
+  <dl class="terms">
+    <dt id="term-method">Method</dt><dd>The set of search commands an agent was allowed to use. Everything else stayed the same.</dd>
+    <dt id="term-tier">Model tier</dt><dd>A class of model, not a version: C is the lightest, B the fast coding class, A the strongest.</dd>
+    <dt id="term-run">Run</dt><dd>One attempt at the three questions, by one agent or by a group of them, graded by a script.</dd>
+    <dt id="term-turn">Turn</dt><dd>One request to the model. Every turn re-reads everything before it, which is why turns decide the cost.</dd>
+    <dt id="term-start-up">Start-up context</dt><dd>What an agent's first request holds before it has done anything: the system prompt, tool definitions, skills and rules.</dd>
+    <dt id="term-re-read">Re-read</dt><dd>Tokens read back from the cache on later turns.</dd>
+    <dt id="term-added">Added</dt><dd>New context on later turns: tool results and the agent's own earlier output.</dd>
+    <dt id="term-cache-warm">Cache warm</dt><dd>The cost of a run when its start-up context was already in the cache, because another agent ran in the last five minutes.</dd>
+    <dt id="term-cache-cold">Cache cold</dt><dd>The cost of the same run when the start-up context had to be written to the cache first.</dd>
+    <dt id="term-mean-score">Mean score</dt><dd>The average grade of the three answers, where a partly right answer earns part credit. A run is fully correct only when all three are fully right.</dd>
+  </dl>
+
+  <h2 id="setups">The agent setups</h2>
   <div class="card"><div id="setups-table"></div></div>
 
-  <h2>The model tiers and their prices</h2>
+  <h2 id="tiers" data-toc="Tiers and prices">The model tiers and their prices</h2>
   <p>No model version is named. A tier is a class of model, resolved by alias when a run starts. Prices are dollars per million tokens.</p>
   <div class="card"><div id="tiers-table"></div></div>
 
-  <h2>What an agent costs before it does anything</h2>
+  <h2 id="start-up" data-toc="Start-up cost">What an agent costs before it does anything</h2>
   <p id="cache-text"></p>
   <section class="card" aria-labelledby="context-title">
     <h3 id="context-title">Where the start-up context goes</h3>
@@ -40,11 +77,15 @@
     <p class="sub">The same start-up context, written to the cache when nothing is cached yet, or read from it when another agent ran in the last five minutes.</p>
     <div id="cache-table"></div>
   </section>
+  <nav class="pager" aria-label="Previous and next page">
+    <a class="prev" rel="prev" href="setup.html"><span class="label">Previous</span><strong>Setup</strong></a>
+  </nav>
 </main>
 <footer class="site-footer" id="site-footer"></footer>
-<script src="data/benchmark.js"></script>
-<script src="assets/site.js"></script>
-<script src="assets/charts.js"></script>
-<script src="assets/how.js"></script>
+</div>
+<script src="data/benchmark.js?v=64f8fbcc"></script>
+<script src="assets/site.js?v=63f9e3ff"></script>
+<script src="assets/charts.js?v=1299e283"></script>
+<script src="assets/how.js?v=71dec473"></script>
 </body>
 </html>

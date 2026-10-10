@@ -7,20 +7,49 @@
 <meta name="description" content="What a code lookup costs an AI agent in tokens, measured across local index methods, model tiers and agent setups.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
-<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css?v=b51f132b">
 </head>
 <body data-page="home">
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
-<main class="wrap" id="main">
+<header class="topbar" id="site-header">
+  <div class="topbar-in">
+    <a class="brand" href="index.html">Local index benchmark</a>
+    <div class="tools" id="site-tools"></div>
+  </div>
+</header>
+<div class="shell">
+<nav class="sidenav" id="site-nav" aria-label="Site">
+  <p class="nav-group" id="nav-g1">Findings</p>
+  <ul aria-labelledby="nav-g1">
+    <li><a href="index.html" aria-current="page">Home</a></li>
+    <li><a href="results.html">Results</a></li>
+    <li><a href="orchestration.html">Orchestration</a></li>
+    <li><a href="hooks.html">Hooks</a></li>
+  </ul>
+  <p class="nav-group" id="nav-g2">Method and setup</p>
+  <ul aria-labelledby="nav-g2">
+    <li><a href="methods.html">Methods</a></li>
+    <li><a href="setup.html">Setup</a></li>
+    <li><a href="how.html">How it was measured</a></li>
+  </ul>
+  <p class="nav-out"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" rel="noopener">Repository</a></p>
+</nav>
+<main id="main">
+  <noscript><p class="note">The charts and tables of this site are drawn with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository.</p></noscript>
+  <p class="eyebrow">Findings, page 1 of 7</p>
   <h1>Local index token benchmark</h1>
   <p class="lede" id="lede"></p>
   <p>An agent re-reads its whole context on every turn, so the number of turns is what a lookup costs. A local index is worth having when it gives the answer in fewer turns.</p>
+  <ul class="asks" id="asks">
+    <li><a href="#leaderboard"><span class="q">Which lookup method is cheapest?</span><span class="a" data-ask="cheapest">11 methods are level at about 130k tokens and 2.0 turns for three lookups on the cheapest tier, 64% fewer than no index (365k). The build that ships, Shipped: lx ask, default index, is one of them.</span><span class="go">The leaderboard</span></a></li>
+    <li><a href="orchestration.html#verdict"><span class="q">Does an orchestrator pay for itself?</span><span class="a" data-ask="orchestrator">It buys accuracy at a price. On the cheapest subagents 48 of 48 orchestrated runs ended fully correct, against 38 of 43 for three subagents with nobody reviewing, and a run cost about 95 times one agent.</span><span class="go">Orchestration</span></a></li>
+    <li><a href="hooks.html#verdict"><span class="q">Do token-goat's hooks help?</span><span class="a" data-ask="hooks">Not on these lookups. Token use stayed inside the spread between repeats, and with no index 5 of 9 runs ended fully correct with the hooks against 13 of 17 without, because a redaction marker hid a line the lookup needed.</span><span class="go">Hooks</span></a></li>
+    <li><a href="setup.html#install"><span class="q">How do I install it?</span><span class="a">One file: <code>python INSTALL.txt</code>. Rules, three agents, a session hook and the lx command, for Claude Code, Codex and Copilot.</span><span class="go">Setup</span></a></li>
+  </ul>
   <div class="tiles" id="tiles"></div>
 
-  <h2>Leaderboard</h2>
+  <h2 id="leaderboard">Leaderboard</h2>
   <p>One row per method, fewest tokens first. Each row is the mean of the complete runs of that method, and the Runs column says how many that is. Pick a setup and a model tier. A <a href="how.html">model tier</a> is a class of model, from the lightest (C) to the strongest (A). The row tagged control used no index, only the search and read tools every agent has. Reruns made to test token-goat's hooks are left out of this list and compared on the <a href="hooks.html">Hooks</a> page.</p>
   <div class="filters" role="group" aria-label="Leaderboard filters">
     <div class="filter"><span class="name" id="board-setup-name">Setup</span><div class="seg" id="board-setup" role="group" aria-labelledby="board-setup-name"></div></div>
@@ -29,11 +58,11 @@
   <p class="note" id="board-note" aria-live="polite"></p>
   <div class="card"><div id="board"></div></div>
 
-  <h2>What the numbers say</h2>
+  <h2 id="numbers">What the numbers say</h2>
   <p>Each line counts its own runs. Many methods were run once or twice on a tier, and a result from one run is an example, not an average.</p>
   <ul class="plain" id="findings"></ul>
 
-  <h2>Where to go next</h2>
+  <h2 id="next">Where to go next</h2>
   <div class="navcards">
     <a class="navcard" href="results.html"><strong>Results</strong><span>Charts of cost, tokens and accuracy for every method, and a table of every single run.</span></a>
     <a class="navcard" href="orchestration.html"><strong>Orchestration</strong><span>An orchestrator and three subagents against one agent: tokens and cost by role, what the review changed, and who should review.</span></a>
@@ -42,10 +71,14 @@
     <a class="navcard" href="setup.html"><strong>Setup</strong><span>How to install the local index setup, the lx commands, and what each index costs to build and store.</span></a>
     <a class="navcard" href="how.html"><strong>How it was measured</strong><span>The model tiers, the prices, where the start-up context comes from, and what this test cannot tell you.</span></a>
   </div>
+  <nav class="pager" aria-label="Previous and next page">
+    <a class="next" rel="next" href="results.html"><span class="label">Next</span><strong>Results</strong></a>
+  </nav>
 </main>
 <footer class="site-footer" id="site-footer"></footer>
-<script src="data/benchmark.js"></script>
-<script src="assets/site.js"></script>
-<script src="assets/home.js"></script>
+</div>
+<script src="data/benchmark.js?v=64f8fbcc"></script>
+<script src="assets/site.js?v=63f9e3ff"></script>
+<script src="assets/home.js?v=8e20c0ce"></script>
 </body>
 </html>

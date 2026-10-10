@@ -7,18 +7,45 @@
 <meta name="description" content="The same lookup prompts run with token-goat's hooks off and on: tokens, turns, cost, accuracy, and how often the hooks ran.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
-<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css?v=b51f132b">
 </head>
 <body data-page="hooks">
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
-<main class="wrap" id="main">
+<header class="topbar" id="site-header">
+  <div class="topbar-in">
+    <a class="brand" href="index.html">Local index benchmark</a>
+    <div class="tools" id="site-tools"></div>
+  </div>
+</header>
+<div class="shell">
+<nav class="sidenav" id="site-nav" aria-label="Site">
+  <p class="nav-group" id="nav-g1">Findings</p>
+  <ul aria-labelledby="nav-g1">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="results.html">Results</a></li>
+    <li><a href="orchestration.html">Orchestration</a></li>
+    <li><a href="hooks.html" aria-current="page">Hooks</a></li>
+  </ul>
+  <p class="nav-group" id="nav-g2">Method and setup</p>
+  <ul aria-labelledby="nav-g2">
+    <li><a href="methods.html">Methods</a></li>
+    <li><a href="setup.html">Setup</a></li>
+    <li><a href="how.html">How it was measured</a></li>
+  </ul>
+  <p class="nav-out"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" rel="noopener">Repository</a></p>
+</nav>
+<main id="main">
+  <noscript><p class="note">The charts and tables of this site are drawn with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository.</p></noscript>
+  <p class="eyebrow">Findings, page 4 of 7</p>
   <h1>token-goat hooks, off and on</h1>
   <p class="lede">token-goat can install hooks in the client. They run before and after the client's own tool calls and may rewrite what a call returns. The same prompts were run with the hooks removed and with them installed.</p>
   <p>Each row pairs a method measured without the hooks with its twin measured while they were installed. The prompt, the repository, the index and the grading are the same. The rounds are not: every run with the hooks was made in one round, and each round's agents start from slightly different context, as the table of facts below sets out.</p>
-  <ul class="plain" id="h-findings"></ul>
+  <section class="verdict" aria-labelledby="verdict">
+    <h2 id="verdict">In short</h2>
+    <p id="h-verdict">token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.</p>
+  </section>
+  <details class="more"><summary>The same, group by group, with the counts</summary><ul class="plain" id="h-findings"></ul></details>
 
   <div class="filters sticky" role="group" aria-label="Filters for this page">
     <div class="filter"><span class="name" id="h-setup-name">Setup</span><div class="seg" id="h-setup" role="group" aria-labelledby="h-setup-name"></div></div>
@@ -26,7 +53,7 @@
   </div>
   <p class="note" id="h-note" aria-live="polite"></p>
 
-  <h2>Off against on</h2>
+  <h2 id="off-on">Off against on</h2>
   <section class="card" aria-labelledby="pairs-title">
     <h3 id="pairs-title">The same prompt without the hooks and with them</h3>
     <p class="sub">One row per method and model tier, one dot for each state. Dots at the same place mean the two sides used the same. A gap on a row where the hooks never ran was not made by the hooks: check the "Runs the hooks ran in" column before reading a gap as an effect. Cost is drawn on a log scale, where each gridline is ten times the one before.</p>
@@ -35,11 +62,11 @@
     <details open><summary>Table view</summary><div id="pairs-table"></div></details>
   </section>
 
-  <h2>What the hooks did</h2>
+  <h2 id="activity">What the hooks did</h2>
   <p>A hook run is one execution of a hook for one tool call. A rewritten call is one whose result, or input, the hook replaced with its own: shortened, or with text it took for a secret swapped for a redaction marker. A note is extra context the hook added beside a result. A refused call is one the hook turned down, such as a second read of lines already read: the agent gets an error in place of the result.</p>
   <div class="card"><div id="activity-table"></div></div>
 
-  <h2>What the hooks are</h2>
+  <h2 id="facts">What the hooks are</h2>
   <div class="card">
     <div id="facts-table"></div>
     <h3 class="gap">The block they add to each rules file</h3>
@@ -47,7 +74,7 @@
     <div id="block-table"></div>
   </div>
 
-  <h2>Installing them</h2>
+  <h2 id="install">Installing them</h2>
   <p>The hooks are an optional step of the <a href="setup.html">installer</a>. They are left out unless asked for, because token-goat is under a noncommercial licence and adds a block to every rules file.</p>
   <pre><code>python INSTALL.txt --token-goat                  # every client folder in your home
 python INSTALL.txt --client claude --token-goat  # one client
@@ -57,11 +84,17 @@ token-goat uninstall --codex                     # undo, Codex
 token-goat uninstall --copilot                   # undo, Copilot
 npm uninstall -g token-goat                      # remove the package itself</code></pre>
   <p>Besides the hooks and the rules-file block, token-goat's installer adds a skill to Claude Code, trust entries for its hooks to Codex, and an MCP server entry to Copilot. The <a href="setup.html">setup page</a> and the README in the repository list each file.</p>
+  <nav class="pager" aria-label="Previous and next page">
+    <a class="prev" rel="prev" href="orchestration.html"><span class="label">Previous</span><strong>Orchestration</strong></a>
+    <a class="next" rel="next" href="methods.html"><span class="label">Next</span><strong>Methods</strong></a>
+  </nav>
 </main>
 <footer class="site-footer" id="site-footer"></footer>
-<script src="data/benchmark.js"></script>
-<script src="assets/site.js"></script>
-<script src="assets/charts.js"></script>
-<script src="assets/hooks.js"></script>
+</div>
+<script src="data/benchmark.js?v=64f8fbcc"></script>
+<script src="data/bench-hooks.js?v=4770ed9e"></script>
+<script src="assets/site.js?v=63f9e3ff"></script>
+<script src="assets/charts.js?v=1299e283"></script>
+<script src="assets/hooks.js?v=ee75cc9b"></script>
 </body>
 </html>

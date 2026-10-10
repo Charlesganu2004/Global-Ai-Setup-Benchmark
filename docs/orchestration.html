@@ -7,18 +7,49 @@
 <meta name="description" content="What an orchestrator and three subagents cost against one agent: tokens and money by role, what the review changed, and who should review.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
-<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css?v=b51f132b">
 </head>
 <body data-page="orchestration">
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
-<main class="wrap" id="main">
+<header class="topbar" id="site-header">
+  <div class="topbar-in">
+    <a class="brand" href="index.html">Local index benchmark</a>
+    <div class="tools" id="site-tools"></div>
+  </div>
+</header>
+<div class="shell">
+<nav class="sidenav" id="site-nav" aria-label="Site">
+  <p class="nav-group" id="nav-g1">Findings</p>
+  <ul aria-labelledby="nav-g1">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="results.html">Results</a></li>
+    <li><a href="orchestration.html" aria-current="page">Orchestration</a></li>
+    <li><a href="hooks.html">Hooks</a></li>
+  </ul>
+  <p class="nav-group" id="nav-g2">Method and setup</p>
+  <ul aria-labelledby="nav-g2">
+    <li><a href="methods.html">Methods</a></li>
+    <li><a href="setup.html">Setup</a></li>
+    <li><a href="how.html">How it was measured</a></li>
+  </ul>
+  <p class="nav-out"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" rel="noopener">Repository</a></p>
+</nav>
+<main id="main">
+  <noscript><p class="note">The charts and tables of this site are drawn with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository.</p></noscript>
+  <p class="eyebrow">Findings, page 3 of 7</p>
   <h1>Orchestrator and subagents</h1>
   <p class="lede">An orchestrated run has three parts: the strongest model writes three briefs, three subagents answer one question each, and a reviewer checks the three answers and returns the final ones.</p>
   <p>The tier named on this page is the tier of the subagents. The orchestrator is always the strongest model, except under "Who reviews, and with what" and in the run list below it, where the reviewer is varied on purpose. Costs are at list prices with the start-up context already cached.</p>
-  <ul class="plain" id="o-findings"></ul>
+  <section class="verdict" aria-labelledby="verdict">
+    <h2 id="verdict">In short</h2>
+    <ul id="o-verdict">
+      <li>Across 70 orchestrated runs with the standard reviewer, the subagents handed back 3 wrong answers out of 210. The reviewer corrected 3 of them, left 0 wrong, and changed 0 right answers into wrong ones. 70 of the 70 runs ended fully correct.</li>
+      <li>With Tier C, scout subagents (48 runs over 36 methods), the orchestrator's planning and review were 33% of the tokens and 97% of the cost of a run, cache warm. The three subagents together averaged 569k tokens and the review 210k. Against one agent of that tier answering all three questions with the same method, the orchestrated run used 4.5 times the tokens (from 2.9 to 6.1) and 95 times the money.</li>
+      <li>Three subagents with nobody reviewing them, Tier C: 38 of 43 runs were fully correct. The same 36 methods on that tier with the standard review: 48 of 48.</li>
+    </ul>
+  </section>
+  <details class="more"><summary>The same findings for each subagent tier and each reviewer</summary><ul class="plain" id="o-findings"></ul></details>
 
   <div class="filters sticky" role="group" aria-label="Filters for this page">
     <div class="filter"><span class="name" id="o-tier-name">Subagent tier</span><div class="seg" id="o-tier" role="group" aria-labelledby="o-tier-name"></div></div>
@@ -27,25 +58,7 @@
   </div>
   <p class="note" id="o-note" aria-live="polite"></p>
 
-  <h2>Who used what inside a run</h2>
-  <section class="card" aria-labelledby="roles-title">
-    <h3 id="roles-title">One orchestrated run, split by role</h3>
-    <p class="sub">One bar per method: the planning call, the three subagents together, and the review. The number at the end of a bar is the whole run. Switch the measure above between tokens and dollars: the subagents use most of the tokens, and on the cheaper tiers the orchestrator is most of the bill.</p>
-    <div class="legend" id="roles-legend"></div>
-    <div class="chart" id="roles"></div>
-    <details open><summary>Table view</summary><div id="roles-table"></div></details>
-  </section>
-
-  <h2>What the review changed</h2>
-  <p>Each run asks three questions, so answers are counted per question. An answer counts as wrong when it is not fully right: a corrected answer was wrong and came out fully right, a broken one was fully right and came out wrong. The two score columns are mean scores, where a partly right answer earns part credit, so one wrong answer in three can still read 92%.</p>
-  <div class="card">
-    <div id="review-table"></div>
-    <h3 class="gap">Which question the subagents got wrong</h3>
-    <p class="sub">Every method together, standard reviewer. This table ignores the filters above.</p>
-    <div id="questions-table"></div>
-  </div>
-
-  <h2>One agent, three subagents, or an orchestrated run</h2>
+  <h2 id="comparison" data-toc="One agent or many">One agent, three subagents, or an orchestrated run</h2>
   <section class="card" aria-labelledby="setups-title">
     <h3 id="setups-title">The same method on the same tier, three ways</h3>
     <p class="sub">One row per method, one dot per setup. Log scale: each gridline is ten times the one before. Three subagents with no review each pay the start-up context that one agent pays once; the orchestrated run adds the strongest model twice.</p>
@@ -59,7 +72,25 @@
     <div id="correct-table"></div>
   </section>
 
-  <h2>Who reviews, and with what</h2>
+  <h2 id="by-role" data-toc="Tokens and cost by role">Who used what inside a run</h2>
+  <section class="card" aria-labelledby="roles-title">
+    <h3 id="roles-title">One orchestrated run, split by role</h3>
+    <p class="sub">One bar per method: the planning call, the three subagents together, and the review. The number at the end of a bar is the whole run. Switch the measure above between tokens and dollars: the subagents use most of the tokens, and on the cheaper tiers the orchestrator is most of the bill.</p>
+    <div class="legend" id="roles-legend"></div>
+    <div class="chart" id="roles"></div>
+    <details><summary>Table view: tokens and cost by role, method by method</summary><div id="roles-table"></div></details>
+  </section>
+
+  <h2 id="review">What the review changed</h2>
+  <p>Each run asks three questions, so answers are counted per question. An answer counts as wrong when it is not fully right: a corrected answer was wrong and came out fully right, a broken one was fully right and came out wrong. The two score columns are mean scores, where a partly right answer earns part credit, so one wrong answer in three can still read 92%.</p>
+  <div class="card">
+    <div id="review-table"></div>
+    <h3 class="gap">Which question the subagents got wrong</h3>
+    <p class="sub">Every method together, standard reviewer. This table ignores the filters above.</p>
+    <div id="questions-table"></div>
+  </div>
+
+  <h2 id="reviewers" data-toc="Who reviews">Who reviews, and with what</h2>
   <p>The standard reviewer is the strongest model with the method's own tools. Three variants were run on the cheapest subagents: the same model with no tools, so it can only read the three answers, and the mid-tier and the cheapest model with tools. These tables ignore the tier and group filters.</p>
   <div class="card">
     <h3>Added up by reviewer</h3>
@@ -68,15 +99,22 @@
     <div id="reviewers-table"></div>
   </div>
 
-  <h2>Every orchestrated run</h2>
+  <h2 id="runs" data-toc="Every run">Every orchestrated run</h2>
   <p>One row per run, before any averaging. "Shared" in the plan column marks a run that reused the planning call measured in other runs, charged at the mean of the measured ones.</p>
   <p class="note" id="o-runs-note" aria-live="polite"></p>
   <div class="card"><div id="o-runs-table"></div></div>
+  <nav class="pager" aria-label="Previous and next page">
+    <a class="prev" rel="prev" href="results.html"><span class="label">Previous</span><strong>Results</strong></a>
+    <a class="next" rel="next" href="hooks.html"><span class="label">Next</span><strong>Hooks</strong></a>
+  </nav>
 </main>
 <footer class="site-footer" id="site-footer"></footer>
-<script src="data/benchmark.js"></script>
-<script src="assets/site.js"></script>
-<script src="assets/charts.js"></script>
-<script src="assets/orchestration.js"></script>
+</div>
+<script src="data/benchmark.js?v=64f8fbcc"></script>
+<script src="data/bench-runs.js?v=8826b813"></script>
+<script src="data/bench-orchestration.js?v=fb64a425"></script>
+<script src="assets/site.js?v=63f9e3ff"></script>
+<script src="assets/charts.js?v=1299e283"></script>
+<script src="assets/orchestration.js?v=d9c5925d"></script>
 </body>
 </html>

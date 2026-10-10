@@ -25,7 +25,8 @@
   var inView = function (p) { return p.setup === setupId; };
   var order = function (a, b) { return S.armOrder(a.off) - S.armOrder(b.off) || S.tierOrder(a.tier) - S.tierOrder(b.tier); };
 
-  S.fillList(S.byId('h-findings'), text.hooks);
+  // The first line is the verdict, already in the page as plain HTML. The rest go in the block under it.
+  S.fillList(S.byId('h-findings'), (text.hooks || []).slice(1));
 
   function drawFilters() {
     S.segmented(S.byId('h-setup'), setups, setupId, function (id) { setupId = id; render(); });
@@ -68,7 +69,7 @@
         return [S.armLabel(S.arm(p.off)), S.tier(p.tier).name, a.n, b.n, S.int(a.tokens), S.int(b.tokens), signed(p.token_change), S.num(a.requests, 1), S.num(b.requests, 1),
           S.num(a.tool_calls, 1), S.num(b.tool_calls, 1), S.usd(a.cost_warm), S.usd(b.cost_warm), S.pct(a.quality), S.pct(b.quality),
           a.perfect_runs + ' of ' + a.n, b.perfect_runs + ' of ' + b.n, S.int(a.start), S.int(b.start), b.runs_with_hooks + ' of ' + b.n];
-      }), 'Hooks off against hooks on, by method and tier');
+      }), 'Hooks off against hooks on, by method and tier', { noun: 'pair', primary: 6, key: [0, 1, 4, 5, 6, 15, 16, 19] });
   }
 
   // In how many runs the agent that looked up the callers left one out of its own answer.
@@ -88,7 +89,7 @@
           : twin.shell === 'Bash' ? 'The Bash tool' : 'The PowerShell tool';
         return [S.armLabel(twin), S.tier(p.tier).name, sent, b.n, b.runs_with_hooks + ' of ' + b.n, S.num(b.hook_calls, 1), S.num(b.hook_rewrites, 1),
           S.num(b.hook_redactions, 1), S.num(b.hook_notes, 1), S.num(b.hook_denials, 2), lost(a), lost(b), S.int(a.tool_output_chars), S.int(b.tool_output_chars)];
-      }), 'What the hooks did, by method and tier');
+      }), 'What the hooks did, by method and tier', { noun: 'pair', key: [0, 1, 4, 5, 6, 7, 9, 11] });
   }
 
   function drawFacts() {
@@ -99,7 +100,7 @@
       ['What else differs between the two sides', facts.context_note],
       ['How this was measured', facts.how_measured]]
       .filter(function (row) { return row[1]; });
-    S.table(S.byId('facts-table'), [['Fact'], ['Value', 0, 'wide']], rows, 'What the hooks are');
+    S.table(S.byId('facts-table'), [['Fact'], ['Value', 0, 'wide']], rows, 'What the hooks are', { sort: false });
     S.setText('block-note', facts.block_note);
     var sizes = facts.block_bytes || {};
     S.table(S.byId('block-table'), [['Rules file'], ['Bytes added', 1], ['About, in tokens', 1]],

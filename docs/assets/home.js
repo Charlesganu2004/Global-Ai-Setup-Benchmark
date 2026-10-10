@@ -1,4 +1,5 @@
-/* Home: the summary text, the tiles, the leaderboard and the findings. */
+/* Home: the summary text, the tiles, the leaderboard and the findings.
+   The four answers under the title are plain HTML, written into the page by the site builder. */
 (function () {
   'use strict';
   var S = window.Site;
@@ -45,14 +46,15 @@
     var rows = S.leaderboard(setupId, tierId);
     var t = S.tier(tierId);
     S.setText('board-note', S.setup(setupId).detail + ' ' + (tierId ? t.name + ': ' + t.model + '. ' : '') +
-      S.plural(rows.length, 'method', 'methods') + ' measured here.');
+      S.plural(rows.length, 'method', 'methods') + ' measured here. The rank is by fewest tokens; any column sorts.');
     S.table(S.byId('board'),
       [['Rank', 1], ['Method'], ['Group'], ['Runs', 1], ['Turns', 1], ['Total tokens', 1], ['Tokens as a bar', 0, 'barcell', 1], ['Cost, cache warm', 1], ['Answered correctly', 1]],
       rows.map(function (row) {
         var p = row.point;
         return [row.rank, methodCell(row.arm), row.arm.group ? S.group(row.arm.group).name : '', runsCell(p.n), S.turns(p), S.int(p.tokens),
           barCell(row.share), S.usd(p.cost_warm), S.pct(p.quality)];
-      }), 'Leaderboard: methods by fewest tokens');
+      }), 'Leaderboard: methods by fewest tokens',
+      { limit: 10, noun: 'method', primary: 5, rowHeader: 1, key: [0, 1, 5, 8] });
   }
   render();
 })();

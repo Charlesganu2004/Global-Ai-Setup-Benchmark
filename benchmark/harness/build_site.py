@@ -850,6 +850,183 @@ def more_tables(orchestration: dict, hooks: dict, arms: dict, text: dict) -> str
     return "\n".join(out) + "\n"
 
 
+# What each page script reads is all that is published. The rest stays in benchmark/data/results.json.
+POINT_FIELDS_LEFT_OUT = ("roles", "worker_quality", "worker_scores", "worker_right", "right", "fixed", "broken",
+                         "still_wrong", "reviewer", "review_costs", "review_outputs", "orchestrator_tokens", "spread",
+                         "hook_calls", "hook_rewrites", "hook_denials", "hook_notes", "hook_redactions",
+                         "input", "cache_read", "cache_write", "tool_output_chars")
+RUN_FIELDS_LEFT_OUT = ("input", "cache_read", "cache_write", "start_cached", "tool_output_chars", "worker_scores",
+                       "lookup_missed", "orchestrator_cost", "orchestrator_tokens", "reviewer", "hook_calls",
+                       "hook_rewrites", "hook_denials", "hook_notes", "hook_redactions")
+
+
+def rounded(value):
+    """Floats to eight significant digits. The pages format every number they show, and a mean
+    such as 129686.33333333333 costs bytes on every page load for digits nobody sees."""
+    if isinstance(value, float):
+        return float(f"{value:.8g}")
+    if isinstance(value, dict):
+        return {key: rounded(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [rounded(item) for item in value]
+    return value
+
+
+def write_site_data(data: dict) -> list[tuple[str, int]]:
+    """Write the site's data as one small file every page loads and three that only the pages
+    showing them load: the single runs, the orchestration tables and the hooks tables."""
+    folder = REPO / "docs" / "data"
+    folder.mkdir(parents=True, exist_ok=True)
+    core = {key: value for key, value in data.items() if key not in ("runs", "orchestration", "hooks")}
+    core["points"] = [{k: v for k, v in point.items() if k not in POINT_FIELDS_LEFT_OUT} for point in data["points"]]
+    runs = [{k: v for k, v in run.items() if k not in RUN_FIELDS_LEFT_OUT} for run in data["runs"]]
+    files = (("benchmark.js", "window.BENCH = {};", core),
+             ("bench-runs.js", "(window.BENCH = window.BENCH || {}).runs = {};", runs),
+             ("bench-orchestration.js", "(window.BENCH = window.BENCH || {}).orchestration = {};", data["orchestration"]),
+             ("bench-hooks.js", "(window.BENCH = window.BENCH || {}).hooks = {};", data["hooks"]))
+    written = []
+    for name, statement, value in files:
+        # "</" would end a script block early if it ever appeared inside the data.
+        body = json.dumps(rounded(value), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        path = folder / name
+        path.write_text("// Written by benchmark/harness/build_site.py. Do not edit by hand.\n"
+                        + statement.replace("{}", body) + "\n", encoding="utf-8")
+        written.append((name, path.stat().st_size))
+    return written
+
+
+SITE_PAGES = (("home", "index.html"), ("results", "results.html"), ("orchestration", "orchestration.html"),
+              ("hooks", "hooks.html"), ("methods", "methods.html"), ("setup", "setup.html"), ("how", "how.html"))
+
+
+def site_sections() -> list[dict]:
+    """Every section heading of the site's pages, read from their HTML, for the jump box.
+    Read, not listed by hand, so a renamed or added section cannot leave the list behind."""
+    import html
+    import re
+    out = []
+    for key, name in SITE_PAGES:
+        page = (REPO / "docs" / name).read_text(encoding="utf-8")
+        for match in re.finditer(r'<h2 id="([^"]+)"[^>]*>(.*?)</h2>', page, re.S):
+            title = html.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip()
+            out.append({"page": key, "id": match.group(1), "title": title})
+    return out
+
+
+def answers_of(methods: list[dict], orchestration: dict, hooks: dict, arms: dict) -> dict:
+    """One sentence for each question a visitor arrives with, each computed from the data."""
+    name = {arm["id"]: arm["name"] for arm in arms["arms"]}
+    by_id = {arm["id"]: arm for arm in arms["arms"]}
+    out = {}
+    board = ranked(methods, "single", "C", minimum=3) or ranked(methods, "single", "C")
+    base = pick(methods, "A0", "single", "C")
+    if board and base:
+        best = board[0]
+        level = [p for p in board if p["tokens"] <= best["tokens"] * 1.01]   # within one percent of the lowest
+        tie = (f"{len(level)} methods are level at about {tokens(best['tokens'])} tokens" if len(level) > 1
+               else f"{name[best['arm']]} at {tokens(best['tokens'])} tokens")
+        out["cheapest"] = (
+            f"{tie} and {best['requests']:.1f} turns for three lookups on the cheapest tier, "
+            f"{1 - best['tokens'] / base['tokens']:.0%} fewer than no index ({tokens(base['tokens'])}). "
+            f"The build that ships, {name['S1']}, is one of them." if any(p["arm"] == "S1" for p in level) and len(level) > 1 else
+            f"{tie} and {best['requests']:.1f} turns for three lookups on the cheapest tier, "
+            f"{1 - best['tokens'] / base['tokens']:.0%} fewer than no index ({tokens(base['tokens'])}).")
+    lowest = [t for t in orchestration["unreviewed"] if t["tier"] == "C"]
+    ratios = [r["cost_over_single"] for r in orchestration["setups"] if r["tier"] == "C" and r["cost_over_single"]]
+    if lowest and ratios:
+        t = lowest[0]
+        better = t["orch_perfect"] / t["orch_runs"] > t["parallel_perfect"] / t["parallel_runs"]
+        out["orchestrator"] = (
+            ("It buys accuracy at a price. " if better else "Not on accuracy, in these runs. ")
+            + f"On the cheapest subagents {t['orch_perfect']} of {t['orch_runs']} "
+            f"orchestrated runs ended fully correct, against {t['parallel_perfect']} of {t['parallel_runs']} for three "
+            f"subagents with nobody reviewing, and a run cost about {statistics.fmean(ratios):.0f} times one agent.")
+    native = [r for r in hooks["pairs"] if by_id[r["off"]]["uses"] == ["grep"]]
+    if native:
+        on, off = sum(r["with"]["n"] for r in native), sum(r["without"]["n"] for r in native)
+        right_on, right_off = (sum(r[side]["perfect_runs"] for r in native) for side in ("with", "without"))
+
+        def mean(side: str, field: str) -> float:   # weighted by the runs made with the hooks, pair by pair
+            return sum(r[side][field] * r["with"]["n"] for r in native) / on
+
+        change = mean("with", "tokens") / mean("without", "tokens") - 1
+        repeated = [r for r in native if r["without"]["n"] > 1]
+        spread = (sum((r["without"]["tokens_high"] - r["without"]["tokens_low"]) / r["without"]["tokens"] * r["with"]["n"]
+                      for r in repeated) / sum(r["with"]["n"] for r in repeated)) if repeated else 0.0
+        saved = change < -spread   # fewer tokens by more than repeats of one prompt differ
+        worse = right_on / on < right_off / off
+        hidden = mean("with", "hook_redactions") > 0 and sum(r["with"]["q1_incomplete"]["runs"] for r in native) > 0
+        out["hooks"] = (
+            ("They saved tokens on these lookups. " if saved and not worse else "Not on these lookups. ")
+            + (f"Token use fell by {-change:.0%}" if saved else
+               "Token use stayed inside the spread between repeats" if abs(change) <= spread else
+               f"Token use rose by {change:.0%}")
+            + f", and with no index {right_on} of {on} runs ended fully correct with the hooks against "
+            f"{right_off} of {off} without"
+            + (", because a redaction marker hid a line the lookup needed." if worse and hidden else "."))
+    return out
+
+
+def write_static_text(text: dict) -> list[str]:
+    """Write the answers and the 'In short' lines into the pages themselves, so they are there
+    without JavaScript and cannot fall behind the data: this runs on every build."""
+    import html
+    import re
+
+    def items(lines: list[str]) -> str:
+        return "".join(f"\n      <li>{html.escape(line, quote=False)}</li>" for line in lines) + "\n    "
+
+    wanted = {"cheapest", "orchestrator", "hooks"} - set(text["answers"])
+    if wanted or not text["results_short"] or not text["orchestration_short"] or not text["hooks"]:
+        raise SystemExit("the data gives no text for: " + ", ".join(sorted(wanted) or ["an 'In short' block"])
+                         + ". Nothing was written into the pages.")
+    plans = {
+        "index.html": [(rf'(<span class="a" data-ask="{key}">).*?(</span>)', html.escape(answer, quote=False))
+                       for key, answer in text["answers"].items()],
+        "results.html": [(r'(<ul id="r-short">).*?(</ul>)', items(text["results_short"]))],
+        "orchestration.html": [(r'(<ul id="o-verdict">).*?(</ul>)', items(text["orchestration_short"]))],
+        "hooks.html": [(r'(<p id="h-verdict">).*?(</p>)', html.escape(text["hooks"][0], quote=False) if text["hooks"] else "")],
+    }
+    changed = []
+    for name, slots in plans.items():
+        path = REPO / "docs" / name
+        raw = path.read_bytes().decode("utf-8")
+        page = raw
+        for pattern, body in slots:
+            page, count = re.subn(pattern, lambda m, body=body: m.group(1) + body + m.group(2), page, count=1, flags=re.S)
+            if count != 1:
+                raise SystemExit(f"{name}: no place for {pattern}")
+        if page != raw:
+            path.write_bytes(page.encode("utf-8"))
+            changed.append(name)
+    return changed
+
+
+def stamp_assets() -> int:
+    """Give every script and stylesheet link in the pages a `?v=` made from the file it points at.
+    A browser keeps scripts for a while; without this, a visitor could get a new page with last
+    week's script and a broken layout until the cache ran out."""
+    import hashlib
+    import re
+    docs, stamped = REPO / "docs", 0
+
+    def marked(match):
+        target = docs / match.group(2)
+        if not target.is_file():
+            return match.group(0)
+        digest = hashlib.sha1(target.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:8]
+        return f'{match.group(1)}="{match.group(2)}?v={digest}"'
+
+    for _, name in SITE_PAGES:
+        page = docs / name
+        raw = page.read_bytes().decode("utf-8")
+        new = re.sub(r'\b(src|href)="((?:assets|data)/[\w.-]+\.(?:js|css))(?:\?v=[0-9a-f]*)?"', marked, raw)
+        if new != raw:
+            page.write_bytes(new.encode("utf-8"))
+            stamped += 1
+    return stamped
+
+
 def measured_plan(agents: list[dict]) -> str:
     plans = [a for a in agents if a["role"] == "plan"]
     cold = [a["cost"] for a in plans if not a["start_cached"]]
@@ -882,6 +1059,14 @@ def main() -> int:
     text["hooks"] = hooks_text(hooks, arms)
     # The home page and the README carry the headline of each new section.
     text["findings"] += [line for line in text["hooks"][:1] if line.startswith(README_FINDINGS)]
+    # The answer before the evidence: a few lines at the top of each findings page.
+    text["answers"] = answers_of(methods, orchestration, hooks, arms)
+    picked = ("Cheapest tier, one agent", "Two turns is the floor", "The model tier moves")
+    text["results_short"] = [next((line for line in text["findings"] if line.startswith(start)), "") for start in picked]
+    text["results_short"] = [line for line in text["results_short"] if line]
+    lines = text["orchestration"]
+    text["orchestration_short"] = (lines[:1] + [line for line in lines if line.startswith("With Tier C")][:1]
+                                   + [line for line in lines if line.startswith("Three subagents with nobody")][:1])
     order = [arm["id"] for arm in arms["arms"]]
     setups = [s["id"] for s in arms["setups"]]
     described = []
@@ -898,6 +1083,7 @@ def main() -> int:
         "tiers": arms["tiers"],
         "setups": [s for s in arms["setups"] if any(p["setup"] == s["id"] for p in points)],
         "questions": arms["questions"],
+        "sections": site_sections(),
         "points": points,
         "runs": sorted(cells, key=lambda c: (order.index(c["arm"]), setups.index(c["setup"]),
                                              TIER_ORDER.index(c["tier"]), c["rep"])),
@@ -911,15 +1097,18 @@ def main() -> int:
         "hooks": hooks,
         "text": text,
     }
+    written = write_site_data(data)
+    refreshed = write_static_text(text)
+    if refreshed:
+        print("static text refreshed in: " + ", ".join(refreshed))
+    stamped = stamp_assets()
+    if stamped:
+        print(f"asset links restamped in {stamped} pages")
     target = REPO / "docs" / "data" / "benchmark.js"
-    target.parent.mkdir(parents=True, exist_ok=True)
-    # "</" would end a script block early if it ever appeared inside the data.
-    body = json.dumps(data, ensure_ascii=False, indent=1).replace("</", "<\\/")
-    target.write_text("// Written by benchmark/harness/build_site.py. Do not edit by hand.\n"
-                      f"window.BENCH = {body};\n", encoding="utf-8")
     (BENCH / "RESULTS.md").write_text(
         markdown(points, index, arms, text) + more_tables(orchestration, hooks, arms, text), encoding="utf-8")
     in_readme = write_readme(readme_block(methods, arms, text))
+    print("site data: " + ", ".join(f"{name} {size:,} bytes" for name, size in written))
     print(f"wrote {target.relative_to(REPO)} ({target.stat().st_size:,} bytes), benchmark/RESULTS.md"
           f"{' and the README results block' if in_readme else ' (README has no results markers)'}: "
           f"{len(points)} points from {len(cells)} runs, {len(agents)} agents, {len(described)} methods")

@@ -7,26 +7,57 @@
 <meta name="description" content="Cost, tokens and accuracy for every method, by model tier and agent setup, with a table of every run.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
-<script>try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
-<link rel="stylesheet" href="assets/site.css">
+<script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
+<link rel="stylesheet" href="assets/site.css?v=b51f132b">
 </head>
 <body data-page="results">
 <a class="skip" href="#main">Skip to content</a>
-<header class="site-header" id="site-header"></header>
-<noscript><p class="wrap">This site draws its header, tables and charts with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository. Pages: <a href="index.html">Home</a>, <a href="results.html">Results</a>, <a href="orchestration.html">Orchestration</a>, <a href="hooks.html">Hooks</a>, <a href="methods.html">Methods</a>, <a href="setup.html">Setup</a>, <a href="how.html">How it was measured</a>.</p></noscript>
-<main class="wrap" id="main">
+<header class="topbar" id="site-header">
+  <div class="topbar-in">
+    <a class="brand" href="index.html">Local index benchmark</a>
+    <div class="tools" id="site-tools"></div>
+  </div>
+</header>
+<div class="shell">
+<nav class="sidenav" id="site-nav" aria-label="Site">
+  <p class="nav-group" id="nav-g1">Findings</p>
+  <ul aria-labelledby="nav-g1">
+    <li><a href="index.html">Home</a></li>
+    <li><a href="results.html" aria-current="page">Results</a></li>
+    <li><a href="orchestration.html">Orchestration</a></li>
+    <li><a href="hooks.html">Hooks</a></li>
+  </ul>
+  <p class="nav-group" id="nav-g2">Method and setup</p>
+  <ul aria-labelledby="nav-g2">
+    <li><a href="methods.html">Methods</a></li>
+    <li><a href="setup.html">Setup</a></li>
+    <li><a href="how.html">How it was measured</a></li>
+  </ul>
+  <p class="nav-out"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" rel="noopener">Repository</a></p>
+</nav>
+<main id="main">
+  <noscript><p class="note">The charts and tables of this site are drawn with JavaScript. The same numbers are in benchmark/RESULTS.md in the repository.</p></noscript>
+  <p class="eyebrow">Findings, page 2 of 7</p>
   <h1>Results</h1>
   <p class="lede">Every method answered the same lookup questions on the same repository. A script graded the answers, and token counts are what the API reported for each request. The one exception is a planning call that several runs shared, which is charged at the mean of the measured planning calls.</p>
   <p>The two filters below scope every chart and table on this page. A <a href="how.html">model tier</a> is a class of model, from the lightest (C) to the strongest (A). With a keyboard, Tab reaches each chart and the arrow keys move between its marks.</p>
+  <section class="verdict" aria-labelledby="summary">
+    <h2 id="summary">In short</h2>
+    <ul id="r-short">
+      <li>Cheapest tier, one agent, methods run at least three times, fewest tokens first: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; C12 lx about + hybrid: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L3 lx + hybrid search: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.</li>
+      <li>Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 11 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, C7 token-goat + semble.</li>
+      <li>The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.</li>
+    </ul>
+  </section>
   <div class="filters sticky" role="group" aria-label="Filters for this page">
     <div class="filter"><span class="name" id="f-setup-name">Setup</span><div class="seg" id="f-setup" role="group" aria-labelledby="f-setup-name"></div></div>
     <div class="filter"><span class="name" id="f-group-name">Methods</span><div class="seg" id="f-group" role="group" aria-labelledby="f-group-name"></div></div>
   </div>
   <p class="note" id="f-note" aria-live="polite"></p>
 
-  <h2>Charts</h2>
+  <h2 id="charts">Charts</h2>
   <section class="card" aria-labelledby="bubble-title">
-    <h3 id="bubble-title">Cost, efficiency, accuracy and model tier in one view</h3>
+    <h3 id="bubble-title" data-toc="Cost and accuracy map">Cost, efficiency, accuracy and model tier in one view</h3>
     <p class="sub">Each bubble is one method on one model tier. Further left costs less per run, higher answers more per million tokens, bigger answered more correctly, and colour is the model tier. A method code is printed only where there is room for it. Point at a bubble for the rest, pick a method group above, or open the table view.</p>
     <div class="legend" id="bubble-legend"></div>
     <div class="chart" id="bubble"></div>
@@ -34,7 +65,7 @@
   </section>
 
   <section class="card" aria-labelledby="tokens-title">
-    <h3 id="tokens-title">Tokens per run, by method</h3>
+    <h3 id="tokens-title" data-toc="Tokens by method">Tokens per run, by method</h3>
     <p class="sub">One bar per method, one panel per model tier, all on one scale. Start-up context is the prompt an agent begins with. Every later turn re-reads everything before it, which is where the re-read tokens come from. Added is new context on later turns: tool results and the earlier output of the agent. The number at the end of a bar is the total.</p>
     <div class="legend" id="tokens-legend"></div>
     <div class="chart" id="tokens"></div>
@@ -42,23 +73,29 @@
   </section>
 
   <section class="card" aria-labelledby="cost-title">
-    <h3 id="cost-title">Cost per run, by method and model tier</h3>
+    <h3 id="cost-title" data-toc="Cost by tier">Cost per run, by method and model tier</h3>
     <p class="sub">Dollars at list prices with the start-up context already cached. One row per method and one dot per tier, cheapest first on the lowest tier shown. Log scale: each gridline is ten times the one before. In the table view, cache cold prices the start-up context as written to the cache, as run is what the runs were billed, and the orchestrator column, shown where there is one, is its share of the warm cost.</p>
     <div class="legend" id="cost-legend"></div>
     <div class="chart" id="cost"></div>
     <details><summary>Table view</summary><div id="cost-table"></div></details>
   </section>
 
-  <h2>Every run</h2>
+  <h2 id="runs">Every run</h2>
   <p>One row per single run, before any averaging. Each Q column is the share of that question answered correctly.</p>
   <p>Cache warm is the cost with the start-up context read from the cache, cache cold with it written to the cache, and as run is what this run was billed. Start-up, re-read and added are the token groups of the chart above. In the Agents column, "+ plan" marks a run that reused the shared planning call. Outside the tool policy lists commands an agent used that its method did not allow.</p>
   <p class="note" id="runs-note" aria-live="polite"></p>
   <div class="card"><div id="runs-table"></div></div>
+  <nav class="pager" aria-label="Previous and next page">
+    <a class="prev" rel="prev" href="index.html"><span class="label">Previous</span><strong>Home</strong></a>
+    <a class="next" rel="next" href="orchestration.html"><span class="label">Next</span><strong>Orchestration</strong></a>
+  </nav>
 </main>
 <footer class="site-footer" id="site-footer"></footer>
-<script src="data/benchmark.js"></script>
-<script src="assets/site.js"></script>
-<script src="assets/charts.js"></script>
-<script src="assets/results.js"></script>
+</div>
+<script src="data/benchmark.js?v=64f8fbcc"></script>
+<script src="data/bench-runs.js?v=8826b813"></script>
+<script src="assets/site.js?v=63f9e3ff"></script>
+<script src="assets/charts.js?v=1299e283"></script>
+<script src="assets/results.js?v=bb914d28"></script>
 </body>
 </html>

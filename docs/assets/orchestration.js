@@ -66,7 +66,7 @@
         return [label(r), r.n, S.int(p.tokens), S.int(w.tokens), S.int(v.tokens), S.int(r.tokens), S.pct(r.lead_token_share),
           S.usd(p.cost_warm), S.usd(w.cost_warm), S.usd(v.cost_warm), S.usd(r.cost_warm), S.pct(r.lead_cost_share),
           S.num(w.requests, 1), S.num(w.tool_calls, 1), S.num(v.requests, 1), S.num(v.tool_calls, 1), S.int(r.wall_seconds)];
-      }), 'Tokens and cost of an orchestrated run by role');
+      }), 'Tokens and cost of an orchestrated run by role', { noun: 'method', primary: 10, key: [0, 1, 5, 10, 11, 16] });
   }
 
   /* ---------- what the review changed ---------- */
@@ -78,7 +78,7 @@
       rows.map(function (r) {
         return [label(r), r.n, r.questions, S.pct(r.worker_quality), S.pct(r.quality), r.fixed + r.still_wrong, r.fixed, r.still_wrong, r.broken,
           r.perfect_runs + ' of ' + r.n];
-      }), 'What the review changed, by method');
+      }), 'What the review changed, by method', { noun: 'method', key: [0, 1, 5, 6, 7, 8, 9] });
   }
   function drawQuestions() {
     var asked = S.list('questions');
@@ -131,7 +131,7 @@
     S.table(S.byId('setups-table'),
       [['Method'], ['Setup'], ['Runs', 1], ['Tokens', 1], ['Turns', 1], ['Tool calls', 1], ['Cache warm', 1], ['Cache cold', 1], ['Correct', 1],
         ['Runs fully correct', 1], ['Seconds', 1], ['Tokens against one agent', 1], ['Cost against one agent', 1]],
-      body, 'One agent, three subagents and an orchestrated run, by method');
+      body, 'One agent, three subagents and an orchestrated run, by method', { noun: 'row', primary: 6, key: [0, 1, 2, 3, 6, 8, 11, 12] });
 
     var perAnswer = [];
     rows.forEach(function (r) {
@@ -142,7 +142,7 @@
     });
     S.table(S.byId('correct-table'),
       [['Method'], ['Setup'], ['Runs', 1], ['Mean score', 1], ['Tokens per correct answer', 1], ['Cost per correct answer', 1], ['Seconds a run', 1]],
-      perAnswer, 'Tokens and cost per correct answer, by method and setup');
+      perAnswer, 'Tokens and cost per correct answer, by method and setup', { noun: 'row', primary: 5 });
   }
 
   /* ---------- reviewer variants: not filtered ---------- */
@@ -172,7 +172,7 @@
         var v = r.roles.verify;
         return [label(r), S.tier(r.tier).name, reviewer(r.setup), r.n, S.int(v.tokens), S.int(v.output), S.num(v.requests, 1), S.num(v.tool_calls, 1), S.usd(v.cost_warm),
           S.int(r.tokens), S.usd(r.cost_warm), S.pct(r.worker_quality), S.pct(r.quality), r.fixed, r.still_wrong, r.broken, r.perfect_runs + ' of ' + r.n];
-      }), 'Reviewer variants by method');
+      }), 'Reviewer variants by method', { noun: 'row', primary: 8, key: [0, 2, 3, 5, 8, 10, 12, 13, 14, 16] });
   }
 
   /* ---------- every orchestrated run ---------- */
@@ -189,7 +189,7 @@
         return [S.armLabel(S.arm(c.arm)), reviewer(c.setup), c.rep, c.complete === false ? 'no' : 'yes', c.plan_imputed ? 'shared' : 'measured',
           S.int(r.plan.tokens), S.int(r.workers.tokens), S.int(r.verify.tokens), S.int(c.tokens), S.int(r.verify.output), S.int(r.verify.requests), S.int(r.verify.tool_calls),
           S.usd(c.cost_warm), S.usd(c.orchestrator_cost_warm), S.pct(c.worker_quality), S.pct(c.quality), c.fixed, c.still_wrong, c.broken, S.int(c.wall_seconds)];
-      }), 'Every orchestrated run in this selection');
+      }), 'Every orchestrated run in this selection', { filter: [0, 1], noun: 'run', primary: 12, key: [0, 1, 2, 8, 12, 14, 15, 16, 17, 18] });
   }
 
   function drawCharts() { drawRoles(); drawSetups(); }
