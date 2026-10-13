@@ -83,7 +83,7 @@ binary does not carry the builder's user name. `verify_wheel.py` fails the build
 
 Run the stranger test (a new virtual environment, no model anywhere but the wheel's own):
 
-    .\packaging\.venv\Scripts\python.exe -I .\packaging\stranger_test.py .\packaging\dist\peterganurusty-0.1.0-py3-none-win_amd64.whl --repo C:\Users\Charl\Downloads\lxbench\repo
+    .\packaging\.venv\Scripts\python.exe -I .\packaging\stranger_test.py .\packaging\dist\peterganurusty-0.1.0-py3-none-win_amd64.whl --repo C:\path\to\lxbench\repo
 
 It installs the wheel with pip, runs `pgr`, copies the program alone into an empty folder and runs
 that, uninstalls, and then installs `uv` with pip into a scratch environment and does

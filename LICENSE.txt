@@ -1,0 +1,10 @@
+Copyright (c) 2026 Charles Ganu. All rights reserved.
+
+The licence terms for PeterGanuRusty (the pgr command) and for the rest of this
+repository are not yet published. Until they are, no licence to copy, modify or
+redistribute is granted. The packages on the Releases page are there so that people
+can install pgr and try it; the terms of use will be published in this file.
+
+Third-party material keeps its own licence. The third-party code compiled into the pgr
+program is listed, with its licences, in THIRD-PARTY-NOTICES.txt inside each released
+package.

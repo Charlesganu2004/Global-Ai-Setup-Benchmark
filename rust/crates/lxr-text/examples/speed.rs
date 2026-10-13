@@ -1,8 +1,8 @@
 //! Timings of the text engine: run with
 //! `cargo run --release --example speed -p lxr-text [fixture folder]`.
 //!
-//! The fixture folder (default `C:\Users\Charl\Downloads\lxbench\repo`) supplies real text
-//! for the embedding and BM25 timings.
+//! The fixture folder (default: the current folder) supplies real text for the embedding
+//! and BM25 timings.
 
 use lxr_text::{code_tokens, rrf, trigram_similarity, Bm25, Embedder, Vectors};
 use std::fs;
@@ -13,7 +13,7 @@ fn main() {
     let fixture = std::env::args_os()
         .nth(1)
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(r"C:\Users\Charl\Downloads\lxbench\repo"));
+        .unwrap_or_else(|| PathBuf::from("."));
     let chunks = chunks_of(&fixture, 750);
     println!("fixture: {} chunks of about 750 characters", chunks.len());
     if chunks.is_empty() {

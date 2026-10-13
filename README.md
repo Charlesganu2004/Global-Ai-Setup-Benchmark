@@ -9,7 +9,7 @@ have to. The benchmark measures what that saves, in tokens, turns and dollars,
 across every way the setup can answer a lookup.
 
 - **Public results site:** https://charlesganu2004.github.io/Global-Ai-Setup-Benchmark/ (benchmarks, study and findings; measured outcomes only)
-- **Full report:** [report/](report/index.html), seven pages with the commands, prompts and internals. Private: it is not published
+- **Full report:** [report/](report/index.html), seven pages with the commands, prompts and internals. It is in this repository; the site shows the measured outcomes only
 - **Every table:** [benchmark/RESULTS.md](benchmark/RESULTS.md)
 - **Install guide:** [setup/README.md](setup/README.md)
 
@@ -30,7 +30,7 @@ benchmark/    the measurements
   RESULTS.md      every table
   data/           every agent run and every index timing, as JSON
   harness/        the workflow that runs the agents, the parser, the grader, the site builder
-report/       the full report, private, not published
+report/       the full report: commands, prompts and internals
 docs/         the public results site (GitHub Pages): measured outcomes only
 ```
 
