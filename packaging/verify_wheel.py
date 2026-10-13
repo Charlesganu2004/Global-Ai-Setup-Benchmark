@@ -54,6 +54,34 @@ def pe_is_stripped(data):
     return symbols_at == 0 and symbols == 0 and not debug, (symbols, debug)
 
 
+def elf_is_stripped(data):
+    """True for a 64-bit little-endian ELF file with no .symtab and no .debug_* section.
+
+    The section names are read from the section header table. Searching the whole file for the
+    text ".symtab" does not work: the Rust standard library carries those names as literals for
+    its own backtraces, so every Rust program contains them, stripped or not.
+    """
+    if data[4] != 2 or data[5] != 1:
+        raise ValueError("not a 64-bit little-endian ELF file")
+    table = struct.unpack_from("<Q", data, 0x28)[0]
+    entry, count, names_at = struct.unpack_from("<HHH", data, 0x3A)
+    if not table or not count or names_at >= count:
+        raise ValueError("no section header table")
+
+    def section(index):
+        return struct.unpack_from("<IIQQQQ", data, table + entry * index)
+
+    _name, _kind, _flags, _addr, strings, strings_size = section(names_at)
+    names = []
+    for index in range(count):
+        start = strings + section(index)[0]
+        if start >= strings + strings_size:
+            raise ValueError("a section name lies outside the name table")
+        names.append(data[start:data.index(b"\0", start)].decode("ascii", "replace"))
+    found = [n for n in names if n == ".symtab" or n.startswith(".debug")]
+    return not found, found
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("wheel")
@@ -96,7 +124,11 @@ def main():
                 except (ValueError, struct.error) as error:
                     report(False, f"pgr PE header unreadable: {error}")
             elif program[:4] == b"\x7fELF":
-                report(b".symtab" not in program and b".debug_info" not in program, "pgr is a stripped ELF file (no .symtab, no .debug_info)")
+                try:
+                    stripped, found = elf_is_stripped(program)
+                    report(stripped, f"pgr is a stripped ELF file (symbol and debug sections: {found})")
+                except (ValueError, struct.error) as error:
+                    report(False, f"pgr is a readable ELF file ({error})")
             else:
                 print("note  pgr is neither PE nor ELF: the strip check was not run")
             for text in args.forbid:
