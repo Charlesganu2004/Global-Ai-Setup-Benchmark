@@ -3,35 +3,38 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0b0b0d" media="(prefers-color-scheme: dark)">
-<title>Benchmarks | Index benchmark</title>
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0c">
+<title>Benchmarks | PeterGanuRusty</title>
 <meta name="description" content="Tokens, turns and correct answers for each published configuration, by model class.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231b69d9'/%3E%3Cpath d='M9 22v-6m7 6V10m7 12v-9' stroke='white' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
 <script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=47407087">
+<link rel="stylesheet" href="assets/app.css?v=86cdedba">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="bar" id="bar" aria-hidden="true">Benchmarks</div>
+<div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Benchmarks</span></div>
 <!--slot:sidebar--><nav class="sidebar" aria-label="Pages">
-    <p class="brand">Index benchmark</p>
-    <ul class="side-pages">
-      <li><a href="index.html">Overview</a></li>
-      <li><a href="benchmarks.html" aria-current="page">Benchmarks</a>
+    <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+    <div class="side-wrap">
+      <span class="side-ind" aria-hidden="true" style="--i:1"></span>
+      <ul class="side-pages">
+        <li><a href="index.html">Overview</a></li>
+        <li><a href="benchmarks.html" aria-current="page">Benchmarks</a>
         <ul class="side-sections" aria-label="On this page">
           <li><a href="#leaderboard">Leaderboard</a></li>
           <li><a href="#chart">Tokens and correct answers</a></li>
+          <li><a href="#turns">Turns per task</a></li>
           <li><a href="#findings">Findings</a></li>
         </ul></li>
-      <li><a href="study.html">Study</a></li>
-      <li><a href="install.html">Install</a></li>
-    </ul>
+        <li><a href="study.html">Study</a></li>
+        <li><a href="install.html">Install</a></li>
+      </ul>
+    </div>
   </nav><!--/slot:sidebar-->
 <main id="main" class="page">
   <header class="large-title">
-    <h1 id="title">Benchmarks</h1>
+    <h1 id="title" aria-label="Benchmarks"><span class="w" aria-hidden="true" style="--i:0"><span>Benchmarks</span></span></h1>
     <p class="lede"><!--slot:lede-->Tokens, turns and correct answers for each published configuration, measured on the same three lookups. Pick a model class to compare.<!--/slot:lede--></p>
   </header>
 
@@ -45,7 +48,7 @@
 
     <section class="section" aria-labelledby="leaderboard">
       <h2 id="leaderboard" class="section-title">Leaderboard</h2>
-      <!--slot:boards--><div class="panel on" data-class="light" role="group" aria-label="Light class leaderboard">
+      <!--slot:boards--><div class="panel board-panel on" data-class="light" role="group" aria-label="Light class leaderboard">
     <h3 class="panel-title">Light class</h3>
     <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
     <div class="card">
@@ -63,7 +66,7 @@
       </table>
     </div>
   </div>
-  <div class="panel" data-class="mid" role="group" aria-label="Mid class leaderboard">
+  <div class="panel board-panel" data-class="mid" role="group" aria-label="Mid class leaderboard">
     <h3 class="panel-title">Mid class</h3>
     <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
     <div class="card">
@@ -81,7 +84,7 @@
       </table>
     </div>
   </div>
-  <div class="panel" data-class="top" role="group" aria-label="Top class leaderboard">
+  <div class="panel board-panel" data-class="top" role="group" aria-label="Top class leaderboard">
     <h3 class="panel-title">Top class</h3>
     <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
     <div class="card">
@@ -176,6 +179,20 @@
 
   <!--slot:engine--><!--/slot:engine-->
 
+  <!--slot:runners--><section class="section" aria-labelledby="turns">
+  <h2 id="turns" class="section-title">Turns per task</h2>
+  <p class="group-title">One dot is one turn, and a task ends when its last turn ends. Light model class, one agent answering three lookups.</p>
+  <figure class="card runners" id="runners">
+    <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">5.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:4">1</i><i class="dot" style="--i:1;--k:3">2</i><i class="dot" style="--i:2;--k:2">3</i><i class="dot" style="--i:3;--k:1">4</i><i class="dot" style="--i:4;--k:0">5</i></div></div>
+    <div class="runner best"><p class="runner-label"><span class="runner-name">Our engine, first generation, with embeddings</span><span class="runner-val">2.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:1">1</i><i class="dot" style="--i:1;--k:0">2</i></div></div>
+    <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
+    <p class="runner-callout">3.0 fewer turns per task with the best configuration, so its run ends first.</p>
+    <p class="runner-status" hidden>Motion is off. Each run is shown finished.</p>
+    <div class="runners-bar"><button type="button" class="btn quiet replay">Replay</button></div>
+  </figure>
+</section>
+<!--/slot:runners-->
+
   <section class="section" aria-labelledby="findings">
     <h2 id="findings" class="section-title">Findings</h2>
     <p class="group-title">In plain sentences, with their numbers.</p>
@@ -216,13 +233,14 @@
   </footer>
 </main>
 <!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
-    <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4v-5.5H9V20H5a1 1 0 0 1-1-1z"/></svg><span>Overview</span></a>
+    <span class="tab-ind" aria-hidden="true" style="--n:4;--i:1"></span>
+    <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
     <a href="benchmarks.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg><span>Benchmarks</span></a>
     <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
 <script src="data/showcase.js?v=69eb2dbe"></script>
-<script src="assets/app.js?v=5c91db70"></script>
-<script src="assets/benchmarks.js?v=79ad578c"></script>
+<script src="assets/app.js?v=aa42102c"></script>
+<script src="assets/benchmarks.js?v=4be9febe"></script>
 </body>
 </html>

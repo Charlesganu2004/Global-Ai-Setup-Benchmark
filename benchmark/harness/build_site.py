@@ -1069,6 +1069,7 @@ def measured_plan(agents: list[dict]) -> str:
 PUBLIC_CLASSES = (("C", "light", "Light"), ("B", "mid", "Mid"), ("A", "top", "Top"))
 PUBLIC_FAMILIES = {"control": "Control", "tool": "Separate tools", "engine-v1": "Our engine, first generation",
                    "engine-v2": "Our engine, second generation"}
+BRAND = "PeterGanuRusty"          # the product; "PGR" is its short form and "pgr" its command
 PUBLIC_PAGES = (("index.html", "Overview"), ("benchmarks.html", "Benchmarks"), ("study.html", "Study"),
                 ("install.html", "Install"))
 PUBLIC_QUESTIONS = (
@@ -1202,6 +1203,28 @@ def install_of() -> dict:
     return install
 
 
+VIDEO_KEYS = ("src", "poster", "captions", "width", "height", "seconds", "title")
+
+
+def video_of() -> dict | None:
+    """The public footage block: benchmark/data/video.json "public" when that file exists, otherwise nothing, and
+    then the page has no footage section. The files it names must exist under docs/media/."""
+    path = BENCH / "data" / "video.json"
+    if not path.exists():
+        return None
+    video = json.loads(path.read_text(encoding="utf-8")).get("public")
+    if not video:
+        return None
+    missing = [key for key in VIDEO_KEYS if key not in video]
+    if missing:
+        raise SystemExit(f"video.json: public lacks {missing}")
+    for key in ("src", "poster", "captions"):
+        name = str(video[key])
+        if not name.startswith("media/") or ".." in name or not (DOCS / name).is_file():
+            raise SystemExit(f"video.json: public.{key} must name an existing file under docs/media/, got {name!r}")
+    return dict(video)
+
+
 def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: dict, orchestration: dict,
               hooks: dict, arms: dict) -> dict:
     """What the public site may show, computed from the same parsed results as the full report.
@@ -1253,6 +1276,9 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
         if rows:
             public["engine"] = [{key: row[key] for key in ("name", "build_seconds", "query_ms", "index_mb")} for row in rows]
     public["install"] = install_of()
+    video = video_of()
+    if video:
+        public["video"] = video
     return public
 
 
@@ -1302,7 +1328,8 @@ def text_rows_html(rows: list[tuple[str, str]]) -> str:
 def lede_slot(page: str, public: dict) -> str:
     study = public["study"]
     if page == "index.html":
-        return (f"We ran {study['agents']} agents on one Python repository and measured what each way of finding code "
+        return (f"{BRAND} (PGR) answers where a function is defined and what calls it in one lookup. We ran "
+                f"{study['agents']} agents on one Python repository and measured what each way of finding code "
                 "costs in tokens and turns, and how often the answers were right.")
     if page == "benchmarks.html":
         return ("Tokens, turns and correct answers for each published configuration, measured on the same "
@@ -1318,15 +1345,21 @@ def figures_slot(public: dict) -> str:
     if not found:
         return '<p class="note">No configuration has been run enough times on the light class to be compared yet.</p>'
     b, c = found["b"], found["c"]
+    # Each figure carries what it counts from (the no-index value) and to (the best value) as attributes, so a
+    # script can count the number up; the value in the page is always the final one.
     cards = [
-        (tokens(b["tokens"]), "Tokens per task", f"No index: {tokens(c['tokens'])}, {1 - b['tokens'] / c['tokens']:.0%} fewer" if c else ""),
-        (f"{b['turns']:.1f}", "Turns per task", f"No index: {c['turns']:.1f}" if c else ""),
-        (of(b["perfect_runs"], b["runs"]), "Fully correct runs", f"No index: {of(c['perfect_runs'], c['runs'])}" if c else ""),
-        (share(b["correct"]), "Answers correct", f"No index: {share(c['correct'])}" if c else "")]
+        (tokens(b["tokens"]), "Tokens per task", f"No index: {tokens(c['tokens'])}, {1 - b['tokens'] / c['tokens']:.0%} fewer" if c else "",
+         f' data-count="tokens" data-from="{c["tokens"]:.0f}" data-to="{b["tokens"]:.0f}"' if c else ""),
+        (f"{b['turns']:.1f}", "Turns per task", f"No index: {c['turns']:.1f}" if c else "",
+         f' data-count="turns" data-from="{c["turns"]:.4f}" data-to="{b["turns"]:.4f}"' if c else ""),
+        (of(b["perfect_runs"], b["runs"]), "Fully correct runs", f"No index: {of(c['perfect_runs'], c['runs'])}" if c else "",
+         f' data-count="of" data-from-text="{esc(of(c["perfect_runs"], c["runs"]))}"' if c else ""),
+        (share(b["correct"]), "Answers correct", f"No index: {share(c['correct'])}" if c else "",
+         f' data-count="share" data-from="{c["correct"]:.4f}" data-to="{b["correct"]:.4f}"' if c else "")]
     items = "".join(
-        f'\n      <div class="figure card"><dt class="figure-label">{esc(label)}</dt>'
-        f'<dd class="figure-value">{esc(value)}</dd>' + (f'<dd class="figure-note">{esc(note)}</dd>' if note else "") + "</div>"
-        for value, label, note in cards)
+        f'\n      <div class="figure card spot"><dt class="figure-label">{esc(label)}</dt>'
+        f'<dd class="figure-value"{attrs}>{esc(value)}</dd>' + (f'<dd class="figure-note">{esc(note)}</dd>' if note else "") + "</div>"
+        for value, label, note, attrs in cards)
     group = (f"Best configuration" + (" against no index" if c else "") + ", light model class, one agent answering three lookups")
     return f'<p class="group-title">{esc(group)}</p>\n    <dl class="figures">{items}\n    </dl>'
 
@@ -1347,7 +1380,7 @@ def best_slot(public: dict) -> str:
             ("Fully correct runs", esc(of(pt["perfect_runs"], pt["runs"]))),
             ("Answers correct", esc(share(pt["correct"]))),
             ("Runs", esc(pt["runs"]))]
-    return (f'<div class="card best-card">\n    <div class="best-head"><h3 class="best-name">{esc(best["name"])}</h3>'
+    return (f'<div class="card best-card spot tilt">\n    <div class="best-head"><h3 class="best-name">{esc(best["name"])}</h3>'
             f'<span class="tag">Best</span></div>\n    {rows_html(rows)}\n  </div>\n'
             f'  <p class="footnote">{esc(best_rule())}</p>')
 
@@ -1381,7 +1414,7 @@ def boards_slot(public: dict) -> str:
             '<thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th>'
             '<th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>\n'
             '        <tbody>' + "".join(board_row(c, pt) for c, pt in rows) + '\n        </tbody>\n      </table>\n    </div>')
-        out.append(f'<div class="panel{" on" if not out else ""}" data-class="{esc(cls["id"])}" role="group" aria-label="{esc(cls["name"])} class leaderboard">\n'
+        out.append(f'<div class="panel board-panel{" on" if not out else ""}" data-class="{esc(cls["id"])}" role="group" aria-label="{esc(cls["name"])} class leaderboard">\n'
                    f'    <h3 class="panel-title">{esc(cls["name"])} class</h3>\n'
                    '    <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>\n'
                    f'    {body}\n  </div>')
@@ -1508,8 +1541,11 @@ def install_slot(public: dict) -> str:
             f'<div class="card">\n    {gives}\n  </div>\n</section>\n')
 
 
+# The mark: a P and the token it hands over, one colour, drawn on a 24 unit grid. The tab bar uses it as the icon of Overview.
+MARK_PATHS = '<path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/>'
+MARK_SVG = f'<svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{MARK_PATHS}</svg>'
 NAV_ICONS = {
-    "index.html": '<path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4v-5.5H9V20H5a1 1 0 0 1-1-1z"/>',
+    "index.html": MARK_PATHS,
     "benchmarks.html": '<path d="M5 20v-8M12 20V5M19 20v-5"/>',
     "study.html": '<path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/>',
     "install.html": '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/>',
@@ -1524,26 +1560,120 @@ def nav_slots(name: str, page: str) -> dict:
     sections = "".join(
         f'\n          <li><a href="#{m.group(1)}">{html.unescape(re.sub(r"<[^>]+>", "", m.group(2))).strip()}</a></li>'
         for m in re.finditer(r'<h2 id="([^"]+)"[^>]*>(.*?)</h2>', page, re.S))
-    side, tabs = [], []
-    for file, title in PUBLIC_PAGES:
+    side, tabs, at = [], [], 0
+    for n, (file, title) in enumerate(PUBLIC_PAGES):
         here = ' aria-current="page"' if file == name else ""
+        at = n if here else at
         inner = f'\n        <ul class="side-sections" aria-label="On this page">{sections}\n        </ul>' if here and sections else ""
-        side.append(f'\n      <li><a href="{file}"{here}>{title}</a>{inner}</li>')
+        side.append(f'\n        <li><a href="{file}"{here}>{title}</a>{inner}</li>')
         tabs.append(f'\n    <a href="{file}"{here}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{NAV_ICONS[file]}</svg>'
                     f'<span>{title}</span></a>')
-    return {"sidebar": '<nav class="sidebar" aria-label="Pages">\n    <p class="brand">Index benchmark</p>\n    <ul class="side-pages">'
-                       + "".join(side) + "\n    </ul>\n  </nav>",
-            "tabbar": '<nav class="tabbar" aria-label="Pages">' + "".join(tabs) + "\n  </nav>"}
+    return {"sidebar": ('<nav class="sidebar" aria-label="Pages">\n    <p class="brand">' + MARK_SVG + f'<span>{BRAND}</span></p>\n'
+                        f'    <div class="side-wrap">\n      <span class="side-ind" aria-hidden="true" style="--i:{at}"></span>\n'
+                        '      <ul class="side-pages">' + "".join(side) + "\n      </ul>\n    </div>\n  </nav>"),
+            "tabbar": (f'<nav class="tabbar" aria-label="Pages">\n    <span class="tab-ind" aria-hidden="true" style="--n:{len(PUBLIC_PAGES)};--i:{at}"></span>'
+                       + "".join(tabs) + "\n  </nav>")}
+
+
+# --- the Overview streams, the footage and the turn runners -------------------------------------
+
+def nice_step(longest_k: float) -> int:
+    """A tick step, in thousands of tokens, that puts three or four ticks along the longest lane."""
+    for step in (10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000):
+        if longest_k / step <= 4.5:
+            return step
+    return 10000
+
+
+def hero_slot(public: dict) -> str:
+    """Two lanes drawn to one scale, the longer being the no-index run: lane length is tokens per task. The lanes,
+    their values and the difference are plain markup; a script lays a canvas of particles over them."""
+    found = headline_of(public)
+    if not found or not found["c"]:
+        return ""
+    b, c = found["b"], found["c"]
+    longest = max(b["tokens"], c["tokens"])
+
+    def width(pt: dict) -> str:
+        return f"{pt['tokens'] / longest * 100:.2f}".rstrip("0").rstrip(".")
+
+    def lane(kind: str, name: str, pt: dict, extra: str = "") -> str:
+        return (f'\n    <div class="lane lane-{kind}" style="--w:{width(pt)}%">'
+                f'<p class="lane-label"><span class="lane-name">{esc(name)}</span>'
+                f'<span class="lane-val"><b data-tok>{esc(tokens(pt["tokens"]))}</b> tokens, <b data-turns>{pt["turns"]:.1f}</b> turns</span></p>'
+                f'<div class="lane-track"></div>{extra}</div>')
+
+    saved = c["tokens"] - b["tokens"]
+    gap = (f'<div class="gap"><span>{esc(tokens(saved))} fewer tokens, {saved / c["tokens"]:.0%}</span></div>' if saved > 0 else "")
+    step = nice_step(longest / 1e3) * 1000
+    marks = [(k * step, "0" if k == 0 else tokens(k * step)) for k in range(int(longest * 0.93 // step) + 1)] + [(longest, tokens(longest))]
+    scale = "".join(f'<span style="--t:{value / longest * 100:.2f}" data-v="{value:.0f}">{esc(text)}</span>' for value, text in marks)
+    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. Best configuration: {tokens(b['tokens'])} tokens and "
+              f"{b['turns']:.1f} turns." + (f" That is {tokens(saved)} fewer tokens, {saved / c['tokens']:.0%}." if saved > 0 else ""))
+    return ('<figure class="card stream" id="stream" aria-labelledby="stream-title">\n  '
+            '<p class="stream-title" id="stream-title">Tokens per task, light model class, one agent answering three lookups</p>\n  '
+            '<div class="lanes">' + lane("ref", "No index", c) + lane("best", found["best"]["name"], b, gap) + '\n  </div>\n  '
+            f'<div class="scale" aria-hidden="true">{scale}</div>\n  '
+            '<p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task.</p>\n  '
+            f'<p class="sr-only">{esc(spoken)}</p>\n</figure>')
+
+
+VIDEO_TYPES = {"mp4": "video/mp4", "webm": "video/webm"}
+
+
+def video_slot(public: dict) -> str:
+    """The footage section: present only when the data holds a video, a native player that never starts by itself."""
+    video = public.get("video")
+    if not video:
+        return ""
+    kind = VIDEO_TYPES.get(str(video["src"]).rsplit(".", 1)[-1].lower())
+    source = f'<source src="{esc(video["src"])}"' + (f' type="{kind}"' if kind else "") + ">"
+    return ('<section class="section" aria-labelledby="footage">\n  '
+            f'<h2 id="footage" class="section-title">{esc(video["title"])}</h2>\n  '
+            '<div class="card video-frame">\n    '
+            f'<video controls playsinline preload="none" width="{int(video["width"])}" height="{int(video["height"])}" poster="{esc(video["poster"])}">\n      '
+            f'{source}\n      <track kind="captions" src="{esc(video["captions"])}" srclang="en" label="English" default>\n      '
+            '<p>This browser cannot play the video.</p>\n    </video>\n  </div>\n  '
+            f'<p class="footnote">{esc(format(video["seconds"], "g"))} seconds, with captions.</p>\n</section>\n')
+
+
+def runners_slot(public: dict) -> str:
+    """The one conceptual figure: a dot for each turn on a track for no index and for the best configuration. Written
+    finished, with every dot parked at the end of its run; a script plays the runs once when the figure comes into view."""
+    found = headline_of(public)
+    if not found or not found["c"]:
+        return ""
+    b, c = found["b"], found["c"]
+
+    def run(kind: str, name: str, pt: dict) -> str:
+        n = max(1, min(12, round(pt["turns"])))
+        dots = "".join(f'<i class="dot" style="--i:{i};--k:{n - 1 - i}">{i + 1}</i>' for i in range(n))
+        return (f'\n    <div class="runner {kind}"><p class="runner-label"><span class="runner-name">{esc(name)}</span>'
+                f'<span class="runner-val">{pt["turns"]:.1f} turns</span></p>'
+                f'<div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span>{dots}</div></div>')
+
+    fewer = c["turns"] - b["turns"]
+    callout = (f"{fewer:.1f} fewer turns per task with the best configuration, so its run ends first." if fewer > 0
+               else f"No index took {c['turns']:.1f} turns and the best configuration {b['turns']:.1f}.")
+    return ('<section class="section" aria-labelledby="turns">\n  <h2 id="turns" class="section-title">Turns per task</h2>\n  '
+            '<p class="group-title">One dot is one turn, and a task ends when its last turn ends. Light model class, one agent answering three lookups.</p>\n  '
+            '<figure class="card runners" id="runners">' + run("ref", "No index", c) + run("best", found["best"]["name"], b) +
+            '\n    <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>\n    '
+            f'<p class="runner-callout">{esc(callout)}</p>\n    '
+            '<p class="runner-status" hidden>Motion is off. Each run is shown finished.</p>\n    '
+            '<div class="runners-bar"><button type="button" class="btn quiet replay">Replay</button></div>\n  </figure>\n</section>\n')
 
 
 def showcase_slots(public: dict) -> dict:
     study = study_slots(public)
     common = {"built": esc(public["built"])}
     return {
-        "index.html": dict(common, lede=esc(lede_slot("index.html", public)), figures=figures_slot(public), best=best_slot(public)),
+        "index.html": dict(common, lede=esc(lede_slot("index.html", public)), hero=hero_slot(public), figures=figures_slot(public),
+                           video=video_slot(public), best=best_slot(public)),
         "benchmarks.html": dict(common, lede=esc(lede_slot("benchmarks.html", public)), seg=seg_slot(public),
                                 boards=boards_slot(public), charts=charts_slot(public), engine=engine_slot(public),
-                                headline=headline_slot(public), findings=findings_slot(public)),
+                                headline=headline_slot(public), findings=findings_slot(public),
+                                runners=runners_slot(public)),
         "study.html": dict(common, lede=esc(lede_slot("study.html", public)), **study),
         "install.html": dict(common, lede=esc(lede_slot("install.html", public)), install=install_slot(public)),
     }
@@ -1575,6 +1705,10 @@ def write_showcase_pages(public: dict) -> list[str]:
 
 
 # --- the guard ------------------------------------------------------------------------------
+
+# Binary media under docs/media/ is not text and is not read as text; its file name is still checked. A caption
+# file (.vtt) is text, so it is scanned like a page.
+MEDIA_BINARY = ("mp4", "webm", "jpg", "jpeg", "avif", "png", "webp")
 
 # Words that must never appear in anything under docs/, in any case: tool names, file names, vendor models.
 FORBIDDEN_WORDS = (
@@ -1638,7 +1772,7 @@ def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | N
         shown = path.relative_to(root).as_posix()
         kind = path.suffix.lstrip(".").lower()
         try:
-            text = path.read_bytes().decode("utf-8")
+            text = "" if kind in MEDIA_BINARY and shown.startswith("media/") else path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:
             text = ""
         for token in sorted(approved, key=len, reverse=True):

@@ -1,7 +1,9 @@
-/* The Benchmarks page: the model class control and the chart of tokens against answers correct.
-   The tables are already in the page for every class. This script shows one class at a time and draws
-   the chart from window.SHOWCASE. One axis for each measure, the names written beside the marks, a legend
-   when there are two or more series, a table view of the same numbers, a tooltip on hover and on focus. */
+/* The Benchmarks page: the model class control, the leaderboard, the chart of tokens against answers
+   correct, and the turn runners. The tables are already in the page for every class. This script shows
+   one class at a time: the leaderboard keeps one row for each configuration and moves it to its rank, with
+   its bar, ring and numbers following the measured values; the chart is drawn from window.SHOWCASE with one
+   axis for each measure, the names written beside the marks, a legend when there are two or more series,
+   a table view of the same numbers, a tooltip on hover and on focus. */
 (function () {
   'use strict';
   var App = window.App, data = window.SHOWCASE;
@@ -46,6 +48,151 @@
     return items;
   }
   function overlap(a, b) { return a.x0 < b.x1 && b.x0 < a.x1 && a.y0 < b.y1 && b.y0 < a.y1; }
+  function range(p) {
+    var low = App.tokens(p.tokens_low), high = App.tokens(p.tokens_high);
+    return low === high ? '' : low + ' to ' + high;
+  }
+
+  /* ---------- the leaderboard: one row for each configuration, moved to its rank when the class changes ---------- */
+  var board = (function () {
+    var first = document.querySelector('.board-panel');
+    if (!first) return null;
+    function el(tag, cls, text) {
+      var n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    }
+    function cell(role, cls) { var n = el('span', cls); n.setAttribute('role', role); return n; }
+    // One scale for every class, so a bar keeps its length for a number wherever it is shown.
+    var scaleMax = 0;
+    data.configs.forEach(function (c) { c.points.forEach(function (p) { scaleMax = Math.max(scaleMax, p.tokens); }); });
+
+    var wrap = el('div', 'lb-wrap'), card = el('div', 'card lb'), head = el('div', 'lb-head'), list = el('div', 'lb-list');
+    var lead = el('p', 'group-title', 'One agent answering three lookups. The best configuration first, then fewest tokens.');
+    card.setAttribute('role', 'table');
+    head.setAttribute('role', 'row');
+    list.setAttribute('role', 'rowgroup');
+    ['Rank', 'Configuration', 'Tokens per task', 'Turns', 'Answers correct', 'Fully correct runs'].forEach(function (label, i) {
+      var h = cell('columnheader');
+      if (i === 0) {
+        h.appendChild(el('span', null, '#')).setAttribute('aria-hidden', 'true');
+        h.appendChild(el('span', 'sr-only', label));
+      } else h.textContent = label;
+      head.appendChild(h);
+    });
+    card.appendChild(head);
+    card.appendChild(list);
+    wrap.appendChild(lead);
+    wrap.appendChild(card);
+
+    var rows = [], bySlug = {};
+    data.configs.forEach(function (c) {
+      var r = { slug: c.slug, prev: { tokens: 0, turns: 0, correct: 0 } };
+      r.node = el('div', 'lb-row');
+      r.node.setAttribute('role', 'row');
+      r.rank = r.node.appendChild(cell('cell', 'lb-rank'));
+      r.name = r.node.appendChild(cell('rowheader', 'lb-name'));
+      r.nameText = r.name.appendChild(document.createTextNode(c.name));
+      r.tag = r.name.appendChild(el('span', 'tag', 'Best'));
+      var tok = r.node.appendChild(cell('cell', 'lb-tok')), bar = tok.appendChild(el('span', 'lb-bar')), num = tok.appendChild(el('span', 'lb-num'));
+      r.bar = bar.appendChild(document.createElement('i'));
+      r.tok = num.appendChild(el('b'));
+      r.range = num.appendChild(el('small'));
+      function stat(label) {
+        var s = cell('cell', 'lb-stat'), body, v;
+        s.appendChild(el('span', 'lb-l', label));
+        body = s.appendChild(el('span', 'lb-body'));
+        v = body.appendChild(el('span', 'lb-v'));
+        return { s: s, body: body, v: v, b: v.appendChild(el('b')) };
+      }
+      var t = stat('Turns'), a = stat('Answers correct'), f = stat('Fully correct runs');
+      r.node.appendChild(t.s);
+      r.turns = t.b;
+      var ring = svg('svg', { class: 'ring', viewBox: '0 0 26 26', 'aria-hidden': 'true', focusable: 'false' });
+      ring.appendChild(svg('circle', { class: 't', cx: 13, cy: 13, r: 11 }));
+      r.ringP = ring.appendChild(svg('circle', { class: 'p', cx: 13, cy: 13, r: 11, pathLength: 1 }));
+      a.body.insertBefore(ring, a.v);
+      r.node.appendChild(a.s);
+      r.share = a.b;
+      r.node.appendChild(f.s);
+      r.full = f.b;
+      r.runs = f.v.appendChild(el('small'));
+      r.node.hidden = true;
+      list.appendChild(r.node);
+      rows.push(r);
+      bySlug[c.slug] = r;
+    });
+    first.parentNode.insertBefore(wrap, first);
+    App.reveal(card);
+
+    var revealed = false, spring = App.spring;
+    // Counts a number from where it was to where it is, after a delay.
+    function tween(node, from, to, fmt, ms, delay) {
+      var final = fmt(to);
+      if (App.reduced || !(delay > 0)) { App.count(node, from, to, fmt, ms, final); return; }
+      node.textContent = fmt(from);
+      setTimeout(function () { App.count(node, from, to, fmt, ms, final); }, delay);
+    }
+    function paint(r, p, delay) {
+      r.bar.style.setProperty('--d', delay + 'ms');
+      r.ringP.style.setProperty('--d', delay + 'ms');
+      r.bar.style.setProperty('--v', (p.tokens / scaleMax).toFixed(4));
+      r.ringP.style.strokeDashoffset = String(1 - p.correct);
+      tween(r.tok, r.prev.tokens, p.tokens, App.tokens, 800, delay);
+      tween(r.turns, r.prev.turns, p.turns, App.turns, 800, delay);
+      tween(r.share, r.prev.correct, p.correct, App.share, 800, delay);
+      r.prev = { tokens: p.tokens, turns: p.turns, correct: p.correct };
+    }
+    // What does not move with a number: the rank, the tag, the range and the counts of runs.
+    function meta(r, it, i) {
+      r.node.classList.toggle('is-best', !!it.c.best);
+      r.rank.textContent = String(i + 1);
+      r.tag.hidden = !it.c.best;
+      r.range.textContent = range(it.p);
+      r.full.textContent = App.of(it.p.perfect_runs, it.p.runs);
+      r.runs.textContent = it.p.runs + (it.p.runs === 1 ? ' run' : ' runs');
+    }
+    function flip(r, was, now) {
+      var node = r.node, opts = { duration: 640, easing: spring }, frames;
+      if (was === undefined) frames = [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }];
+      else if (Math.abs(was - now) > 1) frames = [{ transform: 'translateY(' + (was - now) + 'px)' }, { transform: 'none' }];
+      else return;
+      node.style.zIndex = '2';
+      var a;
+      try { a = node.animate(frames, opts); } catch (err) { a = node.animate(frames, { duration: 400, easing: 'ease-out' }); }
+      a.onfinish = a.oncancel = function () { node.style.zIndex = ''; };
+    }
+    var current = null;
+    function update(cid) {
+      var items = itemsFor(cid), keep = {}, was = {};
+      rows.forEach(function (r) { if (!r.node.hidden) was[r.slug] = r.node.getBoundingClientRect().top; });
+      items.forEach(function (it) {
+        var r = bySlug[it.c.slug];
+        keep[r.slug] = true;
+        r.node.hidden = false;
+        list.appendChild(r.node);
+      });
+      rows.forEach(function (r) { if (!keep[r.slug]) r.node.hidden = true; });
+      card.setAttribute('aria-label', (className[cid] || cid) + ' class leaderboard');
+      items.forEach(function (it, i) {
+        var r = bySlug[it.c.slug];
+        meta(r, it, i);
+        r.it = it;
+        if (!revealed) return;
+        paint(r, it.p, 0);
+        if (!App.reduced && r.node.animate && current !== null) flip(r, was[r.slug], r.node.getBoundingClientRect().top);
+      });
+      current = cid;
+    }
+    // The first time the board is seen, every bar and ring draws in from nothing, one row after another.
+    App.once(card, function () {
+      revealed = true;
+      var slugs = itemsFor(current).map(function (it) { return it.c.slug; });
+      rows.forEach(function (r) { var n = slugs.indexOf(r.slug); if (n >= 0) paint(r, r.it.p, n * 70); });
+    }, 0.2);
+    return { update: update };
+  })();
 
   /* ---------- the legend: the series that are in this class, when there are two or more ---------- */
   function fillLegend(card, items) {
@@ -70,9 +217,9 @@
     });
   }
 
-  /* ---------- the chart ---------- */
+  /* ---------- the chart: the ranges draw in and the marks settle one after another when it comes into view ---------- */
   var drawn = {};
-  function draw(cid) {
+  function draw(cid, animate) {
     var host = document.querySelector('.chart[data-chart="' + cid + '"]');
     if (!host || !host.clientWidth) return;
     var items = itemsFor(cid);
@@ -116,7 +263,7 @@
     var marks = items.map(function (it, i) {
       var style = STYLE[it.c.family] || STYLE.control, cx = x(it.p.tokens), cy = y(it.p.correct);
       if (it.p.tokens_high > it.p.tokens_low) {
-        root.appendChild(svg('line', { class: 'range', x1: x(it.p.tokens_low), x2: x(it.p.tokens_high), y1: cy, y2: cy, stroke: 'var(' + style.color + ')' }));
+        root.appendChild(svg('line', { class: 'range', pathLength: 1, style: '--n:' + i, x1: x(it.p.tokens_low), x2: x(it.p.tokens_high), y1: cy, y2: cy, stroke: 'var(' + style.color + ')' }));
       }
       return { it: it, i: i, cx: cx, cy: cy, r: 7, style: style };
     });
@@ -127,11 +274,13 @@
       k.node = svg('g', { class: 'mark', transform: 'translate(' + k.cx + ',' + k.cy + ')', tabindex: k === order[0] ? '0' : '-1', role: 'img',
         'aria-label': (k.i + 1) + '. ' + it.c.name + (it.c.best ? ', best' : '') + ': ' + App.tokens(p.tokens) + ' tokens, ' + p.turns.toFixed(1) +
           ' turns, ' + App.share(p.correct) + ' of answers correct, ' + App.of(p.perfect_runs, p.runs) + ' runs fully correct' });
-      k.node.appendChild(svg('circle', { class: 'ring', r: 15 }));
+      var pop = svg('g', { class: 'pop', style: '--n:' + k.i });
+      pop.appendChild(svg('circle', { class: 'ring', r: 15 }));
       var shape = marker(k.style.shape, k.r);
       shape.setAttribute('class', 'shape');
       shape.setAttribute('fill', 'var(' + k.style.color + ')');
-      k.node.appendChild(shape);
+      pop.appendChild(shape);
+      k.node.appendChild(pop);
       root.appendChild(k.node);
     });
 
@@ -146,6 +295,11 @@
     var measure = svg('text', { class: 'name', visibility: 'hidden' }, '');
     root.appendChild(measure);
     host.replaceChildren(root);
+    // Hidden at once, released when the chart is in view, so the draw-in is seen and not spent off screen.
+    host.classList.toggle('pre', !!animate && !App.reduced);
+    if (animate && !App.reduced) {
+      App.once(host, function () { requestAnimationFrame(function () { requestAnimationFrame(function () { host.classList.remove('pre'); }); }); }, 0.35);
+    }
     var keyed = narrow;
     marks.forEach(function (k) {
       var words = [narrow ? null : k.it.c.name, String(k.i + 1)];
@@ -237,7 +391,8 @@
       panel.classList.toggle('on', panel.getAttribute('data-class') === cid);
     });
     App.tip.hide();
-    draw(cid);
+    draw(cid, true);
+    if (board) board.update(cid);
     if (status && label) status.textContent = 'Showing the ' + label.toLowerCase() + ' class.';
   }
   var first = seg.querySelector('[role="radio"]');
@@ -249,7 +404,7 @@
     var watcher = new ResizeObserver(function () {
       Object.keys(drawn).forEach(function (cid) {
         var host = document.querySelector('.chart[data-chart="' + cid + '"]');
-        if (host && host.clientWidth && Math.round(host.clientWidth) !== drawn[cid]) draw(cid);
+        if (host && host.clientWidth && Math.round(host.clientWidth) !== drawn[cid]) draw(cid, false);
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll('.chart'), function (host) { watcher.observe(host); });
@@ -257,4 +412,29 @@
   document.addEventListener('pointerdown', function (e) {
     if (!e.target.closest || !e.target.closest('.chart')) App.tip.hide();
   });
+
+  /* ---------- turn runners: one dot is one turn; the task ends when the last turn ends ---------- */
+  (function () {
+    var fig = document.getElementById('runners');
+    if (!fig) return;
+    var note = fig.querySelector('.runner-status'), again = fig.querySelector('.replay');
+    var runs = Array.prototype.slice.call(fig.querySelectorAll('.runner')), timers = [], STEP = 480;
+    if (App.reduced) { if (note) note.hidden = false; return; }
+    function play() {
+      timers.forEach(clearTimeout);
+      timers = [];
+      fig.classList.remove('run');
+      runs.forEach(function (r) { r.classList.remove('done'); });
+      void fig.offsetWidth;
+      fig.classList.add('run');
+      // A run is done when its last dot has arrived: the delay of the last dot plus the three steps it travels.
+      runs.forEach(function (r) {
+        var turns = r.querySelectorAll('.dot').length;
+        timers.push(setTimeout(function () { r.classList.add('done'); }, (turns + 2) * STEP));
+      });
+    }
+    fig.classList.add('armed');
+    App.once(fig, play, 0.6);
+    if (again) again.addEventListener('click', play);
+  })();
 })();

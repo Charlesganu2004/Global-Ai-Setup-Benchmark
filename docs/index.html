@@ -3,53 +3,69 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="light dark">
-<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#0b0b0d" media="(prefers-color-scheme: dark)">
-<title>Overview | Index benchmark</title>
-<meta name="description" content="Measured results for ways of finding code, for AI agents: tokens, turns and correct answers on one Python repository.">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231b69d9'/%3E%3Cpath d='M9 22v-6m7 6V10m7 12v-9' stroke='white' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0a0c">
+<title>PeterGanuRusty (PGR): a local engine that lets AI coding agents find code in one step</title>
+<meta name="description" content="PeterGanuRusty (PGR) is a local engine that lets AI coding agents find code in one step. Measured results: tokens, turns and correct answers on one Python repository.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
 <script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=47407087">
+<link rel="stylesheet" href="assets/app.css?v=86cdedba">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<div class="bar" id="bar" aria-hidden="true">Overview</div>
+<div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></div>
 <!--slot:sidebar--><nav class="sidebar" aria-label="Pages">
-    <p class="brand">Index benchmark</p>
-    <ul class="side-pages">
-      <li><a href="index.html" aria-current="page">Overview</a>
+    <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+    <div class="side-wrap">
+      <span class="side-ind" aria-hidden="true" style="--i:0"></span>
+      <ul class="side-pages">
+        <li><a href="index.html" aria-current="page">Overview</a>
         <ul class="side-sections" aria-label="On this page">
           <li><a href="#result">Headline result</a></li>
           <li><a href="#best">Best configuration</a></li>
           <li><a href="#benefits">What it does for an agent</a></li>
           <li><a href="#next">Next</a></li>
         </ul></li>
-      <li><a href="benchmarks.html">Benchmarks</a></li>
-      <li><a href="study.html">Study</a></li>
-      <li><a href="install.html">Install</a></li>
-    </ul>
+        <li><a href="benchmarks.html">Benchmarks</a></li>
+        <li><a href="study.html">Study</a></li>
+        <li><a href="install.html">Install</a></li>
+      </ul>
+    </div>
   </nav><!--/slot:sidebar-->
 <main id="main" class="page">
   <header class="large-title">
-    <h1 id="title">Code lookups for AI agents, measured</h1>
-    <p class="lede"><!--slot:lede-->We ran 787 agents on one Python repository and measured what each way of finding code costs in tokens and turns, and how often the answers were right.<!--/slot:lede--></p>
+    <p class="brandline"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>PeterGanuRusty</p>
+    <h1 id="title" aria-label="A local engine that lets AI coding agents find code in one step"><span class="w" aria-hidden="true" style="--i:0"><span>A</span></span> <span class="w" aria-hidden="true" style="--i:1"><span>local</span></span> <span class="w" aria-hidden="true" style="--i:2"><span>engine</span></span> <span class="w" aria-hidden="true" style="--i:3"><span>that</span></span> <span class="w" aria-hidden="true" style="--i:4"><span>lets</span></span> <span class="w" aria-hidden="true" style="--i:5"><span>AI</span></span> <span class="w" aria-hidden="true" style="--i:6"><span>coding</span></span> <span class="w" aria-hidden="true" style="--i:7"><span>agents</span></span> <span class="w" aria-hidden="true" style="--i:8"><span>find</span></span> <span class="w" aria-hidden="true" style="--i:9"><span>code</span></span> <span class="w" aria-hidden="true" style="--i:10"><span>in</span></span> <span class="w" aria-hidden="true" style="--i:11"><span>one</span></span> <span class="w" aria-hidden="true" style="--i:12"><span>step</span></span></h1>
+    <p class="lede"><!--slot:lede-->PeterGanuRusty (PGR) answers where a function is defined and what calls it in one lookup. We ran 787 agents on one Python repository and measured what each way of finding code costs in tokens and turns, and how often the answers were right.<!--/slot:lede--></p>
   </header>
+
+  <!--slot:hero--><figure class="card stream" id="stream" aria-labelledby="stream-title">
+  <p class="stream-title" id="stream-title">Tokens per task, light model class, one agent answering three lookups</p>
+  <div class="lanes">
+    <div class="lane lane-ref" style="--w:100%"><p class="lane-label"><span class="lane-name">No index</span><span class="lane-val"><b data-tok>365k</b> tokens, <b data-turns>5.0</b> turns</span></p><div class="lane-track"></div></div>
+    <div class="lane lane-best" style="--w:35.65%"><p class="lane-label"><span class="lane-name">Our engine, first generation, with embeddings</span><span class="lane-val"><b data-tok>130k</b> tokens, <b data-turns>2.0</b> turns</span></p><div class="lane-track"></div><div class="gap"><span>235k fewer tokens, 64%</span></div></div>
+  </div>
+  <div class="scale" aria-hidden="true"><span style="--t:0.00" data-v="0">0</span><span style="--t:27.43" data-v="100000">100k</span><span style="--t:54.87" data-v="200000">200k</span><span style="--t:82.30" data-v="300000">300k</span><span style="--t:100.00" data-v="364508">365k</span></div>
+  <p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task.</p>
+  <p class="sr-only">No index: 365k tokens and 5.0 turns. Best configuration: 130k tokens and 2.0 turns. That is 235k fewer tokens, 64%.</p>
+</figure><!--/slot:hero-->
 
   <section class="section" aria-labelledby="result">
     <h2 id="result" class="section-title">Headline result</h2>
     <!--slot:figures--><p class="group-title">Best configuration against no index, light model class, one agent answering three lookups</p>
     <dl class="figures">
-      <div class="figure card"><dt class="figure-label">Tokens per task</dt><dd class="figure-value">130k</dd><dd class="figure-note">No index: 365k, 64% fewer</dd></div>
-      <div class="figure card"><dt class="figure-label">Turns per task</dt><dd class="figure-value">2.0</dd><dd class="figure-note">No index: 5.0</dd></div>
-      <div class="figure card"><dt class="figure-label">Fully correct runs</dt><dd class="figure-value">3 of 3</dd><dd class="figure-note">No index: 4 of 5</dd></div>
-      <div class="figure card"><dt class="figure-label">Answers correct</dt><dd class="figure-value">100%</dd><dd class="figure-note">No index: 98%</dd></div>
+      <div class="figure card spot"><dt class="figure-label">Tokens per task</dt><dd class="figure-value" data-count="tokens" data-from="364508" data-to="129954">130k</dd><dd class="figure-note">No index: 365k, 64% fewer</dd></div>
+      <div class="figure card spot"><dt class="figure-label">Turns per task</dt><dd class="figure-value" data-count="turns" data-from="5.0000" data-to="2.0000">2.0</dd><dd class="figure-note">No index: 5.0</dd></div>
+      <div class="figure card spot"><dt class="figure-label">Fully correct runs</dt><dd class="figure-value" data-count="of" data-from-text="4 of 5">3 of 3</dd><dd class="figure-note">No index: 4 of 5</dd></div>
+      <div class="figure card spot"><dt class="figure-label">Answers correct</dt><dd class="figure-value" data-count="share" data-from="0.9833" data-to="1.0000">100%</dd><dd class="figure-note">No index: 98%</dd></div>
     </dl><!--/slot:figures-->
   </section>
 
+  <!--slot:video--><!--/slot:video-->
+
   <section class="section" aria-labelledby="best">
     <h2 id="best" class="section-title">Best configuration</h2>
-    <!--slot:best--><div class="card best-card">
+    <!--slot:best--><div class="card best-card spot tilt">
     <div class="best-head"><h3 class="best-name">Our engine, first generation, with embeddings</h3><span class="tag">Best</span></div>
     <ul class="rows">
       <li class="row"><span class="label">Tokens per task</span><span class="value">130k</span></li>
@@ -91,11 +107,14 @@
   </footer>
 </main>
 <!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
-    <a href="index.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4v-5.5H9V20H5a1 1 0 0 1-1-1z"/></svg><span>Overview</span></a>
+    <span class="tab-ind" aria-hidden="true" style="--n:4;--i:0"></span>
+    <a href="index.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
     <a href="benchmarks.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg><span>Benchmarks</span></a>
     <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
-<script src="assets/app.js?v=5c91db70"></script>
+<script src="data/showcase.js?v=69eb2dbe"></script>
+<script src="assets/app.js?v=aa42102c"></script>
+<script src="assets/home.js?v=05f7bad8"></script>
 </body>
 </html>
