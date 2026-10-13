@@ -16,6 +16,13 @@ Python's syntax tree:
 2. Where another function is defined, what parameters it takes and who calls it.
 3. Which function registers a git merge driver, and which one removes it.
 
+Round five added a second set of three questions of the same three shapes, the held-out set
+(set B, the questions above are set A). They were written after the Rust engine was built and
+the engine's builders never saw them, because the builders had seen set A. An arm id that ends
+in `h` is its base arm run on set B (`RGSh` is `RGS`); an id that ends in `r` is its base arm run
+again on the day of round five (`A0r` is `A0`). Every cell and every agent row in `results.json`
+carries `"set": "A"` or `"set": "B"`.
+
 An agent is told which commands it may use (one "method") and answers through a
 structured output, so grading is a script, not a judgment. Each method is run
 on three model tiers and in three setups: one agent, three subagents started
@@ -39,6 +46,7 @@ benchmark/
     results.json                  every agent and every run, generated from transcripts
     index.json                    index build times and sizes, measured by the scripts below
     hooks.json                    what token-goat's hooks are: events, matchers, the block they add
+    engine.json                   speed of the first-generation engine and of pgr, with a `public` list and a `how` text
   harness/
     token-benchmark.workflow.js   the agent runs: methods, prompts, tiers, setups
     arms.json                     what each method is and the commands it was given
@@ -95,10 +103,22 @@ holds what they printed.
 
 ## Reading the numbers
 
-- One repository, one language, three easy questions. Most cells are one to
-  six runs. A difference of one turn between two methods is noise.
+- One repository, one language, three easy questions in each of two sets. Most
+  cells are one to six runs; the cells of round five are three runs, a few two.
+  A difference of one turn between two methods is noise, and so is a difference
+  of one fully correct run.
 - The start-up context (about 63k tokens here) belongs to the machine the test
-  ran on: its client, skills and connected tools. Yours will differ.
+  ran on: its client, skills and connected tools. Yours will differ. It grew by
+  about 2k tokens between the earlier session and round five, which is why the
+  public leaderboard shows the same-day repeats A0r, S1r and S3r and not A0, S1
+  and S3.
+- In round five the control's file reads passed through token-goat's read
+  compression, which hid lines the control needed in some runs. A0, from the
+  earlier session, ran without it. The control's fully correct counts for both
+  are in the Round five section of RESULTS.md.
+- The memory of RM, RGM, RSM and RGSM was filled beforehand by a session that
+  answered the same three questions, which is a best case; RGSO and RGSOh by a
+  session that explored the repository without seeing any question.
 - Costs are list prices applied to measured tokens, shown with the start-up
   context already cached ("warm") and not cached ("cold").
 - Round 2 and part of round 4 ran while other jobs held every processor core,
@@ -117,7 +137,15 @@ holds what they printed.
 
 `docs/` is published and `report/` is not. `build_site.py` writes both, and `docs/` carries
 only what `arms.json` marks with a `public` object (a slug, a generic name, a family and an
-order), the measured numbers for those methods, and findings in plain sentences. Two optional
+order), the measured numbers for those methods, and findings in plain sentences. A held-out arm
+(`group` `heldout`) has no `public` object: its points join the public configuration of the public
+arm that shares its `base`, as question set "held-out", and the points of the public arm itself are
+question set "original". The three repeats carry the public objects of A0, S1 and S3, so the
+leaderboard compares runs made on the same day. The best configuration is the one with the highest
+share of fully correct runs among those run at least three times in each of the four cells (both
+question sets, light and mid class), a tie going to the lower mean tokens over the four cells; when
+no configuration has all four cells the rule falls back to the light class on the original questions.
+Two optional
 files add to it: `benchmark/data/engine.json` (a `public` list of rows with `name`,
 `build_seconds`, `query_ms` and `index_mb`, shown as an engine speed table) and
 `benchmark/data/install.json` (a `public` object with `status` and, once the package is public,

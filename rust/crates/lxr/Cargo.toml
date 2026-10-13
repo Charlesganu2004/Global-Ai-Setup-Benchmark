@@ -9,6 +9,13 @@ publish.workspace = true
 name = "pgr"
 path = "src/main.rs"
 
+[features]
+# Compiles the embedding model into the program (include_bytes! of tokenizer.json and
+# model.safetensors), so that pgr finds it however the executable was installed. The build needs
+# the environment variable PGR_EMBED_MODEL_DIR: the absolute path of the folder that holds the two
+# files. Without the variable the build stops with an error that says so.
+embedded-model = []
+
 [dependencies]
 lxr-core.workspace = true
 lxr-extract.workspace = true

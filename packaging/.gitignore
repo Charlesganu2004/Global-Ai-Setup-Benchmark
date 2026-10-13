@@ -1,0 +1,9 @@
+# Virtual environments, build output and scratch files of the wheel build. Nothing here
+# is source: the staged model alone is 32 MB and the wheels hold a compiled binary.
+.venv/
+stage/
+dist/
+.test-*/
+__pycache__/
+*.pyc
+*.whl

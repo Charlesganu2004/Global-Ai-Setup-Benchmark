@@ -1,0 +1,24 @@
+# Everything here is rebuilt by the commands in README.md; only the source is kept in git.
+node_modules/
+.venv/
+.home/
+.npm-cache/
+.edge-profile-*/
+.shot-*/
+.render-*/
+.numbers-*/
+bin/
+models/
+build/
+renders/
+scratch/
+logs/
+hf-trial/
+frames/
+*.pyc
+__pycache__/
+*.master.mp4
+*.wav
+*.npy
+*.log
+

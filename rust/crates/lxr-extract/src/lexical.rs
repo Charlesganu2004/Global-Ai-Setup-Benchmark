@@ -5,12 +5,15 @@
 //! language has a small recognizer for its declaration shapes. Spans come from bracket
 //! matching, indentation (Python) or a matching `end` (Ruby).
 
-use crate::common::{fold, Parts};
+use crate::common::{fold, without_comments, Parts};
 use lxr_core::{Call, Import, Lang, SymKind, Symbol};
+use std::collections::HashMap;
 
 /// The facts of `text`, found from tokens alone. Never fails: a file this extractor
 /// cannot make sense of simply yields fewer facts.
 pub fn parse(text: &str, lang: Lang) -> Parts {
+    // A byte order mark is not part of the first token. It leaves the line numbers as they are.
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
     let masked = mask(text, lang);
     let mut ex = Ex::new(text, lang, &masked);
     ex.run();
@@ -18,6 +21,15 @@ pub fn parse(text: &str, lang: Lang) -> Parts {
 }
 
 const NONE: usize = usize::MAX;
+
+/// A search for the closing line of a heredoc that ends at the end of the text finds nothing,
+/// and the next `<<word` that is not closed either reads the same lines again. The bytes read by
+/// searches that found nothing are held to this many for each byte of the text, plus a flat
+/// amount for a small text, so that a file of unclosed `<<word` lines costs a few passes over the
+/// file and not one pass for each line. Text that is not made to be slow never comes near it;
+/// past it, a `<<word` is read as the operator and not as the start of a heredoc.
+const HEREDOC_WASTE_PER_BYTE: usize = 8;
+const HEREDOC_WASTE_FLOOR: usize = 64 * 1024;
 
 // ---------------------------------------------------------------------------------
 // Masking
@@ -41,14 +53,62 @@ pub(crate) fn mask(text: &str, lang: Lang) -> Masked {
         strings: Vec::new(),
         comments: Vec::new(),
         lang,
-        heredocs: Vec::new(),
+        heredocs: HashMap::new(),
+        heredoc_next: (NONE, 0),
+        heredoc_waste: 0,
+        line_end_memo: (NONE, 0),
         brace: 0,
         templates: Vec::new(),
         last: 0,
         last_word: (0, 0),
+        // A PHP file is text up to its first open tag. A file with no tag at all is taken for code.
+        php_text: lang == Lang::Php && (0..text.len()).any(|i| php_open_len(text.as_bytes(), i).is_some()),
     };
     masker.run();
     Masked { code: masker.out, strings: masker.strings, comments: masker.comments }
+}
+
+/// True when the C-family source `text` uses something that only C++ has: a class, a
+/// namespace, a template, a scope operator or an access label. For a header file, whose
+/// extension does not say whether it is C or C++.
+pub(crate) fn uses_cplusplus(text: &str) -> bool {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+    let masked = mask(text, Lang::Cpp);
+    let b = &masked.code[..];
+    let next = |mut j: usize| {
+        while b.get(j).map_or(false, |c| c.is_ascii_whitespace()) {
+            j += 1;
+        }
+        b.get(j).copied().unwrap_or(0)
+    };
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b':' && b.get(i + 1) == Some(&b':') {
+            return true;
+        }
+        if !is_ident_start(b[i]) {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 1;
+        while j < b.len() && is_word_byte(b[j]) {
+            j += 1;
+        }
+        let after = next(j);
+        let only_cpp = match &b[i..j] {
+            b"class" => is_ident_start(after),
+            b"namespace" => is_ident_start(after) || after == b'{',
+            b"template" => after == b'<',
+            b"typename" | b"constexpr" | b"nullptr" | b"noexcept" => true,
+            b"public" | b"private" | b"protected" => after == b':',
+            _ => false,
+        };
+        if only_cpp {
+            return true;
+        }
+        i = j;
+    }
+    false
 }
 
 fn is_js(lang: Lang) -> bool {
@@ -85,8 +145,15 @@ struct Masker<'a> {
     strings: Vec<(usize, usize)>,
     comments: Vec<(usize, usize)>,
     lang: Lang,
-    /// Heredoc bodies found on the current line: (first byte, byte of the closing line).
-    heredocs: Vec<(usize, usize)>,
+    /// Heredoc bodies found on the current line, by their first byte: the byte of the closing line.
+    heredocs: HashMap<usize, usize>,
+    /// Where the body of the next heredoc on the current command line begins, after the bodies
+    /// of the ones before it: (first byte of the lines after the command line, that start).
+    heredoc_next: (usize, usize),
+    /// Bytes read by searches for a closing line that found none. See `HEREDOC_WASTE_PER_BYTE`.
+    heredoc_waste: usize,
+    /// The last line end found by `line_end`: (where its search began, the line break).
+    line_end_memo: (usize, usize),
     /// Curly brace depth, used to find the end of a `${ ... }` hole in a template string.
     brace: i32,
     templates: Vec<i32>,
@@ -94,6 +161,21 @@ struct Masker<'a> {
     /// a regular expression from a division.
     last: u8,
     last_word: (usize, usize),
+    /// PHP only: the scan is outside the `<?php ... ?>` tags, in text that is not code.
+    php_text: bool,
+}
+
+/// The length of the PHP open tag at `i`, `<?php` followed by white space or `<?=`.
+fn php_open_len(b: &[u8], i: usize) -> Option<usize> {
+    if b.get(i) != Some(&b'<') || b.get(i + 1) != Some(&b'?') {
+        return None;
+    }
+    if b.get(i + 2) == Some(&b'=') {
+        return Some(3);
+    }
+    let word = b.get(i + 2..i + 5)?;
+    let ends = b.get(i + 5).map_or(true, |c| c.is_ascii_whitespace());
+    (word.eq_ignore_ascii_case(b"php") && ends).then_some(5)
 }
 
 impl<'a> Masker<'a> {
@@ -139,9 +221,18 @@ impl<'a> Masker<'a> {
         let n = self.b.len();
         let mut i = 0;
         while i < n {
+            if self.php_text {
+                i = self.php_skip_text(i);
+                continue;
+            }
             let c = self.b[i];
             let d = self.at(i + 1);
             i = match c {
+                b'?' if self.lang == Lang::Php && d == b'>' => {
+                    self.blank(i, i + 2);
+                    self.php_text = true;
+                    i + 2
+                }
                 b'\n' => self.newline(i),
                 b' ' | b'\t' | b'\r' => i + 1,
                 b'/' if self.slash_comments() && d == b'/' => self.line_comment(i),
@@ -172,10 +263,26 @@ impl<'a> Masker<'a> {
         }
     }
 
+    /// Blanks the text of a PHP file from `i` to the next open tag, and the tag itself, and
+    /// returns where the code begins.
+    fn php_skip_text(&mut self, i: usize) -> usize {
+        let n = self.b.len();
+        let mut j = i;
+        while j < n {
+            if let Some(tag) = php_open_len(self.b, j) {
+                self.blank(i, j + tag);
+                self.php_text = false;
+                return j + tag;
+            }
+            j += 1;
+        }
+        self.blank(i, n);
+        n
+    }
+
     fn newline(&mut self, i: usize) -> usize {
-        if let Some(pos) = self.heredocs.iter().position(|h| h.0 == i + 1) {
-            let (from, to) = self.heredocs.remove(pos);
-            self.blank(from, to);
+        if let Some(to) = self.heredocs.remove(&(i + 1)) {
+            self.blank(i + 1, to);
             return to.max(i + 1);
         }
         i + 1
@@ -183,8 +290,10 @@ impl<'a> Masker<'a> {
 
     fn line_comment(&mut self, i: usize) -> usize {
         let n = self.b.len();
+        let php = self.lang == Lang::Php;
         let mut e = i;
-        while e < n && self.b[e] != b'\n' {
+        // In PHP a line comment also ends at a closing tag.
+        while e < n && self.b[e] != b'\n' && !(php && self.b[e] == b'?' && self.at(e + 1) == b'>') {
             e += 1;
         }
         let end = if e > i && self.b[e - 1] == b'\r' { e - 1 } else { e };
@@ -254,8 +363,10 @@ impl<'a> Masker<'a> {
         }
         let hashes = k - i;
         if self.at(k) != b'"' {
+            // No hash in the run can open a raw string either, so the whole run is passed over;
+            // starting again one byte on would read the rest of it again, once for each hash.
             self.last = b'#';
-            return i + 1;
+            return k;
         }
         let n = self.b.len();
         let mut j = k + 1;
@@ -839,13 +950,13 @@ impl<'a> Masker<'a> {
                 return i + 2;
             }
         }
-        let mut eol = j;
-        while eol < n && self.b[eol] != b'\n' {
-            eol += 1;
-        }
-        let body_start = (eol + 1).min(n);
-        if self.heredocs.iter().any(|h| h.0 == body_start) {
-            return j;
+        let eol = self.line_end(j);
+        // Heredocs on one command line read their bodies one after the other: a second one
+        // starts where the first one's closing line ends.
+        let lines_after = (eol + 1).min(n);
+        let body_start = if self.heredoc_next.0 == lines_after { self.heredoc_next.1 } else { lines_after };
+        if self.heredoc_waste > HEREDOC_WASTE_PER_BYTE * n + HEREDOC_WASTE_FLOOR {
+            return i + 2;
         }
         let mut p = body_start;
         while p < n {
@@ -869,12 +980,30 @@ impl<'a> Masker<'a> {
                 line == &delim[..]
             };
             if hit {
-                self.heredocs.push((body_start, p));
+                self.heredocs.insert(body_start, p);
+                self.heredoc_next = (lines_after, (e + 1).min(n));
                 return j;
             }
             p = e + 1;
         }
+        self.heredoc_waste += n - body_start;
         i + 2
+    }
+
+    /// The offset of the line break that ends the line holding `from`, or the end of the text.
+    /// The search is remembered: a line with many candidates for a heredoc is read to its end once.
+    fn line_end(&mut self, from: usize) -> usize {
+        let (began, end) = self.line_end_memo;
+        if from >= began && from <= end {
+            return end;
+        }
+        let n = self.b.len();
+        let mut e = from;
+        while e < n && self.b[e] != b'\n' {
+            e += 1;
+        }
+        self.line_end_memo = (from, e);
+        e
     }
 }
 
@@ -989,10 +1118,76 @@ fn directive(text: &str, b: &[u8], i: usize, lang: Lang, lines: &Lines, imports:
     e
 }
 
+/// A conditional-compilation group (`#if` to `#endif`) that the tokenizer is inside of.
+struct Cond {
+    /// Index of the first token of each branch met so far.
+    branches: Vec<usize>,
+    /// How many more brackets each finished branch opens than it closes.
+    nets: Vec<i32>,
+    /// The same for the branch being read, settled at the next directive.
+    net: i32,
+}
+
+/// Opens minus closes among the brackets of `toks`.
+fn net_brackets(toks: &[Tok], b: &[u8]) -> i32 {
+    toks.iter()
+        .filter(|t| t.k == K::P && t.e - t.s == 1)
+        .map(|t| match b[t.s] {
+            b'(' | b'[' | b'{' => 1,
+            b')' | b']' | b'}' => -1,
+            _ => 0,
+        })
+        .sum()
+}
+
+/// Keeps the brackets of a file with alternative branches (`#if`, `#else`, `#endif`) in step.
+///
+/// The branches of a group are alternatives, but bracket matching reads them one after the
+/// other. When the branches of a group do not each close what they open, as in two versions
+/// of a function header that share one body, only the first branch is kept, and the tokens of
+/// the others are dropped. Branches that are complete in themselves are all kept.
+/// `mark` is the index of the first token that no directive has accounted for yet.
+fn conditional(directive: &str, toks: &mut Vec<Tok>, b: &[u8], conds: &mut Vec<Cond>, mark: &mut usize) {
+    let word = directive.trim_start_matches('#').trim_start();
+    let word = word.split(|c: char| !c.is_ascii_alphanumeric()).next().unwrap_or("");
+    let opens = matches!(word, "if" | "ifdef" | "ifndef");
+    let turns = matches!(word, "elif" | "elifdef" | "elifndef" | "elseif" | "else");
+    if !opens && !turns && word != "endif" {
+        return;
+    }
+    if let Some(group) = conds.last_mut() {
+        group.net += net_brackets(&toks[(*mark).min(toks.len())..], b);
+    }
+    if opens {
+        conds.push(Cond { branches: vec![toks.len()], nets: Vec::new(), net: 0 });
+    } else if turns {
+        if let Some(group) = conds.last_mut() {
+            group.nets.push(group.net);
+            group.net = 0;
+            group.branches.push(toks.len());
+        }
+    } else if let Some(mut group) = conds.pop() {
+        group.nets.push(group.net);
+        let alternatives = group.nets.len() > 1 && group.nets.iter().any(|&net| net != 0);
+        let kept = if alternatives {
+            toks.truncate(group.branches[1]);
+            group.nets[0]
+        } else {
+            group.nets.iter().sum()
+        };
+        if let Some(parent) = conds.last_mut() {
+            parent.net += kept;
+        }
+    }
+    *mark = toks.len();
+}
+
 fn tokenize(text: &str, m: &Masked, lang: Lang, lines: &Lines, imports: &mut Vec<Import>) -> Vec<Tok> {
     let b = &m.code[..];
     let n = b.len();
     let mut toks: Vec<Tok> = Vec::with_capacity(n / 5 + 8);
+    let mut conds: Vec<Cond> = Vec::new();
+    let mut mark = 0;
     let mut si = 0;
     let mut i = 0;
     let mut cont = false;
@@ -1018,7 +1213,9 @@ fn tokenize(text: &str, m: &Masked, lang: Lang, lines: &Lines, imports: &mut Vec
                 i += 1;
             }
             b'#' if directives && line_start(b, i) => {
+                let from = i;
                 i = directive(text, b, i, lang, lines, imports);
+                conditional(&text[from..i], &mut toks, b, &mut conds, &mut mark);
                 while si < m.strings.len() && m.strings[si].0 < i {
                     si += 1;
                 }
@@ -1177,12 +1374,33 @@ enum Body {
     Nothing,
 }
 
+/// Longest qualified name kept, in bytes. Braces that are never closed nest one name per line,
+/// and every name would carry the whole chain before it.
+const MAX_QUAL: usize = 512;
+
+/// Most regions a scan is inside of at once. Real code does not nest this deep; a file of
+/// unclosed braces would otherwise keep a frame for every line.
+const MAX_FRAMES: usize = 128;
+
+/// Deepest group of braces in a Rust `use` tree that is read.
+const MAX_USE_DEPTH: usize = 64;
+
+/// `name` under `prefix`. A result longer than `MAX_QUAL` loses its outermost names.
 fn join(prefix: &str, name: &str) -> String {
     if prefix.is_empty() {
-        name.to_string()
-    } else {
-        format!("{prefix}.{name}")
+        return name.to_string();
     }
+    let mut qual = format!("{prefix}.{name}");
+    if qual.len() > MAX_QUAL {
+        let mut cut = qual.len() - MAX_QUAL;
+        while !qual.is_char_boundary(cut) {
+            cut += 1;
+        }
+        // Start at a name, not in the middle of one, when there is a name boundary to start at.
+        let from = qual[cut..].find('.').map(|dot| cut + dot + 1).filter(|&from| from < qual.len()).unwrap_or(cut);
+        qual.drain(..from);
+    }
+    qual
 }
 
 struct Ex<'a> {
@@ -1383,7 +1601,7 @@ impl<'a> Ex<'a> {
     fn add_sym(&mut self, n: New) -> usize {
         let first = self.toks[n.first];
         let sig_end = n.sig_end.max(first.e).min(self.text.len());
-        let sig = fold(&self.text[first.s..sig_end]);
+        let sig = fold(&without_comments(self.text, first.s, sig_end, &self.m.comments, usize::MAX));
         let doc = self.doc_above(first.line);
         self.syms.push(Sym {
             name: n.name,
@@ -1429,8 +1647,16 @@ impl<'a> Ex<'a> {
     /// Opens a region for the brace at `open` and returns the token to continue from.
     fn enter(&mut self, open: usize, sym: Option<usize>, prefix: String, kind: FKind) -> usize {
         let end = if self.mate[open] == NONE { self.n() } else { self.mate[open] };
-        self.frames.push(Frame { end, sym, prefix, kind });
+        self.push_frame(Frame { end, sym, prefix, kind });
         open + 1
+    }
+
+    /// Opens a region, unless the scan is already `MAX_FRAMES` regions deep. What is inside a
+    /// region that was not opened is filed under the one around it.
+    fn push_frame(&mut self, frame: Frame) {
+        if self.frames.len() < MAX_FRAMES {
+            self.frames.push(frame);
+        }
     }
 
     /// Line of the brace that closes the one at `open`, or the last line of the file.
@@ -1809,6 +2035,11 @@ impl<'a> Ex<'a> {
         let mut depth = 0i32;
         for i in 0..n {
             let t = self.toks[i];
+            // A `def` or `class` at the left margin cannot sit inside a bracket, so one that
+            // appears while a bracket is open means the bracket was never closed.
+            if depth > 0 && self.first_on_line(i) && self.starts_definition_at_margin(i) {
+                depth = 0;
+            }
             if depth == 0 && !t.cont && (i == 0 || t.line > self.toks[i - 1].end_line) {
                 starts.push(i);
             }
@@ -1908,6 +2139,12 @@ impl<'a> Ex<'a> {
         while let Some((_, sym)) = open.pop() {
             self.close_indented(sym, prev_last);
         }
+    }
+
+    /// True when token `i` is a `def`, `async def` or `class` that stands in the first column.
+    fn starts_definition_at_margin(&self, i: usize) -> bool {
+        let keyword = self.id(i, "def") || self.id(i, "class") || (self.id(i, "async") && self.id(i + 1, "def"));
+        keyword && self.toks[i].s == self.lines.start_of(self.toks[i].line)
     }
 
     fn close_indented(&mut self, sym: usize, last_tok: usize) {
@@ -2102,8 +2339,18 @@ impl<'a> Ex<'a> {
         None
     }
 
+    /// True for the token that joins a receiver to the member it is called on. The arrow does
+    /// that in C, C++, C# (pointers) and PHP only; elsewhere it is the arrow of a lambda, of a
+    /// `case` or `when` branch, of a return type, and what comes before it is not a receiver.
     fn is_sep(&self, j: usize) -> bool {
-        self.toks[j].k == K::P && matches!(self.tx(j), "." | "->" | "::" | "?.")
+        if self.toks[j].k != K::P {
+            return false;
+        }
+        match self.tx(j) {
+            "." | "::" | "?." => true,
+            "->" => matches!(self.lang, Lang::C | Lang::Cpp | Lang::CSharp | Lang::Php),
+            _ => false,
+        }
     }
 
     /// The chain a call is made on: `self.cache` for `self.cache.load(x)`.
@@ -2673,7 +2920,7 @@ impl<'a> Ex<'a> {
                 let end = self.semi_end(i + 1);
                 let to = if self.p(end, ";") { end } else { end + 1 };
                 let mut found = Vec::new();
-                self.use_tree(i + 1, to, &mut Vec::new(), &mut found);
+                self.use_tree(i + 1, to, &mut Vec::new(), &mut found, 0);
                 for (module, name, alias) in found {
                     self.imports.push(Import { module, name, alias, level: 0, line });
                 }
@@ -2734,8 +2981,10 @@ impl<'a> Ex<'a> {
         Some((name, text, p))
     }
 
-    /// The names a `use` declaration brings in, as (module, name, alias).
-    fn use_tree(&self, from: usize, to: usize, prefix: &mut Vec<String>, out: &mut Vec<(String, String, String)>) {
+    /// The names a `use` declaration brings in, as (module, name, alias). `depth` is how many
+    /// groups of braces the tree is inside of; a tree nested deeper than `MAX_USE_DEPTH` is left
+    /// out, so that the recursion cannot use up the stack on a file that is nothing but braces.
+    fn use_tree(&self, from: usize, to: usize, prefix: &mut Vec<String>, out: &mut Vec<(String, String, String)>, depth: usize) {
         let base = prefix.len();
         let mut j = from;
         if self.p(j, "::") {
@@ -2760,13 +3009,17 @@ impl<'a> Ex<'a> {
                 prefix.truncate(base);
                 return;
             } else if self.p(j, "{") && self.mate[j] != NONE {
+                if depth >= MAX_USE_DEPTH {
+                    prefix.truncate(base);
+                    return;
+                }
                 let close = self.mate[j];
                 let mut item = j + 1;
                 let mut k = j + 1;
                 while k <= close {
                     if k == close || self.p(k, ",") {
                         if k > item {
-                            self.use_tree(item, k, prefix, out);
+                            self.use_tree(item, k, prefix, out, depth + 1);
                         }
                         item = k + 1;
                     } else if self.p(k, "{") && self.mate[k] != NONE {
@@ -3147,7 +3400,7 @@ impl<'a> Ex<'a> {
         match self.find_body_nl(j, false) {
             Body::Braces(b) if !self.p(j, "=") => Some(self.enter(b, None, qual, FKind::Ns)),
             Body::Semi(s) if self.lang == Lang::CSharp && !name.is_empty() => {
-                self.frames.push(Frame { end: self.n(), sym: None, prefix: qual, kind: FKind::Ns });
+                self.push_frame(Frame { end: self.n(), sym: None, prefix: qual, kind: FKind::Ns });
                 Some(s + 1)
             }
             _ => None,
@@ -3943,7 +4196,7 @@ impl<'a> Ex<'a> {
                     return Some(self.enter(j, None, qual, FKind::Ns));
                 }
                 if self.p(j, ";") && !name.is_empty() {
-                    self.frames.push(Frame { end: self.n(), sym: None, prefix: qual, kind: FKind::Ns });
+                    self.push_frame(Frame { end: self.n(), sym: None, prefix: qual, kind: FKind::Ns });
                     return Some(j + 1);
                 }
                 None
@@ -5993,5 +6246,105 @@ my-func () {
                 }
             }
         }
+    }
+
+    fn sigs(f: &FileFacts) -> Vec<String> {
+        f.symbols.iter().map(|s| s.sig.clone()).collect()
+    }
+
+    #[test]
+    fn an_arrow_is_a_member_access_only_where_the_language_has_one() {
+        let java = "class A {\n  void f(java.util.List<String> xs, int k) {\n    xs.stream().map(x -> convert(x));\n    switch (k) { case 1 -> compute(); default -> other(); }\n  }\n}\n";
+        assert_eq!(
+            calls(&facts(java, Lang::Java)),
+            ["A.f: xs.stream @3", "A.f: xs.stream().map @3", "A.f: convert @3", "A.f: compute @4", "A.f: other @4"]
+        );
+        let kotlin = "class C {\n    fun f(x: Any) {\n        when (x) {\n            is Foo -> handle(x)\n            1 -> one()\n            else -> other()\n        }\n    }\n}\n";
+        assert_eq!(calls(&facts(kotlin, Lang::Kotlin)), ["C.f: handle @4", "C.f: one @5", "C.f: other @6"]);
+        // Where the arrow does reach a member, it still does.
+        assert_eq!(calls(&facts("void f() { p->run(1); }\n", Lang::C)), ["f: p.run @1"]);
+        assert_eq!(calls(&facts("class A { void f() { p->run(1); } }\n", Lang::CSharp)), ["A.f: p.run @1"]);
+    }
+
+    #[test]
+    fn a_byte_order_mark_changes_nothing_about_what_is_found() {
+        for (src, lang) in corpus() {
+            let plain = facts(src, lang);
+            let marked = facts(&format!("\u{feff}{src}"), lang);
+            assert_eq!(defs(&plain), defs(&marked), "{lang:?}");
+            assert_eq!(calls(&plain), calls(&marked), "{lang:?}");
+            assert_eq!(imports(&plain), imports(&marked), "{lang:?}");
+            assert_eq!(sigs(&plain), sigs(&marked), "{lang:?}");
+        }
+    }
+
+    #[test]
+    fn php_text_outside_the_tags_is_not_code() {
+        let two = "<?php class A { function f() {} } ?>\n<p>Don't do this</p>\n<?php function g() { h(); } class B { function m() {} } ?>\n";
+        let f = facts(two, Lang::Php);
+        assert_eq!(defs(&f), ["A class 1-1", "A.f method 1-1", "g function 3-3", "B class 3-3", "B.m method 3-3"]);
+        assert_eq!(calls(&f), ["g: h @3"]);
+
+        let page = "<html>\n<p>It's \"here\"</p>\n<?php\nfunction f() { g(); }\n?>\n<b><?= count($a) ?></b>\n";
+        let f = facts(page, Lang::Php);
+        assert_eq!(defs(&f), ["f function 4-4"]);
+        assert_eq!(calls(&f), ["f: g @4", "-: count @6"]);
+
+        // A line comment ends at the closing tag.
+        let comment = "<?php // note ?>\n<p>don't</p>\n<?php function z() {}\n";
+        assert_eq!(defs(&facts(comment, Lang::Php)), ["z function 3-3"]);
+
+        // A file with no open tag at all is read as code, the way a snippet is.
+        assert_eq!(defs(&facts("function f() { g(); }\n", Lang::Php)), ["f function 1-1"]);
+    }
+
+    #[test]
+    fn an_inactive_preprocessor_branch_that_opens_a_brace_does_not_swallow_the_file() {
+        let c = "#ifdef WIN32\nint f(int a) {\n#else\nint f(long a) {\n#endif\n  return a;\n}\nint g(void) { return 1; }\nint h(void) { return 2; }\n";
+        let f = facts(c, Lang::C);
+        assert_eq!(defs(&f), ["f function 2-7", "g function 8-8", "h function 9-9"]);
+        assert_eq!(calls(&f), Vec::<String>::new());
+
+        let chain = "#if A\nvoid f() {\n#elif B\nvoid f2() {\n#else\nvoid f3() {\n#endif\n  g();\n}\nvoid h() {}\n";
+        let f = facts(chain, Lang::Cpp);
+        assert_eq!(defs(&f), ["f function 2-9", "h function 10-10"]);
+        assert_eq!(calls(&f), ["f: g @8"]);
+
+        // Branches that each stand on their own are all kept.
+        let alone = "#ifdef _WIN32\nint win(void) { return 1; }\n#else\nint posix(void) { return 2; }\n#endif\nint tail(void) { return 3; }\n";
+        assert_eq!(defs(&facts(alone, Lang::C)), ["win function 2-2", "posix function 4-4", "tail function 6-6"]);
+
+        // One branch that opens a scope and a later one that closes it are not alternatives.
+        let guard = "#ifdef __cplusplus\nextern \"C\" {\n#endif\nint a(void) { return 1; }\n#ifdef __cplusplus\n}\n#endif\nint b(void) { return 2; }\n";
+        assert_eq!(defs(&facts(guard, Lang::Cpp)), ["a function 4-4", "b function 8-8"]);
+
+        // Groups inside a branch are settled first.
+        let nested = "#if A\n#if B\nvoid x() {\n#else\nvoid y() {\n#endif\n#else\nvoid z() {\n#endif\n  g();\n}\nvoid w() {}\n";
+        assert_eq!(defs(&facts(nested, Lang::C)), ["x function 3-11", "w function 12-12"]);
+
+        // A group that is never closed is left as it is.
+        assert_eq!(defs(&facts("#if A\nint a(void) { return 1; }\n#else\nint b(void) { return 2; }\n", Lang::C)), ["a function 2-2", "b function 4-4"]);
+    }
+
+    #[test]
+    fn a_python_def_at_the_left_margin_ends_an_unclosed_bracket() {
+        let py = "x = foo(\ndef a():\n    pass\nclass B:\n    def m(self):\n        pass\n";
+        assert_eq!(defs(&facts(py, Lang::Python)), ["a function 2-3", "B class 4-6", "B.m method 5-6"]);
+        let asynchronous = "x = [1,\nasync def a():\n    pass\n";
+        assert_eq!(defs(&facts(asynchronous, Lang::Python)), ["a function 2-3"]);
+        // A bracket that does close still joins its lines, whatever they start with.
+        let joined = "x = foo(1,\n    2,\n)\ndef a():\n    pass\n";
+        assert_eq!(defs(&facts(joined, Lang::Python)), ["a function 4-5"]);
+    }
+
+    #[test]
+    fn nested_use_trees_are_read_to_the_depth_of_real_code() {
+        let f = facts("use a::{b::{c::{d, e as g}, f}, h};\n", Lang::Rust);
+        assert_eq!(imports(&f), ["a::b::c|d|d|0|1", "a::b::c|e|g|0|1", "a::b|f|f|0|1", "a|h|h|0|1"]);
+        // Far deeper than anyone writes: the recursion stops instead of using the stack.
+        let deep = format!("use {}x{};\nfn f() {{}}\n", "a::{".repeat(500), "}".repeat(500));
+        let f = facts(&deep, Lang::Rust);
+        assert!(f.imports.is_empty());
+        assert_eq!(defs(&f), ["f function 2-2"]);
     }
 }

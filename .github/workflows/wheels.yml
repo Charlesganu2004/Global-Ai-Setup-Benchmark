@@ -1,0 +1,135 @@
+# Builds the peterganurusty wheels (the pgr program as a pip package) for five platforms.
+#
+# Started by hand only: Actions tab, "wheels", "Run workflow". There is no push or pull
+# request trigger, no publish step, no secret, and no source distribution: each job builds
+# a wheel with `maturin build` (never `maturin sdist`, never `--sdist`) and uploads it as a
+# workflow artifact of this run. Nothing leaves GitHub unless a person downloads it.
+#
+# The embedding model (32 MB) is not in the repository, and it is not a file in the wheel: it is
+# compiled into the pgr program (the cargo feature embedded-model, set in
+# rust/crates/lxr/pyproject.toml), which reads it from the folder that the environment variable
+# PGR_EMBED_MODEL_DIR names. Each job downloads the two files the program reads from their public
+# home on huggingface.co at one pinned revision into packaging/stage/model, and
+# packaging/stage.py refuses any file whose SHA-256 differs from the values computed from
+# the local copies. A pinned revision plus hashes means a later change to the model repo
+# cannot alter a wheel unnoticed. Do not replace this with a cache or an artifact from
+# another run: the files would then be unverified.
+#
+# NOT YET RUN. See packaging/README.md for what to check on the first run.
+name: wheels
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: Linux ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Built natively, so the wheel is also run once as a smoke test.
+          - target: x86_64
+            smoke: true
+          # Cross-built in the manylinux cross image of the action; not run.
+          - target: aarch64
+            smoke: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stage the model, licence and notices
+        run: python -I packaging/stage.py --download
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        with:
+          target: ${{ matrix.target }}
+          manylinux: auto
+          # The build runs in a container that has the checkout at /io. The variable has to be
+          # given to the container; it names the folder that stage.py filled.
+          docker-options: -e PGR_EMBED_MODEL_DIR=/io/packaging/stage/model
+          args: --release --strip --locked --out dist --manifest-path rust/crates/lxr/Cargo.toml
+      - name: Check the wheel
+        run: python -I packaging/verify_wheel.py dist/peterganurusty-*.whl
+      - name: Install the wheel as a stranger would and run it
+        if: ${{ matrix.smoke }}
+        run: python -I packaging/stranger_test.py dist/peterganurusty-*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-linux-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  macos:
+    name: macOS ${{ matrix.target }}
+    # One arm64 runner builds both; the x86_64 wheel is cross-compiled with the Apple SDK.
+    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64
+            smoke: false
+          - target: aarch64
+            smoke: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stage the model, licence and notices
+        run: python -I packaging/stage.py --download
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        env:
+          PGR_EMBED_MODEL_DIR: ${{ github.workspace }}/packaging/stage/model
+        with:
+          target: ${{ matrix.target }}
+          args: --release --strip --locked --out dist --manifest-path rust/crates/lxr/Cargo.toml
+      - name: Check the wheel
+        run: python -I packaging/verify_wheel.py dist/peterganurusty-*.whl
+      - name: Install the wheel as a stranger would and run it
+        if: ${{ matrix.smoke }}
+        run: python -I packaging/stranger_test.py dist/peterganurusty-*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-macos-${{ matrix.target }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  windows:
+    name: Windows x86_64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stage the model, licence and notices
+        run: python -I packaging/stage.py --download
+      - name: Build the wheel
+        uses: PyO3/maturin-action@v1
+        env:
+          PGR_EMBED_MODEL_DIR: ${{ github.workspace }}\packaging\stage\model
+        with:
+          target: x64
+          args: --release --strip --locked --out dist --manifest-path rust/crates/lxr/Cargo.toml
+      - name: Check the wheel
+        shell: bash
+        run: python -I packaging/verify_wheel.py dist/peterganurusty-*.whl
+      - name: Install the wheel as a stranger would and run it
+        shell: bash
+        run: python -I packaging/stranger_test.py dist/peterganurusty-*.whl
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel-windows-x86_64
+          path: dist/*.whl
+          if-no-files-found: error

@@ -390,6 +390,14 @@ fn recency_and_proof_boosts_reorder_the_ranked_list_as_the_formulas_say() {
     // The old note was first by rank; its recency boost of about 0.94 puts it second, behind the
     // best fresh note, whose boost is 1.1: 0.918 x 1.1 > 1.0 x 0.936 > 0.836 x 1.1.
     assert_eq!(&order[..3], &[1, 0, 2], "{order:?}");
+    // The same scores as plain numbers, so that a wrong weight in the helpers cannot hide
+    // inside the formulas above. The old note, rank 0 of 12: 1 x (1 + 0.2 x (0.1781 - 0.5)).
+    // A fresh note of rank 1: (1 - 0.9 / 11) x 1.1. The note seen ten times, rank 5:
+    // (1 - 4.5 / 11) x 1.1 x (1 + 0.1 x ln(10) / 10).
+    let score_of = |slot: usize| found.iter().find(|r| r.note.id == made[slot]).unwrap().score;
+    assert!((score_of(0) - 0.93562).abs() < 1e-3, "{}", score_of(0));
+    assert!((score_of(1) - 1.01).abs() < 1e-3, "{}", score_of(1));
+    assert!((score_of(5) - 0.66497).abs() < 1e-3, "{}", score_of(5));
     // Scores fall along the list.
     assert!(found.windows(2).all(|w| w[0].score >= w[1].score));
     // The note seen ten times has a proof boost above that of an unrepeated neighbour.
@@ -866,4 +874,694 @@ fn damaged_vectors_are_made_again() {
         drop(bank);
         assert_eq!(fs::read(&vectors).unwrap(), good, "written again, the same as before");
     }
+}
+
+// ---- banks that share a folder ----
+
+#[test]
+fn two_banks_on_one_folder_never_hand_out_one_id() {
+    let dir = TempDir::new("shared");
+    let mut one = open(&dir);
+    let mut two = open(&dir);
+    let a = add(&mut one, "the scheduler retries failed jobs", NOW)[0].id.clone();
+    let b = add(&mut two, "the renderer paints widgets", NOW + 1)[0].id.clone();
+    assert_ne!(a, b, "two banks must not hand out one id");
+    let c = add(&mut one, "the loader reads the config file", NOW + 2)[0].id.clone();
+    assert_eq!(one.len(), 3, "the first bank saw the note of the second before it wrote");
+    assert_eq!(two.len(), 2);
+    drop(one);
+    drop(two);
+    let bank = open(&dir);
+    assert_eq!(bank.len(), 3);
+    for id in [&a, &b, &c] {
+        assert!(bank.get(id).is_some(), "{id} was lost");
+    }
+}
+
+#[test]
+fn banks_on_several_threads_share_one_folder_without_losing_a_note() {
+    let dir = TempDir::new("shared-threads");
+    let path = dir.bank("b");
+    let workers: Vec<_> = (0..3i64)
+        .map(|t| {
+            let path = path.clone();
+            std::thread::spawn(move || {
+                let mut bank = Bank::open(&path).expect("open the bank");
+                (0..10i64)
+                    .map(|n| {
+                        let text = format!("worker {t} wrote fact {n}");
+                        bank.retain(&text, &retain_at(NOW + t * 100 + n), &NoCode, None).expect("retain")[0].id.clone()
+                    })
+                    .collect::<Vec<String>>()
+            })
+        })
+        .collect();
+    let mut ids: Vec<String> = workers.into_iter().flat_map(|w| w.join().expect("a worker panicked")).collect();
+    assert_eq!(ids.len(), 30);
+    ids.sort();
+    ids.dedup();
+    assert_eq!(ids.len(), 30, "every note got an id of its own");
+    assert_eq!(open(&dir).len(), 30);
+}
+
+#[test]
+fn a_stale_bank_cannot_bring_back_a_note_another_bank_forgot() {
+    let dir = TempDir::new("resurrect");
+    let mut stale = open(&dir);
+    let id = add(&mut stale, "the scheduler retries failed jobs", NOW)[0].id.clone();
+    let mut other = open(&dir);
+    assert!(other.forget(&id).unwrap());
+    // The first bank still holds the note in memory. Retaining the same text must not reinforce
+    // a note that is gone: that would append its full state after the tombstone.
+    let again = add(&mut stale, "the scheduler retries failed jobs", NOW + 1);
+    assert_eq!(again[0].outcome, RetainOutcome::Added);
+    assert_ne!(again[0].id, id);
+    drop(stale);
+    drop(other);
+    let bank = open(&dir);
+    assert!(bank.get(&id).is_none(), "the forgotten note came back");
+    assert_eq!(bank.len(), 1);
+}
+
+#[test]
+fn a_bank_that_is_behind_the_log_leaves_the_caches_alone() {
+    let dir = TempDir::new("behind");
+    let mut behind = open(&dir);
+    add(&mut behind, "the scheduler retries failed jobs", NOW);
+    let mut ahead = open(&dir);
+    add(&mut ahead, "the renderer paints widgets", NOW + 1);
+    drop(ahead);
+    // The first bank has not seen the second note. Its caches would be older than the log,
+    // and would replace the ones the second bank just wrote.
+    drop(behind);
+    let bank = open(&dir);
+    assert!(!bank.dirty, "the caches of the bank that was ahead were replaced");
+    assert_eq!(bank.len(), 2);
+}
+
+// ---- a write that fails ----
+
+#[test]
+fn a_failed_append_leaves_no_trace_in_the_memory_and_the_next_write_works() {
+    let dir = TempDir::new("append-fails");
+    let mut bank = open(&dir);
+    let log = dir.bank("b").join("notes.jsonl");
+    fs::write(&log, b"").unwrap();
+    let mut permissions = fs::metadata(&log).unwrap().permissions();
+    permissions.set_readonly(true);
+    fs::set_permissions(&log, permissions.clone()).unwrap();
+    if fs::OpenOptions::new().append(true).open(&log).is_ok() {
+        // Read-only files are writable here (a superuser): the failure cannot be made.
+        eprintln!("skipped: this account can write to a read-only file");
+        permissions.set_readonly(false);
+        fs::set_permissions(&log, permissions).unwrap();
+        return;
+    }
+    let failed = bank.retain("the first fact never reaches the disk", &retain_at(NOW), &NoCode, None);
+    assert!(failed.is_err());
+    assert_eq!(bank.len(), 0, "a note that was not written must not stay in memory");
+    permissions.set_readonly(false);
+    fs::set_permissions(&log, permissions).unwrap();
+    let kept = add(&mut bank, "the second fact is written", NOW + 1);
+    assert_eq!(kept[0].id, "n000001", "the id of the note that failed was not used up");
+    drop(bank);
+    let bank = open(&dir);
+    assert_eq!(bank.len(), 1);
+    assert_eq!(bank.notes()[0].text, "the second fact is written");
+}
+
+// ---- what counts as the same fact ----
+
+#[test]
+fn texts_that_differ_in_a_closing_symbol_are_different_facts() {
+    let pairs = [
+        ("Requires Python 3.9", "Requires Python 3.9+"),
+        ("We use C", "We use C++"),
+        ("Target is C", "Target is C#"),
+        ("Limit is 5", "Limit is 5%"),
+        ("Call the loader", "Call the loader (twice)"),
+    ];
+    for (plain, marked) in pairs {
+        let dir = TempDir::new("closing-symbol");
+        let mut bank = open(&dir);
+        let first = add(&mut bank, plain, NOW);
+        let second = add(&mut bank, marked, NOW + 1);
+        assert_eq!(second[0].outcome, RetainOutcome::Added, "{plain:?} and {marked:?} are not one fact");
+        assert_ne!(first[0].id, second[0].id);
+        assert_eq!(bank.len(), 2);
+        assert_eq!(bank.get(&second[0].id).unwrap().text, marked);
+    }
+    // Sentence punctuation and case still make no difference.
+    let dir = TempDir::new("closing-dot");
+    let mut bank = open(&dir);
+    let first = add(&mut bank, "Requires Python 3.9", NOW);
+    let again = add(&mut bank, "requires python 3.9.", NOW + 1);
+    assert_eq!(again[0].outcome, RetainOutcome::Reinforced);
+    assert_eq!(again[0].id, first[0].id);
+}
+
+// ---- ids from a log that was edited ----
+
+#[test]
+fn a_log_line_with_an_enormous_id_does_not_move_the_counter() {
+    let dir = TempDir::new("huge-id");
+    let mut bank = open(&dir);
+    let first = add(&mut bank, "the first fact is safe", NOW)[0].id.clone();
+    drop(bank);
+    let log = dir.bank("b").join("notes.jsonl");
+    let mut text = fs::read_to_string(&log).unwrap();
+    text.push_str("{\"forgotten\":\"n18446744073709551615\"}\n");
+    fs::write(&log, text).unwrap();
+    let mut bank = open(&dir);
+    let second = add(&mut bank, "the second fact is safe", NOW + 1)[0].id.clone();
+    let third = add(&mut bank, "the third fact is safe", NOW + 2)[0].id.clone();
+    assert!(second != first && third != first && second != third, "{first} {second} {third}");
+    drop(bank);
+    let bank = open(&dir);
+    assert_eq!(bank.len(), 3);
+    assert_eq!(bank.get(&first).unwrap().text, "the first fact is safe");
+}
+
+// ---- observations of a large group ----
+
+#[test]
+fn an_observation_lists_only_its_newest_sources_and_the_log_grows_by_a_line() {
+    let dir = TempDir::new("obs-growth");
+    let mut bank = open(&dir);
+    let log = dir.bank("b").join("notes.jsonl");
+    let mut grew: Vec<u64> = Vec::new();
+    let mut last = String::new();
+    for n in 0..600 {
+        let before = fs::metadata(&log).map_or(0, |m| m.len());
+        last = add(&mut bank, &format!("`hub_type` handles case {n}."), NOW + n)[0].id.clone();
+        grew.push(fs::metadata(&log).unwrap().len() - before);
+    }
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 1);
+    assert_eq!(obs[0].proof_count, 600, "the count is whole although the list is not");
+    assert_eq!(obs[0].sources.len(), 50);
+    assert_eq!(obs[0].sources.last(), Some(&last));
+    // One retain appends the same number of bytes whether the group has 100 or 600 notes.
+    assert!(grew[599] < grew[99] * 3 / 2, "{} bytes at 600 notes, {} bytes at 100", grew[599], grew[99]);
+}
+
+// ---- directives and the limit ----
+
+#[test]
+fn directives_leave_room_for_the_notes_that_match_the_query() {
+    let dir = TempDir::new("directives-room");
+    let mut bank = open(&dir);
+    let validates = add(&mut bank, "parse_config validates the keys.", NOW)[0].id.clone();
+    let rejects = add(&mut bank, "parse_config rejects unknown sections.", NOW + 1)[0].id.clone();
+    let rules = RetainOpts { kind: Kind::Directive, ..retain_at(NOW + 10) };
+    for n in 0..8 {
+        bank.retain(&format!("never commit generated file number {n}"), &rules, &NoCode, None).unwrap();
+    }
+    let found = bank.recall("how does parse_config work", &recall_at(NOW + 20), &NoCode, None);
+    assert_eq!(found.len(), 8, "the limit still holds");
+    let ranked: Vec<&Recalled> = found.iter().filter(|r| r.note.kind != Kind::Directive).collect();
+    assert_eq!(ranked.len(), 2, "{:?}", texts(&found));
+    assert!(ranked.iter().any(|r| r.note.id == validates) && ranked.iter().any(|r| r.note.id == rejects));
+    assert!(found[..6].iter().all(|r| r.note.kind == Kind::Directive), "directives still come first");
+    let r = bank.reflect("how does parse_config work", &recall_at(NOW + 20), &NoCode, None);
+    assert_eq!(r.facts.len(), 2, "reflect found no fact");
+}
+
+#[test]
+fn directives_use_at_most_half_of_the_token_allowance() {
+    let dir = TempDir::new("directives-tokens");
+    let mut bank = open(&dir);
+    add(&mut bank, "parse_config validates the keys.", NOW);
+    add(&mut bank, "parse_config rejects unknown sections.", NOW + 1);
+    let rules = RetainOpts { kind: Kind::Directive, ..retain_at(NOW + 10) };
+    for n in 0..6 {
+        let text = format!("never commit generated file number {n} {}", "and keep it out of the repository ".repeat(4));
+        bank.retain(&text, &rules, &NoCode, None).unwrap();
+    }
+    // A directive costs 44 tokens and a note 8: 100 tokens hold one directive in its half
+    // and both notes, but not a second directive.
+    let found = bank.recall("how does parse_config work", &RecallOpts { max_tokens: 100, ..recall_at(NOW + 20) }, &NoCode, None);
+    let ranked = found.iter().filter(|r| r.note.kind != Kind::Directive).count();
+    assert_eq!(ranked, 2, "{:?}", texts(&found));
+    assert_eq!(found.len() - ranked, 1);
+    let used: usize = found.iter().map(|r| lxr_core::est_tokens(&r.note.text)).sum();
+    assert!(used <= 100);
+}
+
+// ---- entities and anchors ----
+
+#[test]
+fn definitions_with_alike_names_keep_their_own_entities_and_anchors() {
+    let dir = TempDir::new("alike-names");
+    let code = FakeCode::default();
+    code.define("get_user", "src/users.rs", 1);
+    code.define("get_users", "src/users.rs", 2);
+    let mut bank = open(&dir);
+    bank.retain("`get_user` fetches the row for `Session`.", &retain_at(NOW), &code, None).unwrap();
+    let second = bank.retain("`get_users` pages through `Session` too.", &retain_at(NOW + 60), &code, None).unwrap();
+    let note = bank.get(&second[0].id).unwrap().clone();
+    assert!(note.entities.contains(&"get_users".to_string()), "{:?}", note.entities);
+    assert!(!note.entities.contains(&"get_user".to_string()), "{:?}", note.entities);
+    assert_eq!(note.anchors.len(), 1, "{:?}", note.anchors);
+    assert_eq!((note.anchors[0].qual.as_str(), note.anchors[0].hash), ("get_users", 2));
+    // An edit to get_user leaves the note about get_users alone.
+    code.define("get_user", "src/users.rs", 3);
+    let found = bank.recall("pages through Session", &recall_at(NOW + 120), &code, None);
+    let item = found.iter().find(|r| r.note.id == second[0].id).expect("the note is recalled");
+    assert!(!item.stale);
+}
+
+#[test]
+fn a_misspelling_of_a_name_the_code_does_not_know_still_merges_and_keeps_the_known_anchor() {
+    let dir = TempDir::new("misspelt");
+    let code = FakeCode::default();
+    code.define("get_user", "src/users.rs", 1);
+    let mut bank = open(&dir);
+    bank.retain("`get_user` fetches the row for `Session`.", &retain_at(NOW), &code, None).unwrap();
+    let second = bank.retain("`get_usr` pages through `Session` too.", &retain_at(NOW + 60), &code, None).unwrap();
+    let note = bank.get(&second[0].id).unwrap();
+    assert!(note.entities.contains(&"get_user".to_string()), "{:?}", note.entities);
+    assert_eq!(note.anchors.len(), 1);
+    assert_eq!(note.anchors[0].qual, "get_user");
+}
+
+#[test]
+fn a_repeat_checked_against_the_code_clears_the_stale_mark() {
+    let dir = TempDir::new("repeat-anchors");
+    let code = FakeCode::default();
+    code.define("parse_config", "src/config.rs", 1);
+    let mut bank = open(&dir);
+    let sentence = "parse_config validates every setting";
+    let first = bank.retain(sentence, &retain_at(NOW), &code, None).unwrap();
+    assert_eq!(bank.get(&first[0].id).unwrap().anchors[0].hash, 1);
+    code.define("parse_config", "src/config.rs", 2);
+    let ask = |bank: &Bank| bank.recall("validates every setting", &recall_at(NOW + 2), &code, None);
+    assert!(ask(&bank)[0].stale, "the definition changed");
+    let again = bank.retain(sentence, &retain_at(NOW + 1), &code, None).unwrap();
+    assert_eq!(again[0].outcome, RetainOutcome::Reinforced);
+    assert_eq!(again[0].id, first[0].id);
+    let found = ask(&bank);
+    assert!(!found[0].stale, "the repeat was retained against the current code");
+    assert_eq!(found[0].note.anchors[0].hash, 2);
+    assert_eq!(found[0].note.proof_count, 2);
+    // A definition that is gone stays gone, whatever is retained.
+    code.remove("parse_config");
+    bank.retain(sentence, &retain_at(NOW + 3), &code, None).unwrap();
+    assert!(bank.recall("validates every setting", &recall_at(NOW + 4), &code, None)[0].gone);
+    // The new hash is in the log, not only in memory.
+    code.define("parse_config", "src/config.rs", 2);
+    drop(bank);
+    let bank = open(&dir);
+    assert!(!bank.recall("validates every setting", &recall_at(NOW + 5), &code, None)[0].stale);
+}
+
+#[test]
+fn a_near_repeat_checked_against_the_code_clears_the_stale_mark() {
+    let Some(e) = embedder() else { return };
+    let dir = TempDir::new("near-repeat-anchors");
+    let code = FakeCode::default();
+    code.define("alpha", "src/alpha.rs", 1);
+    let mut bank = open(&dir);
+    let put = |bank: &mut Bank, text: &str, now: i64| {
+        let opts = RetainOpts { entities: vec!["alpha".to_string()], ..retain_at(now) };
+        bank.retain(text, &opts, &code, Some(e)).unwrap()
+    };
+    let long = concat!(
+        "the scheduler retries every failed job three times before it gives up and reports the failure ",
+        "to the operator on call and then it writes a summary of every attempt into the shared log file ",
+        "so that nobody has to ask what happened"
+    );
+    let first = put(&mut bank, long, NOW);
+    assert_eq!(first[0].outcome, RetainOutcome::Added);
+    code.define("alpha", "src/alpha.rs", 2);
+    let again = put(&mut bank, &format!("{long} again"), NOW + 10);
+    assert_eq!(again[0].outcome, RetainOutcome::Reinforced);
+    assert_eq!(again[0].id, first[0].id);
+    let note = bank.get(&first[0].id).unwrap();
+    assert_eq!(note.anchors[0].hash, 2);
+}
+
+// ---- observations of entities that are about the same notes ----
+
+const SHARED_FACTS: [&str; 3] = [
+    "config_loader.py defines load_config for reading settings.",
+    "config_loader.py exposes load_config to the command line.",
+    "load_config in config_loader.py falls back to defaults.",
+];
+
+/// A bank with the three notes above, which all name both `config_loader.py` and `load_config`.
+fn shared_facts(dir: &TempDir) -> (Bank, Vec<String>) {
+    let mut bank = open(dir);
+    let made = SHARED_FACTS.iter().enumerate().map(|(n, text)| add(&mut bank, text, NOW + n as i64)[0].id.clone()).collect();
+    (bank, made)
+}
+
+fn log_lines(dir: &TempDir) -> Vec<String> {
+    fs::read_to_string(dir.bank("b").join("notes.jsonl")).unwrap().lines().map(str::to_string).collect()
+}
+
+#[test]
+fn notes_with_identical_sources_become_one_observation_that_lists_its_subjects() {
+    let dir = TempDir::new("obs-shared");
+    let (bank, made) = shared_facts(&dir);
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 1, "one observation for both subjects, not one copy each: {obs:#?}");
+    let o = &obs[0];
+    assert_eq!(o.entities, vec!["config_loader.py", "load_config"]);
+    assert_eq!(o.sources, made);
+    assert_eq!(o.proof_count, 3);
+    assert!(o.text.starts_with("config_loader.py, load_config: config_loader.py defines load_config"), "{}", o.text);
+    assert_eq!(bank.len(), 4);
+    assert_eq!(bank.stats().by_kind, [3, 0, 1, 0]);
+    assert_eq!(log_lines(&dir).iter().filter(|line| line.contains("\"Observation\"")).count(), 1, "one observation line in the log");
+    // Both subjects lead to it.
+    let reflected = bank.reflect("config_loader", &RecallOpts { limit: 20, ..recall_at(NOW + 10) }, &NoCode, None);
+    assert_eq!(reflected.observations.len(), 1);
+    for subject in ["config_loader.py", "load_config"] {
+        let (_, listed) = reflected.by_entity.iter().find(|(name, _)| name == subject).unwrap_or_else(|| panic!("{subject} is not a subject"));
+        assert!(listed.contains(&o.id), "{subject} does not list the observation");
+    }
+}
+
+#[test]
+fn a_shared_observation_survives_a_reopen_and_is_refreshed_in_place() {
+    let dir = TempDir::new("obs-reopen");
+    let (bank, _) = shared_facts(&dir);
+    let id = observations(&bank)[0].id.clone();
+    drop(bank);
+    let mut bank = open(&dir);
+    let fourth = add(&mut bank, "config_loader.py hands load_config the path.", NOW + 10)[0].id.clone();
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 1);
+    assert_eq!(obs[0].id, id, "the same observation, refreshed");
+    assert_eq!(obs[0].sources.len(), 4);
+    assert_eq!(obs[0].sources[3], fourth);
+    assert_eq!(obs[0].entities, vec!["config_loader.py", "load_config"]);
+    assert_eq!(log_lines(&dir).iter().filter(|line| line.contains("\"Observation\"")).count(), 2, "the refresh is one more line");
+}
+
+#[test]
+fn a_shared_observation_splits_when_the_entities_stop_sharing_their_notes_and_joins_again() {
+    let dir = TempDir::new("obs-split");
+    let (mut bank, made) = shared_facts(&dir);
+    let shared = observations(&bank)[0].id.clone();
+    // A fourth note names only one of them.
+    let fourth = add(&mut bank, "load_config also reads the ini format.", NOW + 10)[0].id.clone();
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 2, "{obs:#?}");
+    let of = |name: &str| obs.iter().find(|o| o.entities == vec![name.to_string()]).unwrap_or_else(|| panic!("no observation of {name}"));
+    assert_eq!(of("config_loader.py").sources, made);
+    assert_eq!(of("load_config").sources.len(), 4);
+    assert!(of("load_config").sources.contains(&fourth));
+    assert!(bank.get(&shared).is_none(), "the shared observation was replaced");
+    // Forgetting that note makes the two groups equal again.
+    assert!(bank.forget(&fourth).unwrap());
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 1, "{obs:#?}");
+    assert_eq!(obs[0].entities, vec!["config_loader.py", "load_config"]);
+    assert_eq!(obs[0].sources, made);
+    drop(bank);
+    // What the log says is the same after a reopen.
+    let bank = open(&dir);
+    let obs = observations(&bank);
+    assert_eq!((obs.len(), obs[0].entities.len(), obs[0].sources.len()), (1, 2, 3));
+    assert_eq!(bank.len(), 4);
+}
+
+#[test]
+fn forgetting_a_source_dissolves_a_shared_observation_too() {
+    let dir = TempDir::new("obs-shared-forget");
+    let (mut bank, made) = shared_facts(&dir);
+    let shared = observations(&bank)[0].id.clone();
+    assert!(bank.forget(&made[0]).unwrap());
+    assert!(observations(&bank).is_empty(), "two notes are too few");
+    assert!(bank.get(&shared).is_none());
+    assert_eq!(bank.len(), 2);
+}
+
+#[test]
+fn shared_observations_are_made_per_tag_set() {
+    let dir = TempDir::new("obs-shared-tags");
+    let mut bank = open(&dir);
+    for (n, text) in SHARED_FACTS.iter().enumerate() {
+        add_tagged(&mut bank, text, &["proj"], NOW + n as i64);
+        add_tagged(&mut bank, &format!("{text} Untagged twin {n}."), &[], NOW + 10 + n as i64);
+    }
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 2, "{obs:#?}");
+    assert!(obs.iter().all(|o| o.entities == vec!["config_loader.py", "load_config"]), "{obs:#?}");
+    let mut tags: Vec<Vec<String>> = obs.iter().map(|o| o.tags.clone()).collect();
+    tags.sort();
+    assert_eq!(tags, vec![Vec::<String>::new(), vec!["proj".to_string()]]);
+}
+
+/// The folder of a bank as an earlier version left it after three notes about two entities:
+/// the observation written once per entity. Gives the ids of the three notes and of the two copies.
+fn bank_with_old_copies(dir: &TempDir) -> (Vec<String>, [&'static str; 2]) {
+    let (bank, made) = shared_facts(dir);
+    let merged = observations(&bank)[0].clone();
+    drop(bank);
+    let log = dir.bank("b").join("notes.jsonl");
+    let mut lines = log_lines(dir);
+    lines.truncate(3);
+    let old_ids = ["n000004", "n000005"];
+    for (id, entity) in old_ids.iter().zip(["config_loader.py", "load_config"]) {
+        let copy = Note { id: id.to_string(), entities: vec![entity.to_string()], ..merged.clone() };
+        lines.push(serde_json::to_string(&copy).unwrap());
+    }
+    fs::write(&log, lines.join("\n") + "\n").unwrap();
+    // The caches described the log as it was.
+    for cache in ["index.bin", "vectors.bin"] {
+        let _ = fs::remove_file(dir.bank("b").join(cache));
+    }
+    (made, old_ids)
+}
+
+#[test]
+fn old_copies_per_entity_give_way_to_one_observation_on_the_next_retain_of_both() {
+    let dir = TempDir::new("obs-heal-both");
+    let (made, old_ids) = bank_with_old_copies(&dir);
+    let mut bank = open(&dir);
+    assert_eq!(observations(&bank).len(), 2, "opening and reading change nothing");
+    let fourth = add(&mut bank, "config_loader.py hands load_config the path.", NOW + 10)[0].id.clone();
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 1, "{obs:#?}");
+    assert_eq!(obs[0].entities, vec!["config_loader.py", "load_config"]);
+    assert_eq!(obs[0].sources.len(), 4);
+    assert_eq!(obs[0].sources[..3], made[..]);
+    assert_eq!(obs[0].sources[3], fourth);
+    for old in old_ids {
+        assert!(bank.get(old).is_none(), "{old} is still there");
+    }
+    drop(bank);
+    let reopened = open(&dir);
+    assert_eq!(observations(&reopened).len(), 1);
+    assert_eq!(reopened.len(), 5);
+}
+
+#[test]
+fn old_copies_are_merged_by_the_next_write_whatever_it_is_about() {
+    let dir = TempDir::new("obs-heal-any");
+    let (made, old_ids) = bank_with_old_copies(&dir);
+    let mut bank = open(&dir);
+    assert_eq!(observations(&bank).len(), 2);
+    // A note about something else touches neither entity.
+    add(&mut bank, "The renderer paints widgets.", NOW + 10);
+    let obs = observations(&bank);
+    assert_eq!(obs.len(), 1, "{obs:#?}");
+    assert_eq!(obs[0].entities, vec!["config_loader.py", "load_config"]);
+    assert_eq!(obs[0].sources, made);
+    assert!(obs[0].text.starts_with("config_loader.py, load_config: "), "{}", obs[0].text);
+    for old in old_ids {
+        assert!(bank.get(old).is_none(), "{old} is still there");
+    }
+    drop(bank);
+    // The log says the same: a reopened bank has the one observation, and a forget of an old
+    // copy finds nothing to forget.
+    let mut reopened = open(&dir);
+    assert_eq!(observations(&reopened).len(), 1);
+    assert!(!reopened.forget(old_ids[0]).unwrap());
+    // A forget is a write too, and it settles copies as well.
+    let dir2 = TempDir::new("obs-heal-forget");
+    let (made2, _) = bank_with_old_copies(&dir2);
+    let mut bank2 = open(&dir2);
+    assert_eq!(observations(&bank2).len(), 2);
+    assert!(bank2.forget(&made2[0]).unwrap());
+    assert!(observations(&bank2).is_empty(), "two notes are too few, copies included");
+}
+// ---- days in the zone of the caller ----
+
+#[test]
+fn today_and_yesterday_in_a_retained_text_are_the_days_of_the_callers_zone() {
+    let dir = TempDir::new("zone-retain");
+    let mut bank = open(&dir);
+    // 2026-03-11 02:00 UTC is still the evening of the 10th at UTC-5.
+    let clock = midnight(2026, 3, 11).unwrap() + 2 * 3600;
+    let west = -5 * 3600;
+    let put = |bank: &mut Bank, text: &str, utc_offset: i64| {
+        let opts = RetainOpts { utc_offset, ..retain_at(clock) };
+        bank.retain(text, &opts, &NoCode, None).unwrap()[0].id.clone()
+    };
+    let utc = put(&mut bank, "The build broke today.", 0);
+    let today = put(&mut bank, "The cache was cleared today.", west);
+    let yesterday = put(&mut bank, "The disk filled up yesterday.", west);
+    let span = |id: &str| (bank.get(id).unwrap().occurred_start.unwrap(), bank.get(id).unwrap().occurred_end.unwrap());
+    let day = |d: u8, offset: i64| (midnight(2026, 3, d).unwrap() - offset, midnight(2026, 3, d).unwrap() - offset + DAY - 1);
+    assert_eq!(span(&utc), day(11, 0), "no offset reads the UTC day, as before");
+    assert_eq!(span(&today), day(10, west));
+    assert_eq!(span(&yesterday), day(9, west));
+    // A clock that is later in the evening of the same UTC day is the same day at UTC-5.
+    let default = bank.retain("The queue stalled today.", &retain_at(clock), &NoCode, None).unwrap();
+    assert_eq!(bank.get(&default[0].id).unwrap().occurred_start, Some(midnight(2026, 3, 11).unwrap()));
+}
+
+#[test]
+fn a_query_with_yesterday_asks_for_the_day_of_the_callers_zone() {
+    let dir = TempDir::new("zone-recall");
+    let mut bank = open(&dir);
+    let at = |t: i64| RetainOpts { when: Some(t), ..retain_at(NOW) };
+    // 2026-03-10 12:00 UTC is 07:00 on the 10th at UTC-5; 2026-03-11 20:00 UTC is 15:00 on the 11th.
+    let early = bank.retain("the deploy finished early", &at(midnight(2026, 3, 10).unwrap() + 12 * 3600), &NoCode, None).unwrap()[0].id.clone();
+    let late = bank.retain("the deploy finished late", &at(midnight(2026, 3, 11).unwrap() + 20 * 3600), &NoCode, None).unwrap()[0].id.clone();
+    // 2026-03-12 02:00 UTC is 21:00 on the 11th at UTC-5: yesterday there is the 10th, in UTC it is the 11th.
+    let clock = midnight(2026, 3, 12).unwrap() + 2 * 3600;
+    let only_time = Strategies::only("time").unwrap();
+    let ask = |utc_offset: i64| {
+        let opts = RecallOpts { utc_offset, limit: 10, ..recall_at(clock) };
+        ids(&bank.recall_with("deploy yesterday", &opts, &NoCode, None, only_time))
+    };
+    assert_eq!(ask(0), vec![late.clone()], "yesterday in UTC is the 11th");
+    assert_eq!(ask(-5 * 3600), vec![early.clone()], "yesterday at UTC-5 is the 10th");
+    assert_eq!(ask(RecallOpts::default().utc_offset), ask(0), "the default is UTC");
+}
+
+// ---- catching up with another bank ----
+
+#[test]
+fn a_bank_that_is_held_catches_up_with_the_notes_another_bank_wrote() {
+    let dir = TempDir::new("refresh");
+    let mut reader = open(&dir);
+    let mut writer = open(&dir);
+    assert!(!reader.refresh().unwrap(), "nothing was written");
+    let first = add(&mut writer, "the scheduler retries failed jobs", NOW)[0].id.clone();
+    assert_eq!(reader.len(), 0, "a bank only looks when it is asked to");
+    assert!(reader.refresh().unwrap(), "the log grew");
+    assert_eq!(reader.get(&first).unwrap().text, "the scheduler retries failed jobs");
+    assert!(!reader.refresh().unwrap(), "and the second look finds nothing new");
+    // Another note, and a forget.
+    let second = add(&mut writer, "the renderer paints widgets", NOW + 1)[0].id.clone();
+    assert!(writer.forget(&first).unwrap());
+    assert!(reader.refresh().unwrap());
+    assert!(reader.get(&first).is_none(), "the forgotten note is gone");
+    assert!(reader.get(&second).is_some());
+    assert_eq!(reader.len(), 1);
+    // What the reader answers is built from what it caught up with.
+    let found = reader.recall("renderer widgets", &recall_at(NOW + 5), &NoCode, None);
+    assert_eq!(ids(&found), vec![second]);
+}
+
+#[test]
+fn a_bank_that_wrote_itself_has_nothing_to_catch_up_with() {
+    let dir = TempDir::new("refresh-own");
+    let mut bank = open(&dir);
+    add(&mut bank, "the scheduler retries failed jobs", NOW);
+    assert!(!bank.refresh().unwrap(), "its own append is not news");
+    bank.flush().unwrap();
+    assert!(!bank.refresh().unwrap(), "nor is writing the caches");
+    let id = add(&mut bank, "the renderer paints widgets", NOW + 1)[0].id.clone();
+    assert!(bank.forget(&id).unwrap());
+    assert!(!bank.refresh().unwrap());
+    assert_eq!(bank.len(), 1);
+}
+
+#[test]
+fn a_bank_catches_up_from_the_caches_the_other_bank_wrote_when_they_are_current() {
+    let dir = TempDir::new("refresh-caches");
+    let mut reader = open(&dir);
+    let mut writer = open(&dir);
+    for n in 0..4 {
+        add(&mut writer, &format!("the module `mod_{n}` handles case {n}."), NOW + n);
+    }
+    writer.flush().unwrap();
+    assert!(reader.refresh().unwrap());
+    assert!(!reader.dirty, "the snapshot of the other bank was current, so nothing was rebuilt");
+    assert_eq!(reader.len(), 4);
+    // Without the other bank's caches the notes are read from the log.
+    add(&mut writer, "the module `mod_9` handles case 9.", NOW + 9);
+    assert!(reader.refresh().unwrap());
+    assert!(reader.dirty);
+    assert_eq!(reader.len(), 5);
+}
+
+#[test]
+fn a_log_that_changed_without_a_change_in_length_is_read_again() {
+    let dir = TempDir::new("refresh-time");
+    let mut bank = open(&dir);
+    let id = add(&mut bank, "the scheduler retries failed jobs", NOW)[0].id.clone();
+    assert!(!bank.refresh().unwrap());
+    // The same number of bytes with another word in them, and a new modification time.
+    let log = dir.bank("b").join("notes.jsonl");
+    let text = fs::read_to_string(&log).unwrap().replace("scheduler", "schedular");
+    fs::write(&log, text).unwrap();
+    let file = fs::OpenOptions::new().write(true).open(&log).unwrap();
+    file.set_modified(std::time::SystemTime::now() + std::time::Duration::from_secs(3600)).unwrap();
+    drop(file);
+    assert!(bank.refresh().unwrap());
+    assert_eq!(bank.get(&id).unwrap().text, "the schedular retries failed jobs");
+    assert!(!bank.refresh().unwrap());
+}
+
+#[test]
+fn a_bank_that_catches_up_can_write_without_losing_what_the_other_bank_wrote() {
+    let dir = TempDir::new("refresh-write");
+    let mut one = open(&dir);
+    let mut two = open(&dir);
+    let a = add(&mut one, "the scheduler retries failed jobs", NOW)[0].id.clone();
+    assert!(two.refresh().unwrap());
+    let b = add(&mut two, "the renderer paints widgets", NOW + 1)[0].id.clone();
+    assert_ne!(a, b);
+    assert!(one.refresh().unwrap());
+    assert_eq!(one.len(), 2);
+    drop(one);
+    drop(two);
+    assert_eq!(open(&dir).len(), 2);
+}
+
+// ---- what a flush that fails says ----
+
+#[test]
+fn a_cache_that_cannot_be_written_is_a_cache_error_and_the_notes_are_safe() {
+    let dir = TempDir::new("flush-cache");
+    let mut bank = open(&dir);
+    let b = dir.bank("b");
+    // A folder where index.bin belongs: the snapshot cannot be put in place.
+    fs::create_dir_all(b.join("index.bin")).unwrap();
+    let kept = add(&mut bank, "the scheduler retries failed jobs", NOW)[0].id.clone();
+    let error = bank.flush().unwrap_err();
+    assert!(matches!(error, FlushError::Cache(_)), "a cache failure is not a log failure: {error}");
+    assert!(!error.is_log());
+    assert!(error.to_string().contains("cache"), "{error}");
+    assert!(matches!(bank.flush(), Err(FlushError::Cache(_))), "it fails the same way until the cause is gone");
+    // The note is in the log, and a bank opened from the log has it.
+    assert!(log_lines(&dir).iter().any(|line| line.contains(&kept)));
+    assert_eq!(Bank::open(&b).unwrap().len(), 1);
+    // Once the cause is gone, the same bank writes its caches.
+    fs::remove_dir(b.join("index.bin")).unwrap();
+    bank.flush().unwrap();
+    assert!(b.join("index.bin").is_file());
+    drop(bank);
+    assert!(!open(&dir).dirty, "the caches are current");
+}
+
+#[test]
+fn a_flush_error_converts_to_an_io_error_that_keeps_the_cause() {
+    let cause = || std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access is denied");
+    for error in [FlushError::Log(cause()), FlushError::Cache(cause())] {
+        let text = error.to_string();
+        let io: std::io::Error = error.into();
+        assert_eq!(io.kind(), std::io::ErrorKind::PermissionDenied);
+        assert!(io.to_string().contains("access is denied") && io.to_string() == text, "{io}");
+    }
+    assert!(FlushError::Log(cause()).to_string().contains("notes"));
+    assert!(FlushError::Cache(cause()).to_string().contains("cache"));
 }

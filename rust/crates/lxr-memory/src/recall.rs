@@ -1,5 +1,14 @@
 //! Recall: four strategies, reciprocal-rank fusion, Hindsight's boosts, and our check of the
 //! code a note talks about.
+//!
+//! Where this differs from the design it follows:
+//! * The fused list is cut to the budget (100, 300 or 1000) before the rank score is made, so
+//!   the score spreads over at most that many candidates; it is not reranked from a wider pool.
+//!   A `Low` budget therefore scores its ranks over 100 candidates, not over a wider list.
+//! * A note without a time of its own is dated by when it was mentioned, so its recency decays
+//!   from that moment. The neutral 0.5 applies only when that moment is zero or before.
+//! * Directives share the limit and the token allowance with the ranked notes (see
+//!   [`recall`]), so a bank full of rules still answers the query.
 
 use crate::bank::{event_time, lock, top, Bank, Derived};
 use crate::dates::{parse_span, unix_now, Span, DAY};
@@ -175,22 +184,46 @@ pub(crate) fn recall(
     // `sort_by` is stable, so equal scores keep the fused order.
     others.sort_by(|a, b| b.score.total_cmp(&a.score));
 
-    // Directives first, then the rest in score order, while the texts fit and up to the limit.
-    let mut out: Vec<Recalled> = Vec::new();
+    // Directives come first, but they share the limit and the token allowance with the notes
+    // that answer the query, so they may use half of each. The ranked notes take what they
+    // need, and directives left over fill what the ranked notes did not use.
+    let cost_of = |candidate: &Candidate| core.note_at(candidate.slot).map_or(0, |note| est_tokens(&note.text));
     let mut tokens = 0usize;
-    for candidate in directives.into_iter().chain(others) {
-        if out.len() >= opts.limit {
-            break;
+    let mut first: Vec<Candidate> = Vec::new();
+    let mut later: Vec<Candidate> = Vec::new();
+    for candidate in directives {
+        let cost = cost_of(&candidate);
+        if first.len() < opts.limit / 2 && tokens + cost <= opts.max_tokens / 2 {
+            tokens += cost;
+            first.push(candidate);
+        } else {
+            later.push(candidate);
         }
-        let Some(note) = core.note_at(candidate.slot) else { continue };
-        let cost = est_tokens(&note.text);
-        if tokens + cost > opts.max_tokens {
-            continue;
-        }
-        tokens += cost;
-        out.push(Recalled { note: note.clone(), score: candidate.score, stale: candidate.stale, gone: candidate.gone, via: via_names(candidate.slot) });
     }
-    out
+    let mut ranked: Vec<Candidate> = Vec::new();
+    for candidate in others {
+        let cost = cost_of(&candidate);
+        if first.len() + ranked.len() < opts.limit && tokens + cost <= opts.max_tokens {
+            tokens += cost;
+            ranked.push(candidate);
+        }
+    }
+    for candidate in later {
+        let cost = cost_of(&candidate);
+        if first.len() + ranked.len() < opts.limit && tokens + cost <= opts.max_tokens {
+            tokens += cost;
+            first.push(candidate);
+        }
+    }
+    first.sort_by(by_score);
+    first
+        .into_iter()
+        .chain(ranked)
+        .filter_map(|candidate| {
+            let note = core.note_at(candidate.slot)?;
+            Some(Recalled { note: note.clone(), score: candidate.score, stale: candidate.stale, gone: candidate.gone, via: via_names(candidate.slot) })
+        })
+        .collect()
 }
 
 /// A recall with one budget step more, sorted into directives, observations and facts.
@@ -259,7 +292,7 @@ pub(crate) fn window_of(query: &str, opts: &RecallOpts, now: i64) -> Option<Span
         let start = opts.since.unwrap_or(end - 30 * DAY);
         return Some((start.min(end), start.max(end)));
     }
-    parse_span(query, now)
+    parse_span(query, now, opts.utc_offset)
 }
 
 /// Runs the four strategies. Each returns at most as many candidates as the budget allows.
@@ -430,7 +463,8 @@ pub(crate) fn boost(alpha: f32, signal: f32) -> f32 {
     1.0 + alpha * (signal - 0.5)
 }
 
-/// `clamp(1 - days / 365, 0.1, 1)` for the time the note is about; 0.5 for a note without one.
+/// `clamp(1 - days / 365, 0.1, 1)` for the time the note is about, which is the moment it was
+/// mentioned when it has none of its own; 0.5 only when that time is zero or before.
 pub(crate) fn recency_signal(note: &Note, now: i64) -> f32 {
     let t = event_time(note);
     if t <= 0 {

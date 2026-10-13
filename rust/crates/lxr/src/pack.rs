@@ -14,8 +14,22 @@ const HITS_ASKED: usize = 8;
 /// Notes asked of the bank before they are cut to the section's share.
 const NOTES_ASKED: usize = 6;
 
-/// Keeps whole groups of lines while they fit in `tokens`. The first group is always
-/// kept, with its first line cut when even that is too long.
+/// Cuts a line to at most `bytes` bytes of UTF-8, at a character boundary.
+fn cut_bytes(line: String, bytes: usize) -> String {
+    if line.len() <= bytes {
+        return line;
+    }
+    let mut at = bytes;
+    while !line.is_char_boundary(at) {
+        at -= 1;
+    }
+    line[..at].to_string()
+}
+
+/// Keeps whole groups of lines while they fit in `tokens`. When even the first group is
+/// too long, its first line is kept as far as `tokens` allow (four bytes to a token, as
+/// `est_tokens` counts them) and the section holds nothing else. A line of which not even one
+/// character fits is left out.
 fn fit_groups(groups: Vec<Vec<String>>, tokens: usize) -> Vec<String> {
     let mut kept: Vec<String> = Vec::new();
     let mut used = 0usize;
@@ -23,8 +37,8 @@ fn fit_groups(groups: Vec<Vec<String>>, tokens: usize) -> Vec<String> {
         let cost: usize = group.iter().map(|l| est_tokens(l) + 1).sum();
         if kept.is_empty() {
             if cost > tokens {
-                let room = tokens.saturating_mul(4).max(8);
-                kept.extend(group.into_iter().take(1).map(|l| crate::rows::cut(l, room)));
+                let room = tokens.saturating_mul(4);
+                kept.extend(group.into_iter().take(1).map(|l| cut_bytes(l, room)).filter(|l| !l.is_empty()));
                 break;
             }
         } else if used + cost > tokens {
@@ -90,6 +104,19 @@ mod tests {
         let kept = fit_groups(groups, 40);
         assert_eq!(kept.len(), 3);
         assert!(kept[2].starts_with('c'));
+    }
+
+    #[test]
+    fn a_cut_line_is_cut_in_bytes_and_not_in_characters() {
+        let kept = fit_groups(vec![vec!["数".repeat(100)]], 10);
+        assert_eq!(kept.len(), 1);
+        assert!(est_tokens(&kept[0]) <= 10, "{} tokens", est_tokens(&kept[0]));
+    }
+
+    #[test]
+    fn a_one_token_share_keeps_at_most_four_bytes() {
+        let kept = fit_groups(vec![vec!["x".repeat(100)]], 1);
+        assert!(kept.iter().all(|l| l.len() <= 4), "{kept:?}");
     }
 
     #[test]

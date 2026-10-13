@@ -4,7 +4,8 @@ use crate::cli::{MemoryCmd, RecallArgs, RetainArgs};
 use crate::ctx::{Ctx, Engine};
 use crate::dates::age_word;
 use crate::fail::{Fail, Res};
-use lxr_memory::{Note, RecallOpts, Recalled, RetainOpts, RetainOutcome};
+use crate::localtime;
+use lxr_memory::{FlushError, Note, RecallOpts, Recalled, RetainOpts, RetainOutcome};
 use std::collections::HashSet;
 
 /// A note's text on one line.
@@ -33,7 +34,8 @@ pub fn note_line(recalled: &Recalled, now: i64) -> String {
     format!("- {}  ({inside}) #{}", flat(&note.text), note.id)
 }
 
-/// The recall options for a set of flags.
+/// The recall options for a set of flags. Words such as "today" in the question mean the days of
+/// the machine's time zone.
 pub fn recall_opts(args: &RecallArgs) -> RecallOpts {
     RecallOpts {
         limit: args.k,
@@ -42,26 +44,55 @@ pub fn recall_opts(args: &RecallArgs) -> RecallOpts {
         tags: args.tags.clone(),
         since: args.since,
         until: args.until,
+        utc_offset: localtime::utc_offset(),
         ..RecallOpts::default()
+    }
+}
+
+/// The retain options for a set of flags. Words such as "today" in the text mean the days of the
+/// machine's time zone.
+pub fn retain_opts(args: &RetainArgs) -> RetainOpts {
+    RetainOpts {
+        kind: args.kind,
+        context: args.context.clone(),
+        tags: args.tags.clone(),
+        when: args.when,
+        split: !args.whole,
+        utc_offset: localtime::utc_offset(),
+        ..RetainOpts::default()
+    }
+}
+
+/// What to do with the result of making a change to the bank durable. A log that could not be
+/// made durable is an error: the change may be lost, and it must not be reported as made. A cache
+/// that could not be written is a warning on standard error: the change is safe in the log, and
+/// the next run builds the cache again.
+fn settle(result: Result<(), FlushError>) -> Res<()> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(FlushError::Cache(error)) => {
+            crate::say(&format!(
+                "pgr: warning: the cache files of the memory bank could not be written ({error}); the change is safe in the log and the cache is built again on the next run"
+            ));
+            Ok(())
+        }
+        Err(FlushError::Log(error)) => Err(Fail::index(format!("cannot write the memory bank: {error}"))),
     }
 }
 
 /// `pgr retain TEXT...`.
 pub fn retain(ctx: &mut Ctx, args: &RetainArgs, out: &mut String) -> Res<()> {
     ctx.need_memory()?;
-    let opts = RetainOpts {
-        kind: args.kind,
-        context: args.context.clone(),
-        tags: args.tags.clone(),
-        when: args.when,
-        split: !args.whole,
-        ..RetainOpts::default()
-    };
+    let opts = retain_opts(args);
+    // The bank is brought up to date inside the lock, so it holds every note written until now.
+    let _lock = ctx.lock_bank()?;
     let kept = ctx.bank_session(|bank, code, embedder| {
-        let done = bank.retain(&args.text, &opts, code, embedder)?;
-        // The notes are already in the log; the caches only speed up the next start.
-        let _ = bank.flush();
-        Ok::<_, std::io::Error>(
+        let done = bank
+            .retain(&args.text, &opts, code, embedder)
+            .map_err(|e| Fail::index(format!("cannot write the memory bank: {e}")))?;
+        // The flush makes the log durable: a note is not reported as kept before that.
+        settle(bank.flush())?;
+        Ok::<_, Fail>(
             done.into_iter()
                 .map(|r| {
                     let seen = bank.get(&r.id).map(|n| n.proof_count).unwrap_or(1);
@@ -69,8 +100,7 @@ pub fn retain(ctx: &mut Ctx, args: &RetainArgs, out: &mut String) -> Res<()> {
                 })
                 .collect::<Vec<_>>(),
         )
-    })?;
-    let kept = kept.map_err(|e| Fail::index(format!("cannot write the memory bank: {e}")))?;
+    })??;
     if kept.is_empty() {
         ln!(out, "nothing kept");
     }
@@ -170,9 +200,10 @@ pub fn memory(ctx: &mut Ctx, command: &MemoryCmd, out: &mut String) -> Res<()> {
         MemoryCmd::Forget { id } => {
             let id = id.trim_start_matches('#');
             let forgotten = if ctx.bank_dir.is_dir() {
+                let _lock = ctx.lock_bank()?;
                 let bank = ctx.bank()?;
                 let done = bank.forget(id).map_err(|e| Fail::index(format!("cannot write the memory bank: {e}")))?;
-                let _ = bank.flush();
+                settle(bank.flush())?;
                 done
             } else {
                 false
@@ -250,6 +281,36 @@ pub fn relevant_notes(ctx: &mut Ctx, query: &str, limit: usize, max_tokens: usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+    use lxr_memory::Kind;
+
+    fn failure() -> std::io::Error {
+        std::io::Error::new(std::io::ErrorKind::PermissionDenied, "access is denied")
+    }
+
+    #[test]
+    fn a_log_that_cannot_be_made_durable_is_an_error_and_a_cache_that_cannot_be_written_is_not() {
+        assert!(settle(Ok(())).is_ok());
+        let error = settle(Err(FlushError::Log(failure()))).unwrap_err();
+        assert_eq!(error.code(), 1);
+        assert!(error.text().starts_with("pgr: cannot write the memory bank: "), "{}", error.text());
+        assert!(error.text().contains("access is denied"));
+        // A warning goes to standard error and the command goes on: the note is safe in the log.
+        assert!(settle(Err(FlushError::Cache(failure()))).is_ok());
+    }
+
+    #[test]
+    fn the_options_carry_the_offset_of_the_machine() {
+        let offset = localtime::utc_offset();
+        let retain = RetainArgs { text: "x".into(), kind: Kind::World, tags: Vec::new(), context: String::new(), when: None, whole: false };
+        assert_eq!(retain_opts(&retain).utc_offset, offset);
+        assert_eq!(recall_opts(&RecallArgs::new("x".to_string())).utc_offset, offset);
+        // The companion recalls of ask and pack go through the same options.
+        assert_eq!(recall_opts(&companion_opts(4, 200, "what is today")).utc_offset, offset);
+        // The other fields of the flags are still carried over.
+        let flagged = RetainArgs { kind: Kind::Directive, tags: vec!["t".into()], whole: true, when: Some(5), ..retain };
+        let opts = retain_opts(&flagged);
+        assert_eq!((opts.kind, opts.when, opts.split), (Kind::Directive, Some(5), false));
+    }
 
     #[test]
     fn telling_words_split_identifiers_and_drop_common_words() {

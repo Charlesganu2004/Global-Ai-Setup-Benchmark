@@ -5,7 +5,9 @@ use crate::tokenizer::Tokenizer;
 use memmap2::Mmap;
 use rayon::prelude::*;
 use serde_json::Value;
+use std::borrow::Cow;
 use std::ffi::OsString;
+use std::fmt;
 use std::fs::{self, File};
 use std::io;
 use std::path::{Path, PathBuf};
@@ -14,17 +16,45 @@ use std::path::{Path, PathBuf};
 const MODEL_NAME: &str = "potion-code-16M-v2";
 /// The folder name of the model in a Hugging Face cache.
 const HUB_FOLDER: &str = "models--minishlab--potion-code-16M-v2";
+/// The folder under `share` that the `peterganurusty` wheel puts its data files in.
+const WHEEL_FOLDER: &str = "peterganurusty";
 /// Tokens kept per query text, as in model2vec's `encode`.
 const MAX_LENGTH: usize = 512;
 
+/// The bytes of `model.safetensors`: a memory-mapped file, or bytes that are already in
+/// memory (a model compiled into the program).
+enum Weights {
+    Mapped(Mmap),
+    Memory(Cow<'static, [u8]>),
+}
+
+impl Weights {
+    fn bytes(&self) -> &[u8] {
+        match self {
+            Weights::Mapped(map) => map,
+            Weights::Memory(bytes) => bytes,
+        }
+    }
+}
+
+impl fmt::Debug for Weights {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let (kind, len) = match self {
+            Weights::Mapped(map) => ("mapped", map.len()),
+            Weights::Memory(bytes) => ("in memory", bytes.len()),
+        };
+        write!(f, "Weights({kind}, {len} bytes)")
+    }
+}
+
 /// A static embedding model: a tokenizer and a table with one vector per token.
 ///
-/// The table stays in the memory-mapped model file, so opening is cheap and only the
-/// rows that texts use are read from disk.
+/// The table stays in the memory-mapped model file (or in the bytes the model was opened
+/// from), so opening is cheap and only the rows that texts use are read.
 #[derive(Debug)]
 pub struct Embedder {
     tokenizer: Tokenizer,
-    map: Mmap,
+    weights: Weights,
     /// Offset of the first table byte in the file.
     data_start: usize,
     /// Number of table rows.
@@ -36,8 +66,18 @@ pub struct Embedder {
 }
 
 impl Embedder {
+    /// The folder named by `LXR_MODEL_DIR`, when it holds both `model.safetensors` and
+    /// `tokenizer.json`. It is the first place [`Embedder::locate`] looks; a program that
+    /// carries a model of its own looks here first, then at its own copy, and then calls
+    /// [`Embedder::locate`] for the rest.
+    pub fn locate_env() -> Option<PathBuf> {
+        env_folder(&|name| std::env::var_os(name))
+    }
+
     /// Finds the model folder: the first of these that holds both `model.safetensors`
-    /// and `tokenizer.json`. The folder named by `LXR_MODEL_DIR`;
+    /// and `tokenizer.json`. The folder named by `LXR_MODEL_DIR`; the folder that the
+    /// `peterganurusty` wheel installs next to the program (`share/peterganurusty/model`
+    /// one or two levels above the program's own folder, see [`wheel_model_candidates`]);
     /// `~/.local-index/models/potion-code-16M-v2`; the newest snapshot of
     /// `minishlab/potion-code-16M-v2` in the Hugging Face cache (`HF_HUB_CACHE`, else
     /// `HF_HOME/hub`, else `~/.cache/huggingface/hub`).
@@ -68,7 +108,30 @@ impl Embedder {
         let file = File::open(&weights)?;
         // SAFETY: the model file is only read, and nothing in this process writes to it.
         let map = unsafe { Mmap::map(&file)? };
-        let table = read_table(&map)?;
+        Embedder::assemble(tokenizer, cache_hit, Weights::Mapped(map))
+    }
+
+    /// Opens a model that is already in memory: the bytes of `tokenizer.json` and of
+    /// `model.safetensors`. A program that carries its model inside passes slices of itself
+    /// here (`&'static [u8]`, nothing is copied); any `Vec<u8>` works too. The vocabulary cache
+    /// lives under the index home and is keyed by a hash of the tokenizer bytes.
+    pub fn from_bytes(tokenizer_json: &[u8], weights: impl Into<Cow<'static, [u8]>>) -> io::Result<Embedder> {
+        Embedder::from_bytes_with_cache(tokenizer_json, weights, &lxr_core::index_home().join("model-cache"))
+    }
+
+    /// Like [`Embedder::from_bytes`], with the cache folder given.
+    pub fn from_bytes_with_cache(
+        tokenizer_json: &[u8],
+        weights: impl Into<Cow<'static, [u8]>>,
+        cache_dir: &Path,
+    ) -> io::Result<Embedder> {
+        let (tokenizer, cache_hit) = Tokenizer::load_bytes(tokenizer_json, cache_dir)?;
+        Embedder::assemble(tokenizer, cache_hit, Weights::Memory(weights.into()))
+    }
+
+    /// Checks the weights against the tokenizer and builds the embedder.
+    fn assemble(tokenizer: Tokenizer, cache_hit: bool, weights: Weights) -> io::Result<Embedder> {
+        let table = read_table(weights.bytes())?;
         // Every id the tokenizer can give, added tokens and the padding id included, must
         // have a row; a missing row would silently count as zero.
         if tokenizer.id_bound() > table.rows {
@@ -80,7 +143,7 @@ impl Embedder {
         }
         Ok(Embedder {
             tokenizer,
-            map,
+            weights,
             data_start: table.start,
             rows: table.rows,
             dim: table.dim,
@@ -190,7 +253,7 @@ impl Embedder {
         }
         let width = if self.wide { 4 } else { 2 };
         let start = self.data_start + id * self.dim * width;
-        let bytes = &self.map[start..start + self.dim * width];
+        let bytes = &self.weights.bytes()[start..start + self.dim * width];
         if self.wide {
             for (s, c) in sum.iter_mut().zip(bytes.chunks_exact(4)) {
                 *s += f32::from_le_bytes([c[0], c[1], c[2], c[3]]);
@@ -294,13 +357,69 @@ fn holds_model(dir: &Path) -> bool {
     dir.join("model.safetensors").is_file() && dir.join("tokenizer.json").is_file()
 }
 
+/// Where `pip install peterganurusty` puts the model, as seen from the program at `exe`.
+/// The wheel's data files go to `<prefix>/share/peterganurusty/model` and its scripts to
+/// `<prefix>/bin` (Unix) or `<prefix>\Scripts` (Windows), so the folder is next to the
+/// scripts folder's parent. A Windows `--user` install keeps the scripts one level lower
+/// (`<user base>\Python311\Scripts`) and the data in `<user base>\share`, which is why the
+/// grandparent is a candidate too. Nearest first; empty when `exe` has no folder.
+fn wheel_model_candidates(exe: &Path) -> Vec<PathBuf> {
+    let Some(scripts) = exe.parent() else {
+        return Vec::new();
+    };
+    scripts
+        .ancestors()
+        .skip(1)
+        .take(2)
+        .map(|prefix| prefix.join("share").join(WHEEL_FOLDER).join("model"))
+        .collect()
+}
+
+/// `path` without Windows' `\\?\` prefix when a drive letter follows it (`\\?\C:\x`
+/// becomes `C:\x`). Other paths, `\\?\UNC\...` ones included, stay as they are.
+fn plain_path(path: PathBuf) -> PathBuf {
+    match path.to_str().and_then(|s| s.strip_prefix(r"\\?\")) {
+        Some(rest) if rest.as_bytes().get(1) == Some(&b':') => PathBuf::from(rest),
+        _ => path,
+    }
+}
+
+/// `exe` with its symbolic links resolved, so that a link in `~/.local/bin` leads to the
+/// environment it points into. `exe` itself when it cannot be resolved.
+fn resolve_exe(exe: &Path) -> PathBuf {
+    match fs::canonicalize(exe) {
+        Ok(real) => plain_path(real),
+        Err(_) => exe.to_path_buf(),
+    }
+}
+
+/// The wheel data folders to try for the running program. Empty when the program's own
+/// path cannot be read: that is never an error.
+fn wheel_model_dirs() -> Vec<PathBuf> {
+    match std::env::current_exe() {
+        Ok(exe) => wheel_model_candidates(&resolve_exe(&exe)),
+        Err(_) => Vec::new(),
+    }
+}
+
 /// [`Embedder::locate`] with the environment given, so that it can be tested.
 fn locate_with(get: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    locate_from(get, &wheel_model_dirs())
+}
+
+/// The folder `LXR_MODEL_DIR` names, when it holds the model.
+fn env_folder(get: &dyn Fn(&str) -> Option<OsString>) -> Option<PathBuf> {
+    get("LXR_MODEL_DIR").filter(|v| !v.is_empty()).map(PathBuf::from).filter(|dir| holds_model(dir))
+}
+
+/// [`locate_with`] with the wheel's candidate folders given as well.
+fn locate_from(get: &dyn Fn(&str) -> Option<OsString>, wheel: &[PathBuf]) -> Option<PathBuf> {
     let var = |name: &str| get(name).filter(|v| !v.is_empty()).map(PathBuf::from);
-    if let Some(dir) = var("LXR_MODEL_DIR") {
-        if holds_model(&dir) {
-            return Some(dir);
-        }
+    if let Some(dir) = env_folder(get) {
+        return Some(dir);
+    }
+    if let Some(dir) = wheel.iter().find(|dir| holds_model(dir)) {
+        return Some(dir.clone());
     }
     let home = var("USERPROFILE").or_else(|| var("HOME"));
     if let Some(home) = &home {
@@ -514,6 +633,133 @@ mod tests {
         fs::remove_dir_all(&dir).unwrap();
     }
 
+    /// The two model files of `dir` as bytes.
+    fn model_bytes(dir: &Path) -> (Vec<u8>, Vec<u8>) {
+        (fs::read(dir.join("tokenizer.json")).unwrap(), fs::read(dir.join("model.safetensors")).unwrap())
+    }
+
+    #[test]
+    fn a_model_in_memory_embeds_exactly_as_the_same_model_in_a_folder() {
+        for wide in [false, true] {
+            let dir = temp(if wide { "mem-wide" } else { "mem-half" });
+            tiny_model(&dir, wide);
+            let folder = Embedder::open_with_cache(&dir, &dir.join("cache-folder")).unwrap();
+            let (tokenizer, weights) = model_bytes(&dir);
+            let memory = Embedder::from_bytes_with_cache(&tokenizer, weights, &dir.join("cache-memory")).unwrap();
+            assert_eq!(memory.dim(), folder.dim());
+            for text in ["x y", "Z", "x y z w", "", "unknown words only", "x ".repeat(300).as_str()] {
+                assert_eq!(memory.embed(text), folder.embed(text), "{text:?}");
+                assert_eq!(memory.token_ids(text), folder.token_ids(text), "{text:?}");
+            }
+            let texts = ["x", "x y z", "y"];
+            assert_eq!(memory.embed_many(&texts), folder.embed_many(&texts));
+            assert_eq!(memory.embed_padded(&texts), folder.embed_padded(&texts));
+            fs::remove_dir_all(&dir).unwrap();
+        }
+    }
+
+    #[test]
+    fn a_static_slice_is_used_without_a_copy() {
+        let dir = temp("mem-static");
+        tiny_model(&dir, false);
+        let (tokenizer, weights) = model_bytes(&dir);
+        // A program that carries its model has `&'static [u8]`; a leaked buffer stands in for it.
+        let weights: &'static [u8] = Box::leak(weights.into_boxed_slice());
+        let model = Embedder::from_bytes_with_cache(&tokenizer, weights, &dir.join("cache")).unwrap();
+        assert!(close(&model.embed("Z"), &[-1.0, 0.0]));
+        match &model.weights {
+            Weights::Memory(Cow::Borrowed(held)) => assert!(std::ptr::eq(*held, weights)),
+            other => panic!("the slice was copied or mapped: {other:?}"),
+        }
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn the_vocabulary_cache_of_a_model_in_memory_is_keyed_by_the_tokenizer_bytes() {
+        let dir = temp("mem-cache");
+        tiny_model(&dir, false);
+        let cache = dir.join("cache");
+        let (tokenizer, weights) = model_bytes(&dir);
+        let first = Embedder::from_bytes_with_cache(&tokenizer, weights.clone(), &cache).unwrap();
+        assert!(!first.used_cache());
+        // The same bytes find the cache, wherever they come from.
+        let second = Embedder::from_bytes_with_cache(&tokenizer.clone(), weights.clone(), &cache).unwrap();
+        assert!(second.used_cache());
+        assert_eq!(first.embed("x y z"), second.embed("x y z"));
+        // Other tokenizer bytes (here a shorter length limit) never use it.
+        let other = tiny_json(&["x", "y", "z"]).replace("\"max_length\":512", "\"max_length\":100");
+        let third = Embedder::from_bytes_with_cache(other.as_bytes(), weights.clone(), &cache).unwrap();
+        assert!(!third.used_cache());
+        assert_eq!(third.tokenizer_ids(&"x ".repeat(300)).len(), 100);
+        assert_eq!(second.tokenizer_ids(&"x ".repeat(300)).len(), 300);
+        // Each tokenizer has a cache file of its own, and the first one is still current.
+        assert_eq!(fs::read_dir(&cache).unwrap().count(), 2);
+        assert!(Embedder::from_bytes_with_cache(&tokenizer, weights.clone(), &cache).unwrap().used_cache());
+        assert!(Embedder::from_bytes_with_cache(other.as_bytes(), weights.clone(), &cache).unwrap().used_cache());
+        // A model in a folder keeps its own cache file: the two kinds do not share one.
+        Embedder::open_with_cache(&dir, &cache).unwrap();
+        assert_eq!(fs::read_dir(&cache).unwrap().count(), 3);
+        // A damaged cache file is ignored and made again.
+        for entry in fs::read_dir(&cache).unwrap() {
+            fs::write(entry.unwrap().path(), b"damaged").unwrap();
+        }
+        assert!(!Embedder::from_bytes_with_cache(&tokenizer, weights, &cache).unwrap().used_cache());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn from_bytes_keeps_its_cache_in_the_index_home() {
+        let dir = temp("mem-home");
+        tiny_model(&dir, false);
+        let home = dir.join("home");
+        let (tokenizer, weights) = model_bytes(&dir);
+        // Nothing else in the test run reads the index home, so setting it is safe here.
+        std::env::set_var("LXR_HOME", &home);
+        let first = Embedder::from_bytes(&tokenizer, weights.clone()).unwrap();
+        let second = Embedder::from_bytes(&tokenizer, weights).unwrap();
+        std::env::remove_var("LXR_HOME");
+        assert!(!first.used_cache() && second.used_cache());
+        assert_eq!(fs::read_dir(home.join("model-cache")).unwrap().count(), 1);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_model_in_memory_that_does_not_fit_is_refused_with_a_clear_error() {
+        let dir = temp("mem-bad");
+        tiny_model(&dir, false);
+        let (tokenizer, weights) = model_bytes(&dir);
+        let cache = dir.join("cache");
+        let error = Embedder::from_bytes_with_cache(&tokenizer, weights[..weights.len() - 4].to_vec(), &cache).unwrap_err();
+        assert!(error.to_string().contains("runs past the end"), "{error}");
+        let error = Embedder::from_bytes_with_cache(&tokenizer, Vec::new(), &cache).unwrap_err();
+        assert!(error.to_string().contains("too short"), "{error}");
+        // A vocabulary with more ids than the table has rows is refused, as for a folder.
+        let more = tiny_json(&["x", "y", "z", "w"]);
+        let error = Embedder::from_bytes_with_cache(more.as_bytes(), weights, &cache).unwrap_err();
+        assert!(error.to_string().contains("rows"), "{error}");
+        assert!(Embedder::from_bytes_with_cache(b"not json", Vec::new(), &cache).is_err());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn locate_env_is_the_folder_of_lxr_model_dir_when_it_holds_the_model() {
+        let root = temp("env-folder");
+        let named = root.join("named");
+        fs::create_dir_all(&named).unwrap();
+        let env = |dir: &Path| {
+            let dir = dir.to_path_buf();
+            move |name: &str| (name == "LXR_MODEL_DIR").then(|| dir.clone().into_os_string())
+        };
+        // A folder without the model is not a choice, nor is an empty value or no value.
+        assert_eq!(env_folder(&env(&named)), None);
+        assert_eq!(env_folder(&env(&root.join("nope"))), None);
+        assert_eq!(env_folder(&|_| None), None);
+        assert_eq!(env_folder(&|_| Some(OsString::new())), None);
+        tiny_model(&named, false);
+        assert_eq!(env_folder(&env(&named)), Some(named.clone()));
+        fs::remove_dir_all(&root).unwrap();
+    }
+
     #[test]
     fn open_keeps_its_cache_in_the_index_home() {
         let dir = temp("home");
@@ -670,6 +916,132 @@ mod tests {
             locate_with(&env(vec![("USERPROFILE", root.join("home")), ("LXR_MODEL_DIR", root.join("nope"))])),
             Some(local)
         );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    /// `<prefix>/share/peterganurusty/model`, built the way the code under test builds it.
+    fn wheel_model_under(prefix: &str) -> PathBuf {
+        Path::new(prefix).join("share").join("peterganurusty").join("model")
+    }
+
+    #[test]
+    fn wheel_candidates_are_the_two_levels_above_the_scripts_folder() {
+        // A virtual environment or a system install: bin/ (Unix) or Scripts\ (Windows).
+        assert_eq!(
+            wheel_model_candidates(Path::new("/env/bin/pgr")),
+            vec![wheel_model_under("/env"), wheel_model_under("/")]
+        );
+        assert_eq!(
+            wheel_model_candidates(Path::new("/env/Scripts/pgr.exe")),
+            vec![wheel_model_under("/env"), wheel_model_under("/")]
+        );
+        // `pip install --user` on Unix: ~/.local/bin and ~/.local/share.
+        assert_eq!(
+            wheel_model_candidates(Path::new("/home/u/.local/bin/pgr")),
+            vec![wheel_model_under("/home/u/.local"), wheel_model_under("/home/u")]
+        );
+        // `pip install --user` on Windows: <user base>\Python311\Scripts, data in <user base>\share.
+        assert_eq!(
+            wheel_model_candidates(Path::new("/ub/Python311/Scripts/pgr.exe")),
+            vec![wheel_model_under("/ub/Python311"), wheel_model_under("/ub")]
+        );
+        // No component is a `..`, so the paths also work in the `\\?\` form.
+        for dir in wheel_model_candidates(Path::new("/a/b/c/pgr")) {
+            assert!(dir.components().all(|c| c != std::path::Component::ParentDir), "{}", dir.display());
+        }
+    }
+
+    #[test]
+    fn wheel_candidates_of_a_short_path_do_not_panic() {
+        assert!(wheel_model_candidates(Path::new("/")).is_empty());
+        assert!(wheel_model_candidates(Path::new("")).is_empty());
+        assert!(wheel_model_candidates(Path::new("pgr")).is_empty());
+        assert_eq!(wheel_model_candidates(Path::new("bin/pgr")), vec![wheel_model_under("")]);
+    }
+
+    #[test]
+    fn resolving_the_program_path_never_fails() {
+        // Missing: handed back as it was.
+        let missing = Path::new("/no/such/folder/pgr");
+        assert_eq!(resolve_exe(missing), missing);
+        // The running test program resolves to the same file.
+        let exe = std::env::current_exe().unwrap();
+        let real = resolve_exe(&exe);
+        assert!(real.is_file(), "{}", real.display());
+        assert_eq!(fs::canonicalize(&real).unwrap(), fs::canonicalize(&exe).unwrap());
+        assert!(!real.to_string_lossy().starts_with(r"\\?\"), "{}", real.display());
+        // Whatever the program's place, locating from it asks for no more than two folders.
+        assert!(wheel_model_dirs().len() <= 2);
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_link_to_the_program_resolves_to_the_environment_it_points_into() {
+        let root = temp("exelink");
+        let env_bin = root.join("env/bin");
+        let link_bin = root.join("home/.local/bin");
+        fs::create_dir_all(&env_bin).unwrap();
+        fs::create_dir_all(&link_bin).unwrap();
+        fs::write(env_bin.join("pgr"), b"x").unwrap();
+        std::os::unix::fs::symlink(env_bin.join("pgr"), link_bin.join("pgr")).unwrap();
+        let real = resolve_exe(&link_bin.join("pgr"));
+        assert_eq!(real, fs::canonicalize(env_bin.join("pgr")).unwrap());
+        assert_eq!(
+            wheel_model_candidates(&real)[0],
+            fs::canonicalize(root.join("env")).unwrap().join("share/peterganurusty/model")
+        );
+        fs::remove_dir_all(&root).unwrap();
+    }
+
+    #[test]
+    fn plain_windows_paths_replace_the_verbatim_form_but_unc_ones_stay() {
+        let plain = |s: &str| plain_path(PathBuf::from(s)).to_string_lossy().into_owned();
+        assert_eq!(plain(r"\\?\C:\env\Scripts\pgr.exe"), r"C:\env\Scripts\pgr.exe");
+        assert_eq!(plain(r"\\?\UNC\server\share\pgr.exe"), r"\\?\UNC\server\share\pgr.exe");
+        assert_eq!(plain(r"C:\env\Scripts\pgr.exe"), r"C:\env\Scripts\pgr.exe");
+        assert_eq!(plain("/usr/bin/pgr"), "/usr/bin/pgr");
+        assert_eq!(plain(r"\\?\"), r"\\?\");
+    }
+
+    #[test]
+    fn the_wheel_folder_comes_after_the_named_one_and_before_the_other_places() {
+        let root = temp("wheel");
+        let make = |dir: &Path| {
+            fs::create_dir_all(dir).unwrap();
+            fs::write(dir.join("model.safetensors"), b"x").unwrap();
+            fs::write(dir.join("tokenizer.json"), b"{}").unwrap();
+        };
+        let env = |pairs: Vec<(&'static str, PathBuf)>| {
+            let map: HashMap<&str, OsString> = pairs.into_iter().map(|(k, v)| (k, v.into_os_string())).collect();
+            move |name: &str| map.get(name).cloned()
+        };
+        let home = root.join("home");
+        let local = home.join(".local-index/models").join(MODEL_NAME);
+        make(&local);
+        let near = root.join("env/share/peterganurusty/model");
+        let far = root.join("share/peterganurusty/model");
+        let wheel = vec![near.clone(), far.clone()];
+        let at_home = || env(vec![("USERPROFILE", home.clone())]);
+        // Folders that hold no model are skipped, and the other places answer.
+        assert_eq!(locate_from(&at_home(), &wheel), Some(local.clone()));
+        fs::create_dir_all(&near).unwrap();
+        fs::write(near.join("tokenizer.json"), b"{}").unwrap();
+        assert_eq!(locate_from(&at_home(), &wheel), Some(local.clone()));
+        // The far folder holds a model: it beats the local-index folder.
+        make(&far);
+        assert_eq!(locate_from(&at_home(), &wheel), Some(far.clone()));
+        // The near folder wins when it holds one too.
+        make(&near);
+        assert_eq!(locate_from(&at_home(), &wheel), Some(near));
+        // LXR_MODEL_DIR still comes first, but only when it holds the model.
+        let named = root.join("named");
+        make(&named);
+        let with_named = env(vec![("USERPROFILE", home.clone()), ("LXR_MODEL_DIR", named.clone())]);
+        assert_eq!(locate_from(&with_named, &wheel), Some(named));
+        let with_bad = env(vec![("USERPROFILE", home.clone()), ("LXR_MODEL_DIR", root.join("nope"))]);
+        assert!(locate_from(&with_bad, &wheel).is_some_and(|dir| dir != local));
+        // No wheel folders: the older order is unchanged.
+        assert_eq!(locate_from(&at_home(), &[]), Some(local));
         fs::remove_dir_all(&root).unwrap();
     }
 

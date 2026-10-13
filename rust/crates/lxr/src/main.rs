@@ -20,8 +20,11 @@ mod findcmd;
 mod graphcmd;
 mod guard;
 mod index;
+mod localtime;
 mod mcp;
 mod memcmd;
+mod model;
+mod oslock;
 mod pack;
 mod rows;
 

@@ -151,7 +151,9 @@ pub struct Symbol {
     pub doc: String,
     /// Index, in the same file's `symbols`, of the definition this one sits in.
     pub parent: Option<u32>,
-    /// For a class-like symbol, the names it extends or implements, as written.
+    /// For a class-like symbol, the names it extends or implements, as written,
+    /// except that JavaScript and TypeScript bases come without type arguments.
+    /// A reader should strip generic arguments from any base before looking it up.
     pub bases: Vec<String>,
     /// A hash of the definition's source lines, `start` to `end`. It changes when
     /// the definition's text changes and is what memory uses to notice stale notes.
@@ -162,12 +164,15 @@ pub struct Symbol {
 #[derive(Serialize, Deserialize, Clone, PartialEq, Debug)]
 pub struct Call {
     /// Index, in the same file's `symbols`, of the innermost function or method
-    /// the call sits in. `None` for a call at module level or in a class body.
+    /// the call sits in. `None` for a call at module level, or in a class body
+    /// that is not itself inside a function.
     pub caller: Option<u32>,
     /// The called name alone: `load` for `self.cache.load(x)`, `run` for `run()`.
     pub name: String,
     /// What the name was called on, as written and at most 60 characters:
-    /// `self.cache` for `self.cache.load(x)`, empty for a bare `run()`.
+    /// `self.cache` for `self.cache.load(x)`, empty for a bare `run()`. A Rust
+    /// path call records the path before the last `::` as plain identifiers,
+    /// without generic arguments or qualified-self syntax (`Vec` for `Vec::<u8>::new()`).
     pub recv: String,
     /// Line of the call, counted from 1.
     pub line: u32,
@@ -181,8 +186,10 @@ pub struct Import {
     /// The name taken from the module, or empty when the module itself is imported.
     /// `*` for a star import.
     pub name: String,
-    /// The name it is bound to in this file. Equal to `name` (or to the module's
-    /// last part) when there is no `as`.
+    /// The name it is bound to in this file. With no `as`: for a Python
+    /// `import a.b` the whole dotted module `a.b` (the graph binds both `a.b` and
+    /// the package `a` from it), otherwise `name`, or the module's last part when
+    /// `name` is empty.
     pub alias: String,
     /// Number of leading dots of a Python relative import. 0 otherwise.
     pub level: u8,

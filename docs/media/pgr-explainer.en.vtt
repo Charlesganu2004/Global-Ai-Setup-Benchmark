@@ -1,0 +1,95 @@
+WEBVTT
+
+1
+00:00:00.800 --> 00:00:02.684
+Three simple code lookups.
+
+2
+00:00:02.884 --> 00:00:03.866
+Four turns.
+
+3
+00:00:04.066 --> 00:00:06.425
+294k tokens.
+
+4
+00:00:06.625 --> 00:00:11.049
+Every turn, an AI coding agent reads its
+whole conversation again.
+
+5
+00:00:12.109 --> 00:00:14.936
+Now the same lookups, with PeterGanuRusty.
+
+6
+00:00:15.156 --> 00:00:16.195
+One question.
+
+7
+00:00:16.415 --> 00:00:17.356
+One answer.
+
+8
+00:00:17.576 --> 00:00:24.257
+The stream shortens to 134k tokens. 54%
+fewer, in 2 turns.
+
+9
+00:00:25.384 --> 00:00:27.103
+It gives an agent four things.
+
+10
+00:00:27.403 --> 00:00:31.065
+Where a function is defined, and what
+calls it, in one lookup.
+
+11
+00:00:31.365 --> 00:00:34.676
+Search by meaning: describe a job, get the
+function.
+
+12
+00:00:34.976 --> 00:00:37.217
+What a change reaches, before the edit.
+
+13
+00:00:37.517 --> 00:00:40.080
+And findings, remembered between sessions.
+
+14
+00:00:41.415 --> 00:00:48.178
+To measure it, we ran 884 agents on one
+Python repository of 86 files.
+
+15
+00:00:48.478 --> 00:00:53.978
+Three questions, graded against the syntax
+tree, on three model classes: light, mid
+
+16
+00:00:53.978 --> 00:00:54.567
+and top.
+
+17
+00:00:54.867 --> 00:00:58.625
+14 ways of finding code, ranked. The best
+one is marked.
+
+18
+00:00:58.925 --> 00:01:02.823
+Runs fully correct: 3 of 3. With no index,
+2 of 3.
+
+19
+00:01:04.271 --> 00:01:08.693
+The limits are real: one repository, a few
+runs for each setup.
+
+20
+00:01:09.143 --> 00:01:11.596
+The study measures the first two things
+only.
+
+21
+00:01:12.046 --> 00:01:14.532
+PeterGanuRusty. Private preview.

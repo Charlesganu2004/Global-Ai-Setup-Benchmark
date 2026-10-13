@@ -1,0 +1,14 @@
+{
+  "name": "pgr-video",
+  "private": true,
+  "type": "module",
+  "description": "The two films on the PeterGanuRusty site, drawn from the site's data and rendered locally.",
+  "scripts": {
+    "facts": "node tools/facts.mjs",
+    "explainer": "node tools/build.mjs explainer",
+    "ad": "node tools/build.mjs ad",
+    "explainer:2160": "node tools/build.mjs explainer --scale 2",
+    "ad:2160": "node tools/build.mjs ad --scale 2",
+    "shot": "node tools/shot.mjs"
+  }
+}

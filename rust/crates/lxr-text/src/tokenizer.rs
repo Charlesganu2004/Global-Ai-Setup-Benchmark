@@ -8,6 +8,7 @@
 use crate::unicode_data::{CONTROL, MARKS, PUNCT};
 use lxr_core::store::{hash64, write_atomic};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -16,7 +17,10 @@ use unicode_normalization::UnicodeNormalization;
 
 const CACHE_MAGIC: &[u8; 8] = b"LXRTOK02";
 
-/// What the cache file is keyed by: the size and modification time of `tokenizer.json`.
+/// What the cache file is keyed by. For a `tokenizer.json` on disk: its size and its
+/// modification time (`secs` and `nanos`). For a tokenizer held in memory: its size and a hash
+/// of its bytes (in `secs`, with `nanos` zero), so that the same bytes find the same cache
+/// wherever they came from and other bytes never find it.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) struct CacheKey {
     size: u64,
@@ -25,6 +29,11 @@ pub(crate) struct CacheKey {
 }
 
 impl CacheKey {
+    /// The key of a tokenizer held in memory.
+    pub(crate) fn of_bytes(bytes: &[u8]) -> CacheKey {
+        CacheKey { size: bytes.len() as u64, secs: hash64(bytes), nanos: 0 }
+    }
+
     pub(crate) fn of(path: &Path) -> io::Result<CacheKey> {
         let meta = fs::metadata(path)?;
         let since = meta
@@ -334,14 +343,33 @@ impl Tokenizer {
     pub(crate) fn load(tokenizer_json: &Path, cache_dir: &Path) -> io::Result<(Tokenizer, bool)> {
         let key = CacheKey::of(tokenizer_json)?;
         let cache = cache_file(tokenizer_json, cache_dir);
-        if let Ok(bytes) = fs::read(&cache) {
-            if let Some(tokenizer) = Tokenizer::from_cache(&bytes, &key) {
+        Tokenizer::load_through(&key, &cache, || fs::read(tokenizer_json).map(Cow::Owned))
+    }
+
+    /// Like [`Tokenizer::load`], for a `tokenizer.json` that is already in memory. The cache
+    /// file is named and keyed by a hash of the bytes, so the tokenizer of a model that is
+    /// compiled into the program is cached as well as one in a folder.
+    pub(crate) fn load_bytes(tokenizer_json: &[u8], cache_dir: &Path) -> io::Result<(Tokenizer, bool)> {
+        let key = CacheKey::of_bytes(tokenizer_json);
+        let cache = cache_dir.join(format!("vocab-bytes-{:016x}.bin", key.secs));
+        Tokenizer::load_through(&key, &cache, || Ok(Cow::Borrowed(tokenizer_json)))
+    }
+
+    /// The cache file when it is current for `key`, else the JSON that `json` gives, with the
+    /// cache written afterwards.
+    fn load_through<'a>(
+        key: &CacheKey,
+        cache: &Path,
+        json: impl FnOnce() -> io::Result<Cow<'a, [u8]>>,
+    ) -> io::Result<(Tokenizer, bool)> {
+        if let Ok(bytes) = fs::read(cache) {
+            if let Some(tokenizer) = Tokenizer::from_cache(&bytes, key) {
                 return Ok((tokenizer, true));
             }
         }
-        let tokenizer = Tokenizer::from_json(&fs::read(tokenizer_json)?)?;
+        let tokenizer = Tokenizer::from_json(&json()?)?;
         // A cache that cannot be written only costs the next start some time.
-        let _ = write_atomic(&cache, &tokenizer.to_cache(&key));
+        let _ = write_atomic(cache, &tokenizer.to_cache(key));
         Ok((tokenizer, false))
     }
 

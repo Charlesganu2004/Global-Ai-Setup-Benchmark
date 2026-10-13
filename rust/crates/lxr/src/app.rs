@@ -5,8 +5,7 @@ use crate::cli::Command;
 use crate::ctx::Ctx;
 use crate::fail::{Fail, Res};
 use crate::index::status;
-use crate::{ask, findcmd, graphcmd, memcmd, pack};
-use lxr_text::Embedder;
+use crate::{ask, findcmd, graphcmd, memcmd, model, pack};
 
 /// The text a command prints on standard output.
 pub fn dispatch(ctx: &mut Ctx, command: &Command) -> Res<String> {
@@ -19,7 +18,7 @@ pub fn dispatch(ctx: &mut Ctx, command: &Command) -> Res<String> {
             ctx.check_folder()?;
             let done = ctx.run_refresh(*force)?;
             // Said once per `pgr refresh`, not on every automatic refresh before a query.
-            if done.words_only || (!done.rebuilt && Embedder::locate().is_none()) {
+            if done.words_only || (!done.rebuilt && !model::is_present()) {
                 crate::say("pgr: no embedding model found, search uses words only");
             }
             ln!(out, "{}", status::line(ctx)?);

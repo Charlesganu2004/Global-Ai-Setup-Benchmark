@@ -81,12 +81,6 @@
    "group": "baseline",
    "control": true,
    "name": "No index",
-   "public": {
-    "slug": "no-index",
-    "name": "No index (control)",
-    "family": "control",
-    "order": 1
-   },
    "detail": "The client's own search and read tools. The control every other method is compared with.",
    "uses": [
     "grep"
@@ -295,12 +289,6 @@
    "id": "S1",
    "group": "shipped",
    "name": "Shipped: lx ask, default index",
-   "public": {
-    "slug": "engine-v1",
-    "name": "Our engine, first generation",
-    "family": "engine-v1",
-    "order": 5
-   },
    "detail": "The final build. Its search merges semble with the Rust index's name and doc search, which needs no embeddings. One-call command, default index.",
    "uses": [
     "lx_ask"
@@ -325,12 +313,6 @@
    "id": "S3",
    "group": "shipped",
    "name": "Shipped: lx ask, embeddings on",
-   "public": {
-    "slug": "engine-v1-embeddings",
-    "name": "Our engine, first generation, with embeddings",
-    "family": "engine-v1",
-    "order": 6
-   },
    "detail": "The final build's one-call command on an index with Rust embeddings: its search merges three engines.",
    "uses": [
     "lx_ask"
@@ -829,6 +811,12 @@
    "group": "rerun",
    "base": "A0",
    "name": "No index, run again with round five",
+   "public": {
+    "slug": "no-index",
+    "name": "No index (control)",
+    "family": "control",
+    "order": 1
+   },
    "detail": "The same prompt and commands as A0, measured on the day of the fifth round.",
    "uses": [
     "grep"
@@ -840,6 +828,12 @@
    "group": "rerun",
    "base": "S1",
    "name": "Shipped: lx ask, default index, run again with round five",
+   "public": {
+    "slug": "engine-v1",
+    "name": "Our engine, first generation",
+    "family": "engine-v1",
+    "order": 5
+   },
    "detail": "The same prompt and commands as S1, measured on the day of the fifth round.",
    "uses": [
     "lx_ask"
@@ -851,6 +845,12 @@
    "group": "rerun",
    "base": "S3",
    "name": "Shipped: lx ask, embeddings on, run again with round five",
+   "public": {
+    "slug": "engine-v1-embeddings",
+    "name": "Our engine, first generation, with embeddings",
+    "family": "engine-v1",
+    "order": 6
+   },
    "detail": "The same prompt and commands as S3, measured on the day of the fifth round.",
    "uses": [
     "lx_ask"

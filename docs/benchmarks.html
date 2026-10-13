@@ -6,10 +6,10 @@
 <meta name="color-scheme" content="dark">
 <meta name="theme-color" content="#0a0a0c">
 <title>Benchmarks | PeterGanuRusty</title>
-<meta name="description" content="Tokens, turns and correct answers for each published configuration, by model class.">
+<meta name="description" content="Tokens, turns and correct answers for each published configuration, by model class and question set.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
 <script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=86cdedba">
+<link rel="stylesheet" href="assets/app.css?v=da33b975">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -25,6 +25,7 @@
           <li><a href="#leaderboard">Leaderboard</a></li>
           <li><a href="#chart">Tokens and correct answers</a></li>
           <li><a href="#turns">Turns per task</a></li>
+          <li><a href="#engine">Engine speed</a></li>
           <li><a href="#findings">Findings</a></li>
         </ul></li>
         <li><a href="study.html">Study</a></li>
@@ -35,178 +36,397 @@
 <main id="main" class="page">
   <header class="large-title">
     <h1 id="title" aria-label="Benchmarks"><span class="w" aria-hidden="true" style="--i:0"><span>Benchmarks</span></span></h1>
-    <p class="lede"><!--slot:lede-->Tokens, turns and correct answers for each published configuration, measured on the same three lookups. Pick a model class to compare.<!--/slot:lede--></p>
+    <p class="lede"><!--slot:lede-->Tokens, turns and correct answers for each published configuration, measured on the same three lookups and on a held-out set of three more. Pick a model class and a question set to compare.<!--/slot:lede--></p>
   </header>
 
   <div class="scope">
-    <!--slot:seg--><div class="seg-bar"><div class="seg" role="radiogroup" aria-label="Model class" style="--count:3"><span class="seg-thumb" aria-hidden="true"></span>
-      <button type="button" role="radio" aria-checked="true" tabindex="0" data-class="light">Light</button>
-      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-class="mid">Mid</button>
-      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-class="top">Top</button>
-    </div></div>
+    <!--slot:seg--><div class="seg-bar">
+    <div class="seg" role="radiogroup" aria-label="Model class" data-seg="class" style="--count:3"><span class="seg-thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="light">Light</button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="mid">Mid</button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="top">Top</button>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="Questions" data-seg="set" style="--count:2"><span class="seg-thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="original">Original</button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="held-out">Held-out</button>
+    </div>
+  </div>
+  <p class="group-title seg-note" id="set-note"><span data-set="original">Original questions: the three lookups every round has used.</span> <span data-set="held-out">Held-out questions: three more lookups of the same shapes, written after the engine was built and never seen by the people or agents who built it.</span></p>
   <p class="sr-only" id="seg-status" aria-live="polite"></p><!--/slot:seg-->
 
     <section class="section" aria-labelledby="leaderboard">
       <h2 id="leaderboard" class="section-title">Leaderboard</h2>
-      <!--slot:boards--><div class="panel board-panel on" data-class="light" role="group" aria-label="Light class leaderboard">
-    <h3 class="panel-title">Light class</h3>
+      <!--slot:boards--><div class="panel board-panel on" data-class="light" data-set="original" role="group" aria-label="Light class, original questions, leaderboard">
+    <h3 class="panel-title">Light class, original questions</h3>
     <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Light class: runs, tokens, turns and correct answers by configuration</caption>
+        <caption class="sr-only">Light class, original questions: runs, tokens, turns and correct answers by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span> <span class="tag">Best</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">130k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">130k<span class="sub">129k to 130k</span></span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Best</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k<span class="sub">134k to 135k</span></span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph, search and memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">157k<span class="sub">134k to 203k</span></span></td><td data-label="Turns">2.3</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">177k<span class="sub">133k to 200k</span></span></td><td data-label="Turns">2.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">252k<span class="sub">204k to 277k</span></span></td><td data-label="Turns">3.7</td><td data-label="Answers correct">74%</td><td data-label="Fully correct runs">0 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">273k<span class="sub">272k to 275k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">294k<span class="sub">292k to 296k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">99%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search and memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">302k<span class="sub">134k to 423k</span></span></td><td data-label="Turns">4.3</td><td data-label="Answers correct">85%</td><td data-label="Fully correct runs">0 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Runs">2</td><td data-label="Tokens"><span class="v">352k<span class="sub">274k to 430k</span></span></td><td data-label="Turns">5.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">2 of 2</td></tr>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">5</td><td data-label="Tokens"><span class="v">365k<span class="sub">288k to 441k</span></span></td><td data-label="Turns">5.0</td><td data-label="Answers correct">98%</td><td data-label="Fully correct runs">4 of 5</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Two separate tools: code graph and semantic search</span></th><td data-label="Runs">2</td><td data-label="Tokens"><span class="v">480k<span class="sub">339k to 621k</span></span></td><td data-label="Turns">7.0</td><td data-label="Answers correct">96%</td><td data-label="Fully correct runs">1 of 2</td></tr>
         </tbody>
       </table>
     </div>
   </div>
-  <div class="panel board-panel" data-class="mid" role="group" aria-label="Mid class leaderboard">
-    <h3 class="panel-title">Mid class</h3>
+  <div class="panel board-panel" data-class="mid" data-set="original" role="group" aria-label="Mid class, original questions, leaderboard">
+    <h3 class="panel-title">Mid class, original questions</h3>
     <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Mid class: runs, tokens, turns and correct answers by configuration</caption>
+        <caption class="sr-only">Mid class, original questions: runs, tokens, turns and correct answers by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span> <span class="tag">Best</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">129k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Best</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">133k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">133k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph, search and memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">177k<span class="sub">132k to 201k</span></span></td><td data-label="Turns">2.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Runs">6</td><td data-label="Tokens"><span class="v">196k<span class="sub">195k to 196k</span></span></td><td data-label="Turns">3.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">6 of 6</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">203k</span></td><td data-label="Turns">3.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">261k<span class="sub">210k to 287k</span></span></td><td data-label="Turns">3.7</td><td data-label="Answers correct">97%</td><td data-label="Fully correct runs">0 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Two separate tools: code graph and semantic search</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">266k</span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">267k</span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">281k<span class="sub">277k to 283k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">275k<span class="sub">275k to 276k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">99%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search and memory</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">275k<span class="sub">274k to 277k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">98%</td><td data-label="Fully correct runs">1 of 3</td></tr>
         </tbody>
       </table>
     </div>
   </div>
-  <div class="panel board-panel" data-class="top" role="group" aria-label="Top class leaderboard">
-    <h3 class="panel-title">Top class</h3>
+  <div class="panel board-panel" data-class="top" data-set="original" role="group" aria-label="Top class, original questions, leaderboard">
+    <h3 class="panel-title">Top class, original questions</h3>
     <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Top class: runs, tokens, turns and correct answers by configuration</caption>
+        <caption class="sr-only">Top class, original questions: runs, tokens, turns and correct answers by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span> <span class="tag">Best</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">199k</span></td><td data-label="Turns">3.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">201k</span></td><td data-label="Turns">3.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">297k</span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
-        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">298k<span class="sub">293k to 307k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">303k</span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-name">Two separate tools: code graph and semantic search</span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">500k</span></td><td data-label="Turns">7.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
         </tbody>
       </table>
     </div>
   </div>
-  <p class="footnote">The best configuration is chosen on the light class, one agent, among those run at least 3 times: the highest share of fully correct runs, then the fewest tokens.</p><!--/slot:boards-->
+  <div class="panel board-panel" data-class="light" data-set="held-out" role="group" aria-label="Light class, held-out questions, leaderboard">
+    <h3 class="panel-title">Light class, held-out questions</h3>
+    <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
+    <div class="card">
+      <table class="board">
+        <caption class="sr-only">Light class, held-out questions: runs, tokens, turns and correct answers by configuration</caption>
+        <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>
+        <tbody>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Best</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">181k<span class="sub">134k to 274k</span></span></td><td data-label="Turns">2.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">205k<span class="sub">135k to 275k</span></span></td><td data-label="Turns">3.0</td><td data-label="Answers correct">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">251k<span class="sub">203k to 275k</span></span></td><td data-label="Turns">3.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">313k<span class="sub">205k to 455k</span></span></td><td data-label="Turns">4.3</td><td data-label="Answers correct">72%</td><td data-label="Fully correct runs">1 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">361k<span class="sub">305k to 391k</span></span></td><td data-label="Turns">4.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="panel board-panel" data-class="mid" data-set="held-out" role="group" aria-label="Mid class, held-out questions, leaderboard">
+    <h3 class="panel-title">Mid class, held-out questions</h3>
+    <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
+    <div class="card">
+      <table class="board">
+        <caption class="sr-only">Mid class, held-out questions: runs, tokens, turns and correct answers by configuration</caption>
+        <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>
+        <tbody>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Best</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">180k<span class="sub">134k to 204k</span></span></td><td data-label="Turns">2.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k<span class="sub">134k to 135k</span></span></td><td data-label="Turns">2.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Runs">2</td><td data-label="Tokens"><span class="v">250k<span class="sub">210k to 290k</span></span></td><td data-label="Turns">3.5</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">2 of 2</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Runs">2</td><td data-label="Tokens"><span class="v">272k<span class="sub">203k to 341k</span></span></td><td data-label="Turns">4.0</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">2 of 2</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">328k<span class="sub">279k to 353k</span></span></td><td data-label="Turns">4.7</td><td data-label="Answers correct">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="panel board-panel" data-class="top" data-set="held-out" role="group" aria-label="Top class, held-out questions, leaderboard">
+    <h3 class="panel-title">Top class, held-out questions</h3>
+    <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>
+    <p class="note empty">No configuration was measured on the top class with the held-out questions.</p>
+  </div>
+  <p class="footnote">The best configuration is chosen among those run at least 3 times in each of four cells, the original and the held-out questions on the light and mid classes: the highest share of its runs that were fully correct, and on a tie the lower mean tokens over the four cells.</p><!--/slot:boards-->
     </section>
 
     <section class="section" aria-labelledby="chart">
       <h2 id="chart" class="section-title">Tokens and correct answers</h2>
       <p class="group-title">One mark per configuration. Further left is fewer tokens, higher is more answers correct. The line through a mark runs from the lowest to the highest run.</p>
-      <!--slot:charts--><div class="panel on" data-class="light" role="group" aria-label="Light class chart">
-    <h3 class="panel-title">Light class</h3>
+      <!--slot:charts--><div class="panel on" data-class="light" data-set="original" role="group" aria-label="Light class, original questions, chart">
+    <h3 class="panel-title">Light class, original questions</h3>
     <div class="card chart-card">
       <ul class="legend" aria-label="Series"></ul>
-      <div class="chart" data-chart="light"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
-      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>Our engine, first generation, with embeddings</span></li><li><b>2</b><span>Our engine, first generation</span></li><li><b>3</b><span>Read-compression tool</span></li><li><b>4</b><span>Symbol index with embeddings</span></li><li><b>5</b><span>No index (control)</span></li><li><b>6</b><span>Two separate tools: code graph and semantic search</span></li></ol>
+      <div class="chart" data-chart="light" data-set="original"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
+      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>PGR: graph and search</span></li><li><b>2</b><span>Our engine, first generation</span></li><li><b>3</b><span>Our engine, first generation, with embeddings</span></li><li><b>4</b><span>PGR: memory</span></li><li><b>5</b><span>PGR: all three, memory from an earlier exploring session</span></li><li><b>6</b><span>PGR: graph, search and memory</span></li><li><b>7</b><span>PGR: graph and memory</span></li><li><b>8</b><span>Read-compression tool</span></li><li><b>9</b><span>PGR: search</span></li><li><b>10</b><span>PGR: code graph</span></li><li><b>11</b><span>No index (control)</span></li><li><b>12</b><span>PGR: search and memory</span></li><li><b>13</b><span>Symbol index with embeddings</span></li><li><b>14</b><span>Two separate tools: code graph and semantic search</span></li></ol>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Light class: tokens, answers correct and wall time by configuration</caption>
+          <caption class="sr-only">Light class, original questions: tokens, answers correct and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">130k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">39 s</td></tr>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Tokens">130k</td><td data-label="Answers correct">97%</td><td data-label="Wall time">33 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">11 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">29 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">15 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: memory</span></th><td data-label="Tokens">135k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">17 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">135k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph, search and memory</span></th><td data-label="Tokens">135k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">11 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and memory</span></th><td data-label="Tokens">157k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">16 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Tokens">177k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">27 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">252k</td><td data-label="Answers correct">74%</td><td data-label="Wall time">33 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">273k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">21 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">294k</td><td data-label="Answers correct">99%</td><td data-label="Wall time">27 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search and memory</span></th><td data-label="Tokens">302k</td><td data-label="Answers correct">85%</td><td data-label="Wall time">33 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Tokens">352k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">26 s</td></tr>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">365k</td><td data-label="Answers correct">98%</td><td data-label="Wall time">25 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Two separate tools: code graph and semantic search</span></th><td data-label="Tokens">480k</td><td data-label="Answers correct">96%</td><td data-label="Wall time">36 s</td></tr>
           </tbody>
         </table>
       </details>
     </div>
   </div>
-  <div class="panel" data-class="mid" role="group" aria-label="Mid class chart">
-    <h3 class="panel-title">Mid class</h3>
+  <div class="panel" data-class="mid" data-set="original" role="group" aria-label="Mid class, original questions, chart">
+    <h3 class="panel-title">Mid class, original questions</h3>
     <div class="card chart-card">
       <ul class="legend" aria-label="Series"></ul>
-      <div class="chart" data-chart="mid"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
-      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>Our engine, first generation, with embeddings</span></li><li><b>2</b><span>Read-compression tool</span></li><li><b>3</b><span>Our engine, first generation</span></li><li><b>4</b><span>Two separate tools: code graph and semantic search</span></li><li><b>5</b><span>Symbol index with embeddings</span></li><li><b>6</b><span>No index (control)</span></li></ol>
+      <div class="chart" data-chart="mid" data-set="original"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
+      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>PGR: graph and search</span></li><li><b>2</b><span>Our engine, first generation, with embeddings</span></li><li><b>3</b><span>PGR: graph and memory</span></li><li><b>4</b><span>PGR: graph, search and memory</span></li><li><b>5</b><span>PGR: memory</span></li><li><b>6</b><span>PGR: code graph</span></li><li><b>7</b><span>Read-compression tool</span></li><li><b>8</b><span>PGR: all three, memory from an earlier exploring session</span></li><li><b>9</b><span>No index (control)</span></li><li><b>10</b><span>Two separate tools: code graph and semantic search</span></li><li><b>11</b><span>Symbol index with embeddings</span></li><li><b>12</b><span>PGR: search</span></li><li><b>13</b><span>PGR: search and memory</span></li></ol>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Mid class: tokens, answers correct and wall time by configuration</caption>
+          <caption class="sr-only">Mid class, original questions: tokens, answers correct and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">129k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">23 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">133k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">133k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and memory</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">13 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph, search and memory</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: memory</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">135k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">12 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Tokens">177k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">42 s</td></tr>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Tokens">196k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">61 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">203k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">17 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">261k</td><td data-label="Answers correct">97%</td><td data-label="Wall time">22 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Two separate tools: code graph and semantic search</span></th><td data-label="Tokens">266k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">24 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Tokens">267k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">24 s</td></tr>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">281k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">25 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">275k</td><td data-label="Answers correct">99%</td><td data-label="Wall time">29 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search and memory</span></th><td data-label="Tokens">275k</td><td data-label="Answers correct">98%</td><td data-label="Wall time">28 s</td></tr>
           </tbody>
         </table>
       </details>
     </div>
   </div>
-  <div class="panel" data-class="top" role="group" aria-label="Top class chart">
-    <h3 class="panel-title">Top class</h3>
+  <div class="panel" data-class="top" data-set="original" role="group" aria-label="Top class, original questions, chart">
+    <h3 class="panel-title">Top class, original questions</h3>
     <div class="card chart-card">
-      <ul class="legend" aria-label="Series"></ul>
-      <div class="chart" data-chart="top"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
-      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>Our engine, first generation, with embeddings</span></li><li><b>2</b><span>Our engine, first generation</span></li><li><b>3</b><span>Symbol index with embeddings</span></li><li><b>4</b><span>No index (control)</span></li><li><b>5</b><span>Read-compression tool</span></li><li><b>6</b><span>Two separate tools: code graph and semantic search</span></li></ol>
+      <div class="chart" data-chart="top" data-set="original"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
+      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>Symbol index with embeddings</span></li><li><b>2</b><span>Read-compression tool</span></li><li><b>3</b><span>Two separate tools: code graph and semantic search</span></li></ol>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Top class: tokens, answers correct and wall time by configuration</caption>
+          <caption class="sr-only">Top class, original questions: tokens, answers correct and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">199k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">47 s</td></tr>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Tokens">201k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">51 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Tokens">297k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">175 s</td></tr>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">298k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">101 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Tokens">303k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">145 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Two separate tools: code graph and semantic search</span></th><td data-label="Tokens">500k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">98 s</td></tr>
           </tbody>
         </table>
       </details>
     </div>
+  </div>
+  <div class="panel" data-class="light" data-set="held-out" role="group" aria-label="Light class, held-out questions, chart">
+    <h3 class="panel-title">Light class, held-out questions</h3>
+    <div class="card chart-card">
+      <ul class="legend" aria-label="Series"></ul>
+      <div class="chart" data-chart="light" data-set="held-out"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
+      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>PGR: graph and search</span></li><li><b>2</b><span>Our engine, first generation, with embeddings</span></li><li><b>3</b><span>PGR: all three, memory from an earlier exploring session</span></li><li><b>4</b><span>PGR: code graph</span></li><li><b>5</b><span>PGR: search</span></li><li><b>6</b><span>No index (control)</span></li></ol>
+      <details class="table-view"><summary>Table view</summary>
+        <table class="board board-small">
+          <caption class="sr-only">Light class, held-out questions: tokens, answers correct and wall time by configuration</caption>
+          <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th><th scope="col">Wall time</th></tr></thead>
+          <tbody>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">181k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">13 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">97%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">205k</td><td data-label="Answers correct">97%</td><td data-label="Wall time">15 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">251k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">15 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">313k</td><td data-label="Answers correct">72%</td><td data-label="Wall time">38 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">361k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">44 s</td></tr>
+          </tbody>
+        </table>
+      </details>
+    </div>
+  </div>
+  <div class="panel" data-class="mid" data-set="held-out" role="group" aria-label="Mid class, held-out questions, chart">
+    <h3 class="panel-title">Mid class, held-out questions</h3>
+    <div class="card chart-card">
+      <ul class="legend" aria-label="Series"></ul>
+      <div class="chart" data-chart="mid" data-set="held-out"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
+      <ol class="chart-key" aria-label="Key to the numbers on the chart"><li><b>1</b><span>PGR: graph and search</span></li><li><b>2</b><span>PGR: code graph</span></li><li><b>3</b><span>PGR: all three, memory from an earlier exploring session</span></li><li><b>4</b><span>No index (control)</span></li><li><b>5</b><span>Our engine, first generation, with embeddings</span></li><li><b>6</b><span>PGR: search</span></li></ol>
+      <details class="table-view"><summary>Table view</summary>
+        <table class="board board-small">
+          <caption class="sr-only">Mid class, held-out questions: tokens, answers correct and wall time by configuration</caption>
+          <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th><th scope="col">Wall time</th></tr></thead>
+          <tbody>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">180k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">16 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">134k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">250k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">25 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">272k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">27 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">328k</td><td data-label="Answers correct">100%</td><td data-label="Wall time">30 s</td></tr>
+          </tbody>
+        </table>
+      </details>
+    </div>
+  </div>
+  <div class="panel" data-class="top" data-set="held-out" role="group" aria-label="Top class, held-out questions, chart">
+    <h3 class="panel-title">Top class, held-out questions</h3>
+    <p class="note empty">No configuration was measured on the top class with the held-out questions.</p>
   </div><!--/slot:charts-->
     </section>
-  </div>
 
-  <!--slot:engine--><!--/slot:engine-->
-
-  <!--slot:runners--><section class="section" aria-labelledby="turns">
+    <!--slot:runners--><section class="section" aria-labelledby="turns">
   <h2 id="turns" class="section-title">Turns per task</h2>
-  <p class="group-title">One dot is one turn, and a task ends when its last turn ends. Light model class, one agent answering three lookups.</p>
+  <p class="group-title">One dot is one turn, and a task ends when its last turn ends. One agent answering three lookups, for the model class and question set chosen above.</p>
   <figure class="card runners" id="runners">
-    <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">5.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:4">1</i><i class="dot" style="--i:1;--k:3">2</i><i class="dot" style="--i:2;--k:2">3</i><i class="dot" style="--i:3;--k:1">4</i><i class="dot" style="--i:4;--k:0">5</i></div></div>
-    <div class="runner best"><p class="runner-label"><span class="runner-name">Our engine, first generation, with embeddings</span><span class="runner-val">2.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:1">1</i><i class="dot" style="--i:1;--k:0">2</i></div></div>
-    <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
-    <p class="runner-callout">3.0 fewer turns per task with the best configuration, so its run ends first.</p>
+    <div class="panel on" data-class="light" data-set="original" role="group" aria-label="Light class, original questions, turns">
+      <h3 class="panel-title">Light class, original questions</h3>
+      <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">4.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:3">1</i><i class="dot" style="--i:1;--k:2">2</i><i class="dot" style="--i:2;--k:1">3</i><i class="dot" style="--i:3;--k:0">4</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:1">1</i><i class="dot" style="--i:1;--k:0">2</i></div></div>
+      <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
+      <p class="runner-callout">2.0 fewer turns per task with the best configuration, so its run ends first.</p>
+    </div>
+    <div class="panel" data-class="mid" data-set="original" role="group" aria-label="Mid class, original questions, turns">
+      <h3 class="panel-title">Mid class, original questions</h3>
+      <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">3.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:3">1</i><i class="dot" style="--i:1;--k:2">2</i><i class="dot" style="--i:2;--k:1">3</i><i class="dot" style="--i:3;--k:0">4</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:1">1</i><i class="dot" style="--i:1;--k:0">2</i></div></div>
+      <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
+      <p class="runner-callout">1.7 fewer turns per task with the best configuration, so its run ends first.</p>
+    </div>
+    <div class="panel" data-class="top" data-set="original" role="group" aria-label="Top class, original questions, turns">
+      <h3 class="panel-title">Top class, original questions</h3><p class="note empty">No index and one other configuration were not both measured on the top class with the original questions.</p>
+    </div>
+    <div class="panel" data-class="light" data-set="held-out" role="group" aria-label="Light class, held-out questions, turns">
+      <h3 class="panel-title">Light class, held-out questions</h3>
+      <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">4.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:4">1</i><i class="dot" style="--i:1;--k:3">2</i><i class="dot" style="--i:2;--k:2">3</i><i class="dot" style="--i:3;--k:1">4</i><i class="dot" style="--i:4;--k:0">5</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:2">1</i><i class="dot" style="--i:1;--k:1">2</i><i class="dot" style="--i:2;--k:0">3</i></div></div>
+      <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
+      <p class="runner-callout">2.0 fewer turns per task with the best configuration, so its run ends first.</p>
+    </div>
+    <div class="panel" data-class="mid" data-set="held-out" role="group" aria-label="Mid class, held-out questions, turns">
+      <h3 class="panel-title">Mid class, held-out questions</h3>
+      <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">3.5 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:3">1</i><i class="dot" style="--i:1;--k:2">2</i><i class="dot" style="--i:2;--k:1">3</i><i class="dot" style="--i:3;--k:0">4</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:2">1</i><i class="dot" style="--i:1;--k:1">2</i><i class="dot" style="--i:2;--k:0">3</i></div></div>
+      <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
+      <p class="runner-callout">0.8 fewer turns per task with the best configuration, so its run ends first.</p>
+    </div>
+    <div class="panel" data-class="top" data-set="held-out" role="group" aria-label="Top class, held-out questions, turns">
+      <h3 class="panel-title">Top class, held-out questions</h3><p class="note empty">No configuration was measured on the top class with the held-out questions.</p>
+    </div>
     <p class="runner-status" hidden>Motion is off. Each run is shown finished.</p>
     <div class="runners-bar"><button type="button" class="btn quiet replay">Replay</button></div>
   </figure>
 </section>
 <!--/slot:runners-->
+  </div>
+
+  <!--slot:engine--><section class="section" aria-labelledby="engine">
+  <h2 id="engine" class="section-title">Engine speed</h2>
+  <p class="group-title">Time to answer one query. A bar is as long as its time, and every bar is drawn to one scale.</p>
+  <figure class="card race" id="race" aria-labelledby="race-cap">
+    <div class="race-row fast" style="--v:0.0207" data-ms="40"><p class="race-name">PGR</p><div class="race-track" aria-hidden="true"><i></i></div><p class="race-val"><b>40</b> ms</p></div>
+    <div class="race-row" style="--v:1.0000" data-ms="1937"><p class="race-name">Our engine, first generation</p><div class="race-track" aria-hidden="true"><i></i></div><p class="race-val"><b>1937</b> ms</p></div>
+    <figcaption id="race-cap" class="race-callout">PGR answers a query in 40 ms and Our engine, first generation in 1937 ms, 48.4 times as long.</figcaption>
+    <p class="race-status" hidden>Motion is off. Each bar is shown finished.</p>
+    <div class="race-bar"><button type="button" class="btn quiet replay">Replay</button></div>
+  </figure>
+  <p class="group-title spaced">Time to build the index, time to answer a query and size on disk.</p>
+  <div class="card">
+    <table class="board board-small">
+      <caption class="sr-only">Engine speed by configuration</caption>
+      <thead><tr><th scope="col">Configuration</th><th scope="col">Build time</th><th scope="col">Query time</th><th scope="col">Index size</th></tr></thead>
+      <tbody>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Build time">130 s</td><td data-label="Query time">1937 ms</td><td data-label="Index size">14.5 MB</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR</span></th><td data-label="Build time">0.52 s</td><td data-label="Query time">40 ms</td><td data-label="Index size">8.1 MB</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+<!--/slot:engine-->
 
   <section class="section" aria-labelledby="findings">
     <h2 id="findings" class="section-title">Findings</h2>
     <p class="group-title">In plain sentences, with their numbers.</p>
     <div class="card">
       <ul class="plain"><!--slot:headline-->
-      <li>On the light class, one agent using &quot;Our engine, first generation, with embeddings&quot; needed 130k tokens and 2.0 turns for the three lookups, against 365k tokens and 5.0 turns with no index: 64% fewer tokens.</li>
-      <li>3 of 3 runs were fully correct with &quot;Our engine, first generation, with embeddings&quot; and 4 of 5 with no index. A run is fully correct when all three answers are.</li>
-      <li>Two turns is the floor for this task: one to ask and one to answer. On the light class 1 of 6 published configurations took exactly two turns and answered everything correctly in every run: &quot;Our engine, first generation, with embeddings&quot;.</li>
-      <li>Tokens follow turns. On the light class the leanest published configuration took 2.0 turns and 130k tokens, the heaviest 7.0 turns and 480k tokens.</li>
-      <li>With no index, one agent used 365k tokens on the light class, 281k tokens on the mid class, 298k tokens on the top class; the answers were 98%, 100%, 100% correct. A larger model class did not need far fewer tokens for the same lookups.</li>
+      <li>On the light class and the original questions, one agent using &quot;PGR: graph and search&quot; needed 134k tokens and 2.0 turns for the three lookups, against 294k tokens and 4.0 turns with no index: 54% fewer tokens.</li>
+      <li>3 of 3 runs were fully correct with &quot;PGR: graph and search&quot; and 2 of 3 with no index. A run is fully correct when all three answers are.</li>
+      <li>Two turns is the floor for this task: one to ask and one to answer. On the original questions &quot;PGR: graph and search&quot; answered in 2 turns on both classes, with 134k tokens on the light class and 133k on the mid class; &quot;Our engine, first generation, with embeddings&quot; also took 2 turns on both, with 134k tokens on the light class and 133k on the mid class.</li>
+      <li>Tokens follow turns. On the light class and the original questions the leanest published configuration took 2.0 turns and 134k tokens, the heaviest 7.0 turns and 480k tokens.</li>
+      <li>With no index, one agent used 294k tokens on the light class and 261k tokens on the mid class on the original questions; the answers were 99% and 97% correct. A larger model class did not need far fewer tokens for the same lookups.</li>
     <!--/slot:headline--></ul>
     </div>
     <div class="finding-list">
       <!--slot:findings--><div class="card finding">
+    <h3 class="finding-title">Held-out questions</h3>
+    <p class="finding-text">Of the 6 configurations measured on both question sets, &quot;PGR: code graph&quot; and &quot;PGR: graph and search&quot; were fully correct in every run. On the held-out questions &quot;PGR: graph and search&quot; needed 181k tokens and 2.7 turns on the light class and 180k and 2.7 on the mid class; &quot;Our engine, first generation, with embeddings&quot; needed 134k tokens and 2.0 turns on the light class and 272k and 4.0 on the mid class.</p>
+    <ul class="rows">
+      <li class="row"><span class="label">Best, light class</span><span class="value">181k tokens, 2.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Best, mid class</span><span class="value">180k tokens, 2.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">First generation, light class</span><span class="value">134k tokens, 2.0 turns, 2 of 3 fully correct</span></li>
+      <li class="row"><span class="label">First generation, mid class</span><span class="value">272k tokens, 4.0 turns, 2 of 2 fully correct</span></li>
+    </ul>
+  </div>
+  <div class="card finding">
+    <h3 class="finding-title">Parts</h3>
+    <p class="finding-text">Across both question sets, search alone listed every caller of a function in 1 of 6 light-class runs and 5 of 6 mid-class runs; graph alone did in 6 of 6 and 6 of 6. Graph alone took more turns on the light class: 4.0 on the original questions and 3.7 on the held-out questions, against 2.0 and 2.7 for graph and search together.</p>
+    <ul class="rows">
+      <li class="row"><span class="label">Search alone, every caller listed, light class</span><span class="value">1 of 6</span></li>
+      <li class="row"><span class="label">Search alone, every caller listed, mid class</span><span class="value">5 of 6</span></li>
+      <li class="row"><span class="label">Graph alone, every caller listed, light class</span><span class="value">6 of 6</span></li>
+      <li class="row"><span class="label">Graph alone, every caller listed, mid class</span><span class="value">6 of 6</span></li>
+      <li class="row"><span class="label">Search alone, fully correct runs</span><span class="value">6 of 12</span></li>
+      <li class="row"><span class="label">Graph alone, fully correct runs</span><span class="value">12 of 12</span></li>
+      <li class="row"><span class="label">Graph alone, turns on the light class, original</span><span class="value">4.0</span></li>
+      <li class="row"><span class="label">Graph alone, turns on the light class, held-out</span><span class="value">3.7</span></li>
+      <li class="row"><span class="label">Graph and search, turns on the light class, original</span><span class="value">2.0</span></li>
+      <li class="row"><span class="label">Graph and search, turns on the light class, held-out</span><span class="value">2.7</span></li>
+    </ul>
+  </div>
+  <div class="card finding">
+    <h3 class="finding-title">Memory</h3>
+    <p class="finding-text">Memory that already held the answers, filled by a session that answered the same questions, matched the two-turn floor and did not beat it: &quot;PGR: memory&quot; and &quot;PGR: graph, search and memory&quot; took 2 turns on both classes and used 0.5k to 0.9k more tokens than graph and search without memory. Memory filled by an earlier session that explored the repository without seeing any question, compared cell by cell with graph and search without memory, used fewer tokens in 1 of 4 cells and more in 3 of 4; it was fully correct in 11 of 12 runs, against 12 of 12 without memory. These single lookups are not the task memory is for, and tasks that span sessions were not measured.</p>
+    <ul class="rows">
+      <li class="row"><span class="label">Exploring-session memory, fewer tokens than without memory</span><span class="value">1 of 4 cells</span></li>
+      <li class="row"><span class="label">Exploring-session memory, more tokens than without memory</span><span class="value">3 of 4 cells</span></li>
+      <li class="row"><span class="label">Exploring-session memory, fully correct runs</span><span class="value">11 of 12</span></li>
+      <li class="row"><span class="label">Graph and search without memory, fully correct runs</span><span class="value">12 of 12</span></li>
+    </ul>
+  </div>
+  <div class="card finding">
+    <h3 class="finding-title">Speed</h3>
+    <p class="finding-text">A query took 40 ms with &quot;PGR&quot; and 1937 ms with &quot;Our engine, first generation&quot;, 48 times as long. Building the index took 0.52 s against 130 s, and the index is 8.1 MB against 14.5 MB. Query times were measured on one machine on the same day; the first generation&#x27;s build time was measured in an earlier session.</p>
+    <ul class="rows">
+      <li class="row"><span class="label">PGR, query time</span><span class="value">40 ms</span></li>
+      <li class="row"><span class="label">Our engine, first generation, query time</span><span class="value">1937 ms</span></li>
+      <li class="row"><span class="label">PGR, build time</span><span class="value">0.52 s</span></li>
+      <li class="row"><span class="label">Our engine, first generation, build time</span><span class="value">130 s</span></li>
+      <li class="row"><span class="label">PGR, index size</span><span class="value">8.1 MB</span></li>
+      <li class="row"><span class="label">Our engine, first generation, index size</span><span class="value">14.5 MB</span></li>
+    </ul>
+  </div>
+  <div class="card finding">
     <h3 class="finding-title">Orchestration</h3>
     <p class="finding-text">With a reviewing orchestrator on top of three light workers, 48 of 48 runs ended fully correct, against 98 of 106 for one light agent alone; a run cost about 95 times as much.</p>
     <ul class="rows">
@@ -239,8 +459,8 @@
     <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
-<script src="data/showcase.js?v=69eb2dbe"></script>
-<script src="assets/app.js?v=aa42102c"></script>
-<script src="assets/benchmarks.js?v=4be9febe"></script>
+<script src="data/showcase.js?v=5e12a467"></script>
+<script src="assets/app.js?v=338633b9"></script>
+<script src="assets/benchmarks.js?v=08c1a2b7"></script>
 </body>
 </html>

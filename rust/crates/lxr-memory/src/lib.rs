@@ -30,7 +30,7 @@ mod testutil;
 #[cfg(test)]
 mod tests;
 
-pub use bank::Bank;
+pub use bank::{Bank, FlushError};
 pub use recall::Strategies;
 
 use serde::{Deserialize, Serialize};
@@ -41,15 +41,22 @@ use serde::{Deserialize, Serialize};
 /// word added or swapped, a clause appended) score 0.97 to 1.00, copies with the last two
 /// words cut score 0.95 or more for nine in ten, and the most similar pair of different notes
 /// among all 19,900 scores 0.88 (a "remove" and a "write" docstring of two sibling functions).
+///
+/// The three thresholds were measured once, on a `DOCSTRINGS.json` that `pick_docstrings.py`
+/// wrote. Neither file is in this repository, so the figures here cannot be regenerated or
+/// checked from it: treat the values as defaults. `calibrate` and `recallbench` describe the
+/// format of the input they read.
 pub const NEAR_DUPLICATE: f32 = 0.95;
-/// Cosine at or above which two notes get a semantic link. Measured with `calibrate`: random
-/// pairs of docstring notes reach 0.57 at the 99th percentile and 0.72 at the 99.9th. At 0.60
-/// a note has 1.3 links among 200 notes, and 65% of the linked pairs are from one file
-/// (4% of all pairs are), 25% share three content words (0.6% of all pairs do).
+/// Cosine at or above which two notes get a semantic link. Measured with `calibrate` on the
+/// same docstring set (see [`NEAR_DUPLICATE`]): random pairs of docstring notes reach 0.57 at
+/// the 99th percentile and 0.72 at the 99.9th. At 0.60 a note has 1.3 links among 200 notes,
+/// and 65% of the linked pairs are from one file (4% of all pairs are), 25% share three
+/// content words (0.6% of all pairs do).
 pub const LINK_THRESHOLD: f32 = 0.60;
 /// Cosine below which the meaning strategy drops a note. Measured with `calibrate` on 60
-/// queries of half the words of a docstring sentence: the right note scores at least 0.21 and
-/// 98% of them 0.30 or more, while a wrong note passes 0.30 in 3% of the cases.
+/// queries of half the words of a docstring sentence, from the same set (see
+/// [`NEAR_DUPLICATE`]): the right note scores at least 0.21 and 98% of them 0.30 or more,
+/// while a wrong note passes 0.30 in 3% of the cases.
 pub const MEANING_FLOOR: f32 = 0.30;
 
 /// What a note is.
@@ -60,9 +67,13 @@ pub enum Kind {
     World,
     /// Something that happened to the agent or was done by it.
     Experience,
-    /// A summary the bank built itself from three or more facts about one entity.
+    /// A summary the bank built itself from three or more facts about one entity. Entities
+    /// that are about exactly the same facts (a file and the function in it, say) share one
+    /// observation, whose `entities` lists all of them.
     Observation,
-    /// A standing rule. Recall always returns the directives that pass the filters first.
+    /// A standing rule. Recall returns the directives that pass the filters first, though never
+    /// more than half of its limit and half of its token allowance while notes that answer the
+    /// query are waiting; what those notes leave unused goes to the remaining directives.
     Directive,
 }
 
@@ -208,11 +219,24 @@ pub struct RetainOpts {
     pub now: Option<i64>,
     /// Cut the text into facts. When false the whole text is one note.
     pub split: bool,
+    /// The time zone of the caller, in seconds east of UTC (negative to the west). Words such
+    /// as `today`, `yesterday` and `last week` in a text mean the days and weeks of that zone.
+    /// 0, the default, reads them in UTC. A value beyond a day either way is cut to a day.
+    pub utc_offset: i64,
 }
 
 impl Default for RetainOpts {
     fn default() -> RetainOpts {
-        RetainOpts { kind: Kind::World, context: String::new(), tags: Vec::new(), entities: Vec::new(), when: None, now: None, split: true }
+        RetainOpts {
+            kind: Kind::World,
+            context: String::new(),
+            tags: Vec::new(),
+            entities: Vec::new(),
+            when: None,
+            now: None,
+            split: true,
+            utc_offset: 0,
+        }
     }
 }
 
@@ -283,6 +307,11 @@ pub struct RecallOpts {
     pub until: Option<i64>,
     /// The clock, Unix seconds. The system clock when `None`.
     pub now: Option<i64>,
+    /// The time zone of the caller, in seconds east of UTC (negative to the west). Words such
+    /// as `today`, `yesterday` and `last week` in the query mean the days and weeks of that
+    /// zone. 0, the default, reads them in UTC. A value beyond a day either way is cut to a day.
+    /// `since` and `until` are instants and are not changed by it.
+    pub utc_offset: i64,
 }
 
 impl Default for RecallOpts {
@@ -297,6 +326,7 @@ impl Default for RecallOpts {
             since: None,
             until: None,
             now: None,
+            utc_offset: 0,
         }
     }
 }

@@ -206,6 +206,69 @@ impl Drop for Env {
     }
 }
 
+/// The offset of the machine's time zone from UTC in seconds, east positive, asked of the
+/// operating system's own tools and not of `pgr`: `TimeZoneInfo` on Windows, `date` elsewhere.
+/// `None` when they do not say.
+pub fn machine_offset() -> Option<i64> {
+    #[cfg(windows)]
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-Command", "[int][TimeZoneInfo]::Local.GetUtcOffset([DateTime]::UtcNow).TotalSeconds"])
+        .output()
+        .ok()?;
+    #[cfg(not(windows))]
+    let output = Command::new("date").arg("+%z").output().ok()?;
+    let text = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    #[cfg(windows)]
+    return text.parse().ok();
+    #[cfg(not(windows))]
+    {
+        // `+0530`, `-0700`.
+        let sign = if text.starts_with('-') { -1 } else { 1 };
+        let digits = text.trim_start_matches(['+', '-']);
+        let (hours, minutes) = (digits.get(..2)?.parse::<i64>().ok()?, digits.get(2..4)?.parse::<i64>().ok()?);
+        Some(sign * (hours * 3600 + minutes * 60))
+    }
+}
+
+/// A folder that cannot be listed for as long as the value lives.
+pub struct Locked(PathBuf);
+
+impl Locked {
+    /// Takes the right to list `dir` away from everyone. `None` when this account can list the
+    /// folder anyway (an administrator), so that the failure cannot be made.
+    pub fn new(dir: &Path) -> Option<Locked> {
+        #[cfg(windows)]
+        {
+            let _ = Command::new("icacls").arg(dir).args(["/deny", "*S-1-1-0:(RD)"]).output();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(dir, fs::Permissions::from_mode(0o000));
+        }
+        let locked = Locked(dir.to_path_buf());
+        if fs::read_dir(dir).is_ok() {
+            eprintln!("skipped: this account can list a folder it is denied");
+            return None;
+        }
+        Some(locked)
+    }
+}
+
+impl Drop for Locked {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        {
+            let _ = Command::new("icacls").arg(&self.0).args(["/remove:d", "*S-1-1-0"]).output();
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&self.0, fs::Permissions::from_mode(0o755));
+        }
+    }
+}
+
 fn finish(output: std::process::Output) -> Run {
     Run {
         code: output.status.code().unwrap_or(-1),

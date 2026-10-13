@@ -3,6 +3,11 @@
 //! Names are found by rules (code identifiers, paths, backticks, capitalised names) and
 //! merged with the ones the bank already knows by Hindsight's formula: half name
 //! similarity, three tenths co-occurrence, a fifth recency over seven days.
+//!
+//! Every merge goes through that formula (or through [`fold`], which makes spelling variants of
+//! one name equal). There is no separate merge by name similarity alone among the names of one
+//! retain call, so two spellings that were never seen together merge only when recency or
+//! co-occurrence backs their likeness.
 
 use lxr_text::trigram_similarity;
 use serde::{Deserialize, Serialize};
@@ -621,8 +626,9 @@ mod tests {
         // Nothing nearby and the entity last seen a week ago: 0.5 x sim alone is far below 0.6.
         assert_eq!(table.resolve("parse_confg", &[], 1_000 + 8 * 86_400), None);
         // Recent but nothing nearby: 0.5 x sim + 0.2 stays below 0.6 for a similarity under 0.8.
-        let expected_merge = 0.5 * sim + 0.2 >= MERGE_AT;
-        assert_eq!(table.resolve("parse_confg", &[], 1_000).is_some(), expected_merge);
+        // The two spellings share 10 of 15 trigrams, 2/3, so the score is 0.533 and they stay apart.
+        assert!((sim - 2.0 / 3.0).abs() < 0.01, "similarity {sim}");
+        assert_eq!(table.resolve("parse_confg", &[], 1_000), None);
     }
 
     #[test]

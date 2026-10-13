@@ -1,0 +1,54 @@
+# Packages the pgr command line program as a Python wheel, so that
+#
+#     pip install peterganurusty
+#
+# installs a `pgr` command, the way a Python tool installs its command. The wheel holds the
+# compiled binary (maturin "bin" bindings): a script in the environment's Scripts or bin folder.
+# The embedding model is compiled into the binary (the cargo feature embedded-model below), so
+# the wheel needs no model file; the licence file and the third-party notices travel as data files.
+#
+# Build it with packaging\build-wheel.ps1, which stages the model and the data files first and sets
+# PGR_EMBED_MODEL_DIR to the staged model folder. Building by hand needs that variable too: the
+# feature stops the build with an error that says so when it is missing. Never build a source
+# distribution from this folder: `maturin sdist`, `maturin build --sdist` and
+# `maturin publish` without `--no-sdist` would pack the Rust source. See packaging\README.md.
+
+[build-system]
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[project]
+name = "peterganurusty"
+description = "PeterGanuRusty: a code graph, hybrid code search and memory for the repository a coding agent works in. Installs the command pgr."
+requires-python = ">=3.8"
+# The version is the workspace version in rust/Cargo.toml.
+dynamic = ["version"]
+keywords = ["code-search", "code-graph", "coding-agents", "mcp", "cli"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "License :: Other/Proprietary License",
+    "Programming Language :: Rust",
+    "Topic :: Software Development",
+]
+# The licence terms are not yet published. LICENSE.txt and THIRD-PARTY-NOTICES.txt are installed
+# with the wheel under share/peterganurusty (maturin takes no licence files from outside this
+# folder for the wheel's dist-info).
+license = { text = "All rights reserved. The licence terms are not yet published; see share/peterganurusty/LICENSE.txt." }
+
+[tool.maturin]
+bindings = "bin"
+strip = true
+# The program carries its embedding model: tokenizer.json and model.safetensors from the folder
+# PGR_EMBED_MODEL_DIR at build time (packaging/stage.py puts them in packaging/stage/model).
+features = ["embedded-model"]
+# Staged by packaging/stage.py: wheel/data/share/peterganurusty holds LICENSE.txt and
+# THIRD-PARTY-NOTICES.txt (which carries the licence notice of the model). The data/ folder inside
+# is unpacked into the environment's root.
+data = "../../../packaging/stage/wheel"
+
+# maturin would add a CycloneDX list of the crates to the wheel, and that file names the
+# builder's folders (file:///C:/Users/...). THIRD-PARTY-NOTICES.txt is the list that ships.
+[tool.maturin.sbom]
+rust = false

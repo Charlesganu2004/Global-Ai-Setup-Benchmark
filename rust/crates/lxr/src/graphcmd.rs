@@ -3,14 +3,16 @@
 
 use crate::rows::{at_lines, caller_row, def_row, name_list, ref_row, span_row};
 use lxr_core::est_tokens;
-use lxr_graph::{Graph, Link, NodeKind, QueryAnswer, Relation};
-use std::collections::HashMap;
+use lxr_graph::{Confidence, Graph, Hop, Link, NodeKind, QueryAnswer, Relation};
+use std::collections::{HashMap, VecDeque};
 
 /// Most members of a container that `explain` lists.
 const MEMBERS_SHOWN: usize = 20;
 /// Most things a function calls that `about` names and `explain` lists.
 const CALLS_NAMED: usize = 12;
 const CALLS_LISTED: usize = 20;
+/// The end of the row of a function that is its own caller.
+const CALLS_ITSELF: &str = " (calls itself)";
 
 /// The block header `# NAME at PATH:FIRST` that tells apart several definitions of one name.
 fn which(graph: &Graph, name: &str, node: u32) -> String {
@@ -30,16 +32,41 @@ pub fn def(graph: &Graph, names: &[String], out: &mut String) {
     }
 }
 
+/// The call of a function to itself, from the graph's edge list. `Graph::callers` leaves
+/// this link out; the edges are sorted by (from, to, relation), so it is found by search.
+fn self_call(graph: &Graph, node: u32) -> Option<Link> {
+    let first = graph.edges.partition_point(|e| (e.from, e.to) < (node, node));
+    graph.edges[first..]
+        .iter()
+        .take_while(|e| e.from == node && e.to == node)
+        .find(|e| e.rel == Relation::Calls)
+        .map(|e| Link { node, conf: e.conf, lines: e.lines.clone() })
+}
+
+/// The caller rows of a definition, in the order of (path, first line): the callers the graph
+/// gives, and the definition itself, with `(calls itself)` at the end of its row, when it
+/// calls itself.
+fn caller_rows(graph: &Graph, node: u32) -> Vec<String> {
+    let links = graph.callers(node);
+    let mut rows: Vec<String> = links.iter().map(|link| caller_row(graph, link)).collect();
+    if let Some(own) = self_call(graph, node) {
+        let place = |n: u32| (graph.path_of(n), graph.nodes[n as usize].start);
+        let at = links.partition_point(|link| place(link.node) <= place(node));
+        rows.insert(at, format!("{}{CALLS_ITSELF}", caller_row(graph, &own)));
+    }
+    rows
+}
+
 /// `N callers of NAME:` and one row per caller.
 fn callers_block(graph: &Graph, name: &str, node: u32, out: &mut String) {
-    let links = graph.callers(node);
-    match links.len() {
+    let rows = caller_rows(graph, node);
+    match rows.len() {
         0 => ln!(out, "0 callers of {name}"),
         1 => ln!(out, "1 caller of {name}:"),
         n => ln!(out, "{n} callers of {name}:"),
     }
-    for link in &links {
-        ln!(out, "{}", caller_row(graph, link));
+    for row in &rows {
+        ln!(out, "{row}");
     }
 }
 
@@ -77,14 +104,14 @@ pub fn callers(graph: &Graph, names: &[String], out: &mut String) {
 
 /// The caller count and rows of `about` and `explain`, indented by two spaces.
 fn callers_summary(graph: &Graph, node: u32, out: &mut String) {
-    let links = graph.callers(node);
-    match links.len() {
+    let rows = caller_rows(graph, node);
+    match rows.len() {
         0 => ln!(out, "  0 callers"),
         1 => ln!(out, "  1 caller:"),
         n => ln!(out, "  {n} callers:"),
     }
-    for link in &links {
-        ln!(out, "    {}", caller_row(graph, link));
+    for row in &rows {
+        ln!(out, "    {row}");
     }
 }
 
@@ -192,6 +219,77 @@ pub fn affected(graph: &Graph, name: &str, depth: u32, out: &mut String) {
     }
 }
 
+/// The shortest chain of links from any of `starts` to any of `ends`. One start and one end is
+/// the graph's own search; several are searched together, whatever their number.
+fn shortest_between(graph: &Graph, starts: &[u32], ends: &[u32]) -> Option<Vec<Hop>> {
+    match (starts, ends) {
+        (&[a], &[b]) => graph.shortest_path(a, b),
+        _ => shortest_from_any(graph, starts, ends),
+    }
+}
+
+/// The shortest chain of links from any of `starts` to any of `ends`, taking every link as
+/// undirected, in one search that begins at all the starts. It walks the graph as
+/// `Graph::shortest_path` does (neighbours by node number, then by edge order), so for one
+/// start and one end the two give the same chain. A node that is both a start and an end is a
+/// chain of no links. `None` when no start is connected to any end.
+fn shortest_from_any(graph: &Graph, starts: &[u32], ends: &[u32]) -> Option<Vec<Hop>> {
+    let total = graph.nodes.len();
+    let mut is_start = vec![false; total];
+    let mut is_end = vec![false; total];
+    for &s in starts.iter().filter(|&&s| (s as usize) < total) {
+        is_start[s as usize] = true;
+    }
+    for &e in ends.iter().filter(|&&e| (e as usize) < total) {
+        is_end[e as usize] = true;
+    }
+    let first = |node: u32| Hop { node, rel: Relation::Contains, forward: true, conf: Confidence::Extracted };
+    if let Some(node) = (0..total).find(|&n| is_start[n] && is_end[n]) {
+        return Some(vec![first(node as u32)]);
+    }
+    // For every node, the edges that touch it as (other end, edge number), the nearest
+    // other end first. A link from a node to itself leads nowhere.
+    let mut around: Vec<Vec<(u32, u32)>> = vec![Vec::new(); total];
+    for (index, edge) in graph.edges.iter().enumerate() {
+        if edge.from == edge.to || edge.from as usize >= total || edge.to as usize >= total {
+            continue;
+        }
+        around[edge.from as usize].push((edge.to, index as u32));
+        around[edge.to as usize].push((edge.from, index as u32));
+    }
+    for row in around.iter_mut() {
+        row.sort_unstable();
+    }
+    let mut reached_by: Vec<Option<(u32, u32)>> = vec![None; total];
+    let mut seen = is_start.clone();
+    let mut queue: VecDeque<u32> = (0..total as u32).filter(|&n| is_start[n as usize]).collect();
+    let mut found = None;
+    'search: while let Some(current) = queue.pop_front() {
+        for &(other, index) in &around[current as usize] {
+            if seen[other as usize] {
+                continue;
+            }
+            seen[other as usize] = true;
+            reached_by[other as usize] = Some((current, index));
+            if is_end[other as usize] {
+                found = Some(other);
+                break 'search;
+            }
+            queue.push_back(other);
+        }
+    }
+    let mut at = found?;
+    let mut hops = Vec::new();
+    while let Some((before, index)) = reached_by[at as usize] {
+        let edge = &graph.edges[index as usize];
+        hops.push(Hop { node: at, rel: edge.rel, forward: edge.from == before, conf: edge.conf });
+        at = before;
+    }
+    hops.push(first(at));
+    hops.reverse();
+    Some(hops)
+}
+
 /// `pgr path A B`: the shortest chain of links between two definitions.
 pub fn path(graph: &Graph, from: &str, to: &str, out: &mut String) {
     let starts = graph.find(from);
@@ -205,17 +303,7 @@ pub fn path(graph: &Graph, from: &str, to: &str, out: &mut String) {
         }
         return;
     }
-    let mut best: Option<Vec<lxr_graph::Hop>> = None;
-    for &a in starts.iter().take(4) {
-        for &b in ends.iter().take(4) {
-            if let Some(hops) = graph.shortest_path(a, b) {
-                if best.as_ref().map_or(true, |kept| hops.len() < kept.len()) {
-                    best = Some(hops);
-                }
-            }
-        }
-    }
-    let hops = match best {
+    let hops = match shortest_between(graph, &starts, &ends) {
         Some(hops) => hops,
         None => {
             ln!(out, "no path between {from} and {to}");
@@ -326,5 +414,82 @@ pub fn map(graph: &Graph, budget: usize, out: &mut String) {
     }
     if printed == 0 {
         ln!(out, "none");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lxr_extract::{extract, lang_of};
+    use std::path::Path;
+
+    /// The graph of some Python files given as (path, text).
+    fn graph_of(files: &[(&str, &str)]) -> Graph {
+        let facts: Vec<_> = files.iter().map(|(path, text)| extract(path, lang_of(Path::new(path)).unwrap(), text)).collect();
+        Graph::build(&facts)
+    }
+
+    fn project() -> Graph {
+        graph_of(&[
+            ("app/core.py", "def load(path):\n    return read(path)\n\n\ndef read(path):\n    return parse(path)\n\n\ndef parse(text):\n    return text\n"),
+            ("app/cli.py", "from app.core import load\n\n\ndef main(argv):\n    return load(argv)\n\n\nclass Base:\n    def save(self):\n        return 1\n\n\nclass User(Base):\n    def update(self):\n        return self.save()\n"),
+            ("app/rec.py", "def fact(n):\n    return n * fact(n - 1)\n\n\ndef run():\n    return fact(3) + fact(4)\n"),
+        ])
+    }
+
+    #[test]
+    fn a_search_from_one_node_to_one_node_gives_the_chain_of_the_graph() {
+        let graph = project();
+        let all: Vec<u32> = (0..graph.nodes.len() as u32).collect();
+        let mut compared = 0;
+        for &a in &all {
+            for &b in &all {
+                assert_eq!(shortest_from_any(&graph, &[a], &[b]), graph.shortest_path(a, b), "from {a} to {b}");
+                compared += 1;
+            }
+        }
+        assert!(compared > 100, "{compared}");
+    }
+
+    #[test]
+    fn a_search_from_several_nodes_to_several_nodes_takes_the_shortest_pair() {
+        let graph = project();
+        let ids = |name: &str| graph.find(name);
+        let (main, parse) = (ids("main"), ids("parse"));
+        let (fact, run) = (ids("fact"), ids("run"));
+        // Starting from a node that is far and a node that is near, the near one wins.
+        let starts = [fact[0], main[0]];
+        let hops = shortest_between(&graph, &starts, &parse).expect("main reaches parse");        let by_pairs = starts.iter().filter_map(|&s| graph.shortest_path(s, parse[0])).map(|h| h.len()).min().unwrap();
+        assert_eq!(hops.len(), by_pairs);
+        assert_eq!(hops[0].node, main[0]);
+        assert_eq!(hops.last().unwrap().node, parse[0]);
+        // Nodes that are not connected give no chain, and a node in both lists is a chain of none.
+        assert!(shortest_between(&graph, &run, &parse).is_none());
+        assert_eq!(shortest_between(&graph, &[main[0]], &[main[0], parse[0]]).unwrap().len(), 1);
+        assert!(shortest_between(&graph, &[], &parse).is_none());
+        assert!(shortest_between(&graph, &[9999], &parse).is_none());
+    }
+
+    #[test]
+    fn a_function_that_calls_itself_is_found_in_the_edges() {
+        let graph = project();
+        let fact = graph.find("fact")[0];
+        let run = graph.find("run")[0];
+        let own = self_call(&graph, fact).expect("fact calls itself");
+        assert_eq!((own.node, own.lines.clone()), (fact, vec![2]));
+        assert!(self_call(&graph, run).is_none());
+        assert!(self_call(&graph, 9999).is_none());
+        assert!(graph.callers(fact).iter().all(|l| l.node != fact), "the graph leaves it out");
+    }
+
+    #[test]
+    fn the_caller_rows_put_the_function_itself_in_the_order_of_its_place() {
+        let graph = project();
+        let fact = graph.find("fact")[0];
+        let rows = caller_rows(&graph, fact);
+        assert_eq!(rows, ["fact app/rec.py:1-2 @2 (calls itself)", "run app/rec.py:5-6 @6"].map(String::from).to_vec());
+        let mut out = String::new();
+        callers(&graph, &["fact".to_string()], &mut out);
+        assert_eq!(out, "2 callers of fact:\nfact app/rec.py:1-2 @2 (calls itself)\nrun app/rec.py:5-6 @6\n");
     }
 }

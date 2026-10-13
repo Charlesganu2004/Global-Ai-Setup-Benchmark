@@ -7,7 +7,7 @@
 //! Spans are byte offsets. Lines come from [`LineIndex`], and signatures and receivers are cut
 //! from the source text so that they keep the author's spacing.
 
-use crate::common::{fold, LineIndex, Parts};
+use crate::common::{fold, in_source_order, without_comments, LineIndex, Parts};
 use lxr_core::{Call, Import, Lang, SymKind, Symbol};
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
@@ -160,6 +160,7 @@ fn read(text: &str, source_type: oxc_span::SourceType) -> Option<Parts> {
     }
     let mut walker = Walker::new(text, &parsed.program);
     walker.visit_program(&parsed.program);
+    in_source_order(&mut walker.parts.calls, &walker.call_at);
     Some(walker.parts)
 }
 
@@ -224,7 +225,11 @@ struct Walker<'t> {
     text: &'t str,
     lines: LineIndex,
     notes: Vec<Note>,
+    /// Byte ranges of the comments, to leave out of a signature.
+    comment_spans: Vec<(usize, usize)>,
     parts: Parts,
+    /// The byte offset of the called name of each entry of `parts.calls`.
+    call_at: Vec<usize>,
     frames: Vec<Frame>,
     exports: HashMap<u32, Export>,
     decls: Vec<DeclCtx>,
@@ -244,11 +249,14 @@ impl<'t> Walker<'t> {
                 Note { start: c.span.start, end: c.span.end, jsdoc: c.is_block() && raw.len() >= 5 && raw.starts_with("/**") }
             })
             .collect();
+        let comment_spans = program.comments.iter().map(|c| (c.span.start as usize, c.span.end as usize)).collect();
         Walker {
             text,
             lines: LineIndex::new(text),
             notes,
+            comment_spans,
             parts: Parts::default(),
+            call_at: Vec::new(),
             frames: Vec::new(),
             exports: HashMap::new(),
             decls: Vec::new(),
@@ -342,7 +350,9 @@ impl<'t> Walker<'t> {
             Some(frame) => (Some(frame.sym), format!("{}.{}", frame.qual, name)),
             None => (None, name.to_string()),
         };
-        let sig = capped(self.slice(origin.start, sig_end), SIG_BYTES).trim().to_string();
+        let sig = without_comments(self.text, origin.start as usize, sig_end as usize, &self.comment_spans, SIG_BYTES)
+            .trim()
+            .to_string();
         let symbol = Symbol {
             name: name.to_string(),
             qual,
@@ -580,6 +590,7 @@ impl<'t> Walker<'t> {
         };
         let call = Call { caller: self.current_caller(), name, recv, line: self.line(at) };
         self.parts.calls.push(call);
+        self.call_at.push(at as usize);
     }
 
     fn enter_import(&mut self, d: &ImportDeclaration<'_>) {
@@ -1003,7 +1014,7 @@ mod tests {
         );
         assert_eq!(
             calls(&parts),
-            ["-||require|1", "-||require|2", "-||require|3", "-|require('dotenv')|config|4", "-||require|4", "boot|m|start|7"]
+            ["-||require|1", "-||require|2", "-||require|3", "-||require|4", "-|require('dotenv')|config|4", "boot|m|start|7"]
         );
         assert_eq!(symbols(&parts), [r#"function boot|boot 5-8 "async function boot()" "" parent=- bases=[]"#]);
     }

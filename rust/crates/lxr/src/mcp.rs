@@ -16,16 +16,79 @@ const VERSIONS: [&str; 3] = ["2025-06-18", "2025-03-26", "2024-11-05"];
 /// A JSON-RPC error: its code and message.
 type RpcError = (i64, String);
 
+/// The longest request line the server reads: 1 MiB. A longer line is refused, and the
+/// rest of it is skipped without being kept.
+const MAX_LINE: usize = 1 << 20;
+
+/// What reading one line of input gave.
+#[derive(Debug, PartialEq, Eq)]
+enum Frame {
+    /// A line of at most `max` bytes is in the buffer, without its line break.
+    Line,
+    /// The line was longer than `max`. It was read to its end and dropped.
+    TooLong,
+    /// The input is closed and nothing more was read.
+    End,
+}
+
+/// Reads one line from `input` into `buf`, keeping at most `max` bytes of it. What does not
+/// fit is read and thrown away as it comes, so the memory used does not depend on the length
+/// of the line. The last line may lack its line break.
+fn read_frame(input: &mut impl BufRead, buf: &mut Vec<u8>, max: usize) -> io::Result<Frame> {
+    buf.clear();
+    let mut too_long = false;
+    let mut any = false;
+    loop {
+        let chunk = match input.fill_buf() {
+            Ok(chunk) => chunk,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
+            Err(error) => return Err(error),
+        };
+        if chunk.is_empty() {
+            return Ok(match (too_long, any) {
+                (true, _) => Frame::TooLong,
+                (false, true) => Frame::Line,
+                (false, false) => Frame::End,
+            });
+        }
+        any = true;
+        let end = chunk.iter().position(|&b| b == b'\n');
+        let piece = &chunk[..end.unwrap_or(chunk.len())];
+        if !too_long {
+            if buf.len() + piece.len() > max {
+                too_long = true;
+                *buf = Vec::new();
+            } else {
+                buf.extend_from_slice(piece);
+            }
+        }
+        let used = piece.len() + usize::from(end.is_some());
+        input.consume(used);
+        if end.is_some() {
+            return Ok(if too_long { Frame::TooLong } else { Frame::Line });
+        }
+    }
+}
+
 /// Serves requests from standard input until it closes.
 pub fn serve(ctx: &mut Ctx) {
     let stdin = io::stdin();
     let stdout = io::stdout();
-    for line in stdin.lock().lines() {
-        let Ok(line) = line else { break };
-        if line.trim().is_empty() {
-            continue;
-        }
-        if let Some(reply) = handle(ctx, &line) {
+    let mut input = stdin.lock();
+    let mut buf = Vec::new();
+    loop {
+        let reply = match read_frame(&mut input, &mut buf, MAX_LINE) {
+            Ok(Frame::End) | Err(_) => break,
+            Ok(Frame::TooLong) => {
+                Some(failure(Value::Null, -32600, &format!("request line too long (the limit is {MAX_LINE} bytes)")))
+            }
+            Ok(Frame::Line) => match std::str::from_utf8(&buf) {
+                Ok(line) if line.trim().is_empty() => continue,
+                Ok(line) => handle(ctx, line),
+                Err(_) => Some(failure(Value::Null, -32700, "parse error (the request is not UTF-8)")),
+            },
+        };
+        if let Some(reply) = reply {
             let mut out = stdout.lock();
             if writeln!(out, "{reply}").and_then(|_| out.flush()).is_err() {
                 break;
@@ -51,14 +114,29 @@ fn handle(ctx: &mut Ctx, line: &str) -> Option<Value> {
     let Some(object) = message.as_object() else {
         return Some(failure(Value::Null, -32600, "invalid request"));
     };
-    let id = object.get("id").cloned();
-    let Some(method) = object.get("method").and_then(Value::as_str) else {
-        // No method: a response from the client is ignored, anything else is invalid.
-        let is_response = object.contains_key("result") || object.contains_key("error");
-        return id.filter(|_| !is_response).map(|id| failure(id, -32600, "invalid request"));
+    // An answer from the client, to a request this server never makes, is ignored.
+    if !object.contains_key("method") && (object.contains_key("result") || object.contains_key("error")) {
+        return None;
+    }
+    // An id is a string, a number or null. Any other id cannot be answered under, so the
+    // error carries null instead.
+    let id = match object.get("id") {
+        None => None,
+        Some(id @ (Value::String(_) | Value::Number(_) | Value::Null)) => Some(id.clone()),
+        Some(_) => return Some(failure(Value::Null, -32600, "invalid request: the id must be a string, a number or null")),
     };
-    // A message without an id is a notification and gets no answer.
+    let reply_id = || id.clone().unwrap_or(Value::Null);
+    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return Some(failure(reply_id(), -32600, "invalid request: \"jsonrpc\" must be \"2.0\""));
+    }
+    let Some(method) = object.get("method").and_then(Value::as_str) else {
+        return Some(failure(reply_id(), -32600, "invalid request: \"method\" must be a string"));
+    };
+    // A message without an id is a notification and gets no answer, even a bad one.
     let id = id?;
+    if !matches!(object.get("params"), None | Some(Value::Object(_) | Value::Array(_))) {
+        return Some(failure(id, -32600, "invalid request: \"params\" must be an object or an array"));
+    }
     let params = object.get("params").cloned().unwrap_or(Value::Null);
     Some(match method {
         "initialize" => {
@@ -242,6 +320,51 @@ fn call(ctx: &mut Ctx, params: &Value) -> Result<Value, RpcError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::{Cursor, Read};
+
+    #[test]
+    fn frames_are_lines_with_or_without_a_last_line_break() {
+        let mut buf = Vec::new();
+        let mut input = Cursor::new(b"first\nsecond\r\n\nlast".to_vec());
+        assert_eq!(read_frame(&mut input, &mut buf, 100).unwrap(), Frame::Line);
+        assert_eq!(buf, b"first");
+        assert_eq!(read_frame(&mut input, &mut buf, 100).unwrap(), Frame::Line);
+        assert_eq!(buf, b"second\r");
+        assert_eq!(read_frame(&mut input, &mut buf, 100).unwrap(), Frame::Line);
+        assert_eq!(buf, b"");
+        assert_eq!(read_frame(&mut input, &mut buf, 100).unwrap(), Frame::Line);
+        assert_eq!(buf, b"last");
+        assert_eq!(read_frame(&mut input, &mut buf, 100).unwrap(), Frame::End);
+    }
+
+    #[test]
+    fn a_line_of_exactly_the_limit_is_kept_and_one_byte_more_is_not() {
+        let mut buf = Vec::new();
+        let mut input = Cursor::new(b"12345\n123456\nok\n".to_vec());
+        assert_eq!(read_frame(&mut input, &mut buf, 5).unwrap(), Frame::Line);
+        assert_eq!(buf, b"12345");
+        assert_eq!(read_frame(&mut input, &mut buf, 5).unwrap(), Frame::TooLong);
+        assert!(buf.is_empty());
+        assert_eq!(read_frame(&mut input, &mut buf, 5).unwrap(), Frame::Line);
+        assert_eq!(buf, b"ok");
+    }
+
+    #[test]
+    fn the_memory_used_does_not_depend_on_the_length_of_the_line() {
+        // 64 MiB without a line break, then an ordinary line.
+        let endless = io::repeat(b'x').take(64 << 20).chain(Cursor::new(b"\nping\n".to_vec()));
+        let mut input = io::BufReader::new(endless);
+        let mut buf = Vec::new();
+        assert_eq!(read_frame(&mut input, &mut buf, 1000).unwrap(), Frame::TooLong);
+        assert!(buf.capacity() <= 2000, "the buffer grew to {} bytes", buf.capacity());
+        assert_eq!(read_frame(&mut input, &mut buf, 1000).unwrap(), Frame::Line);
+        assert_eq!(buf, b"ping");
+        // The same for a line that ends the input.
+        let endless = io::repeat(b'y').take(8 << 20);
+        let mut input = io::BufReader::new(endless);
+        assert_eq!(read_frame(&mut input, &mut buf, 1000).unwrap(), Frame::TooLong);
+        assert_eq!(read_frame(&mut input, &mut buf, 1000).unwrap(), Frame::End);
+    }
 
     #[test]
     fn tool_arguments_become_commands() {

@@ -1,0 +1,106 @@
+{
+  "film": "ad",
+  "title": "PeterGanuRusty: 20 second ad",
+  "fps": 60,
+  "lead": 0.6,
+  "tail": 0.05,
+  "speed": 1.12,
+  "scenes": [
+    {
+      "id": "hook",
+      "hold": 0.15,
+      "gap": 0.2,
+      "pre": 0.05,
+      "cues": [
+        {
+          "text": "Your agent reads everything."
+        },
+        {
+          "text": "Again."
+        },
+        {
+          "text": "And again."
+        }
+      ],
+      "bundle": true
+    },
+    {
+      "id": "mass",
+      "hold": 0.55,
+      "gap": 0.18,
+      "pre": 0.1,
+      "cues": [
+        {
+          "text": "{tok_ref} tokens."
+        },
+        {
+          "text": "For three lookups."
+        }
+      ],
+      "bundle": true
+    },
+    {
+      "id": "collapse",
+      "hold": 0.75,
+      "gap": 0.3,
+      "pre": 0.3,
+      "cues": [
+        {
+          "text": "One question."
+        },
+        {
+          "text": "One answer."
+        }
+      ],
+      "bundle": true
+    },
+    {
+      "id": "number",
+      "hold": 0.7,
+      "gap": 0.2,
+      "pre": 0.15,
+      "cues": [
+        {
+          "text": "{tok_best} tokens."
+        }
+      ]
+    },
+    {
+      "id": "claim",
+      "hold": 0.6,
+      "gap": 0.22,
+      "pre": 0.1,
+      "cues": [
+        {
+          "text": "{pct} fewer."
+        },
+        {
+          "text": "Against no index, on our study."
+        }
+      ],
+      "bundle": true
+    },
+    {
+      "id": "close",
+      "hold": 0.1,
+      "gap": 0.25,
+      "pre": 0.3,
+      "cues": [
+        {
+          "text": "PeterGanuRusty."
+        },
+        {
+          "text": "Find code in one step."
+        }
+      ],
+      "bundle": true
+    }
+  ],
+  "voice_speed": {
+    "am_michael": 1.2
+  },
+  "poster": {
+    "cue": "number.1",
+    "offset": 1.1
+  }
+}

@@ -3,7 +3,13 @@
 use lxr_core::FileFacts;
 
 /// A definition whose own text is at most this many characters is one chunk.
-const WHOLE_LIMIT: usize = 1500;
+///
+/// Measured on the lxbench fixture with searchdemo in Hybrid mode and five hits, each
+/// function searched for by the first sentence of its docstring: a limit of 750 finds 894
+/// of 951 functions (hit@5 0.940) and a limit of 1,500 finds 869 (0.914); on a sample of
+/// 60 of them it finds 57 and 56. The limit equals [`PIECE_SIZE`], so a definition above it
+/// is cut into pieces, and only a short last piece (see [`TAIL_MIN`]) can make it one chunk again.
+const WHOLE_LIMIT: usize = 750;
 /// Pieces of a long definition, of a container's loose lines and of module-level code
 /// are filled up to this many characters.
 const PIECE_SIZE: usize = 750;
@@ -139,9 +145,11 @@ impl<'a> Source<'a> {
 /// Cuts a file into chunks, in line order.
 ///
 /// A definition with no definition inside it is one [`ChunkKind::Definition`] chunk when
-/// its text is at most 1,500 characters, and otherwise a run of [`ChunkKind::Part`]
+/// its text is at most 750 characters, and otherwise a run of [`ChunkKind::Part`]
 /// chunks of about 750 characters cut at line ends, the first of which starts at the
-/// declaration. A definition that holds others gives one part for its own lines up to the
+/// declaration. A last piece shorter than 150 characters joins the one before it, so a
+/// definition a little over 750 characters can still be one chunk. A definition that
+/// holds others gives one part for its own lines up to the
 /// first member, then its members are chunked on their own, and its lines between and
 /// after the members are merged into parts of at most 750 characters. Lines in no
 /// definition (imports, module-level code, and the comments and decorators above a
@@ -342,27 +350,52 @@ mod tests {
         assert!(chunks.iter().all(|c| c.kind != ChunkKind::Definition));
     }
 
-    #[test]
-    fn a_definition_of_exactly_the_limit_stays_whole_and_one_more_line_cuts_it() {
-        let body = "x".repeat(98);
-        let mut text = String::from("def f():\n");
-        for _ in 0..14 {
-            text.push_str(&format!("    {body}\n"));
+    /// A Python function of exactly `size` characters whose last line is `last` characters
+    /// long: the header, then lines of about 100 characters, then that last line.
+    fn function_of(size: usize, last: usize) -> String {
+        let middle = size - "def f():".len() - (1 + last);
+        let (count, extra) = (middle / 101, middle % 101);
+        let mut text = String::from("def f():");
+        for i in 0..count {
+            text.push_str(&format!("\n    {}", "x".repeat(96 + if i == 0 { extra } else { 0 })));
         }
+        text.push_str(&format!("\n    {}", "x".repeat(last - 4)));
+        assert_eq!(text.chars().count(), size);
+        text
+    }
+
+    fn chunks_of_function(text: &str) -> Vec<Chunk> {
         let n = text.lines().count() as u32;
-        let f = facts(Lang::Python, &text, vec![symbol("f", SymKind::Function, 1, n, None)]);
-        let whole = chunk_file(&f, &text);
-        let size = text.trim_end().chars().count();
-        assert!(size <= WHOLE_LIMIT, "{size}");
-        assert_eq!(whole.len(), 1);
-        assert_eq!(whole[0].kind, ChunkKind::Definition);
-        text.push_str(&format!("    {body}\n"));
-        text.push_str(&format!("    {body}\n"));
-        let n = text.lines().count() as u32;
-        let f = facts(Lang::Python, &text, vec![symbol("f", SymKind::Function, 1, n, None)]);
-        let cut = chunk_file(&f, &text);
-        assert!(cut.len() >= 2 && cut.iter().all(|c| c.kind == ChunkKind::Part));
-        assert_coverage(&cut, &text);
+        let f = facts(Lang::Python, text, vec![symbol("f", SymKind::Function, 1, n, None)]);
+        let chunks = chunk_file(&f, text);
+        assert_coverage(&chunks, text);
+        chunks
+    }
+
+    #[test]
+    fn the_whole_limit_is_750_characters_and_a_short_tail_gets_a_little_more() {
+        // Exactly 750 characters: one definition.
+        let at_limit = chunks_of_function(&function_of(750, 40));
+        assert_eq!(at_limit.len(), 1);
+        assert_eq!(at_limit[0].kind, ChunkKind::Definition);
+        // One more character and a last line of 200: cut at the last line, which is too long
+        // to join the piece before it.
+        let over = chunks_of_function(&function_of(751, 200));
+        assert_eq!(over.len(), 2, "{over:?}");
+        assert!(over.iter().all(|c| c.kind == ChunkKind::Part));
+        // With a last line of 40 the piece that is cut off is under 150 characters, joins
+        // the first piece, and the definition is whole again.
+        let joined = chunks_of_function(&function_of(751, 40));
+        assert_eq!(joined.len(), 1);
+        assert_eq!(joined[0].kind, ChunkKind::Definition);
+        // A tail of 149 characters joins the piece before it and one of 150 does not.
+        let tail_149 = chunks_of_function(&function_of(751, 149));
+        assert_eq!((tail_149.len(), tail_149[0].kind), (1, ChunkKind::Definition));
+        let tail_150 = chunks_of_function(&function_of(751, 150));
+        assert_eq!(tail_150.len(), 2, "{tail_150:?}");
+        // Beyond 750 plus the 150 a tail may add, it is cut whatever the last line is.
+        let long = chunks_of_function(&function_of(901, 40));
+        assert!(long.len() >= 2 && long.iter().all(|c| c.kind == ChunkKind::Part), "{long:?}");
     }
 
     #[test]
@@ -434,6 +467,10 @@ print(Config)
         }
         assert_eq!(chunks[0].start, 1);
         assert_eq!(chunks.last().map(|c| c.end), Some(30));
+        // A line is 70 characters, so ten lines are 709 and an eleventh would pass 750: three
+        // full pieces. The literals keep this test from following a change of PIECE_SIZE.
+        let sizes: Vec<usize> = chunks.iter().map(|c| c.text.chars().count()).collect();
+        assert_eq!(sizes, vec![709, 709, 709]);
     }
 
     #[test]

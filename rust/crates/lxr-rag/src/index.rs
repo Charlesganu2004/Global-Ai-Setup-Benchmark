@@ -6,16 +6,27 @@ use lxr_core::{hash64, load, save};
 use lxr_text::{code_tokens, rrf, Bm25, Embedder, Vectors};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
-use std::io;
-use std::path::Path;
+use std::io::{self, Read};
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 
-/// Version of the files an index is written as.
-const FORMAT: u32 = 1;
+/// Version of the files an index is written as. 2 added the size and hash of the vectors
+/// file, the embedder's probe vector and the table's own hash; an index of version 1 is
+/// refused and has to be built again.
+const FORMAT: u32 = 2;
 const TABLE_FILE: &str = "chunks.bin";
 const BM25_FILE: &str = "bm25.bin";
 const VECTORS_FILE: &str = "vectors.bin";
+/// Bytes hashed at a time when a file or a table is checked.
+const DIGEST_BLOCK: usize = 1 << 16;
+/// A text whose vector the table keeps. An embedder that does not give the same vector for
+/// it is not the one that made the index's vectors, whatever the length of its vectors.
+const PROBE: &str = "parse the config file and render a template, then close the socket";
+/// Largest difference between two numbers of a probe vector for the embedders to be the same.
+const PROBE_TOLERANCE: f32 = 1e-3;
 /// Chunks tokenised, and so held as token lists, at one time.
 const TOKEN_BATCH: usize = 4096;
 /// Chunk texts embedded in one call.
@@ -112,9 +123,149 @@ struct Table {
     modules: Vec<ModuleNames>,
     /// Length of the vectors, 0 when the index has none.
     dim: u32,
-    /// Size and hash of the BM25 file, to notice a damaged copy.
+    /// Size and hash of the BM25 file, to notice a damaged copy or one from another build.
     bm25_len: u64,
     bm25_hash: u64,
+    /// The same for the vectors file; 0 and 0 when the index has none.
+    vectors_len: u64,
+    vectors_hash: u64,
+    /// The vector the embedder gave for [`PROBE`] when the index was built; empty when the
+    /// index has no vectors.
+    probe: Vec<f32>,
+    /// Hash of everything above (see [`Table::digest`]), to notice a damaged table.
+    check: u64,
+}
+
+impl Table {
+    /// A hash of every field but `check`, taken from the values and not from the bytes the
+    /// table was stored as, so it holds for what was read, however it was encoded.
+    fn digest(&self) -> u64 {
+        let mut digest = Digest::new();
+        digest.number(u64::from(self.format));
+        digest.number(self.paths.len() as u64);
+        for path in &self.paths {
+            digest.text(path);
+        }
+        digest.number(self.strings.len() as u64);
+        for string in &self.strings {
+            digest.text(string);
+        }
+        digest.number(self.rows.len() as u64);
+        for r in &self.rows {
+            for n in [r.path, r.start, r.end, u32::from(r.kind), r.symbol, r.sig, r.doc, r.def_start, r.def_end] {
+                digest.number(u64::from(n));
+            }
+        }
+        digest.number(self.modules.len() as u64);
+        for m in &self.modules {
+            digest.number(u64::from(m.chunk));
+            digest.number(m.general.len() as u64);
+            for name in &m.general {
+                digest.text(name);
+            }
+            digest.number(m.sql.len() as u64);
+            for name in &m.sql {
+                digest.text(name);
+            }
+        }
+        for n in [u64::from(self.dim), self.bm25_len, self.bm25_hash, self.vectors_len, self.vectors_hash, self.probe.len() as u64] {
+            digest.number(n);
+        }
+        for x in &self.probe {
+            digest.number(u64::from(x.to_bits()));
+        }
+        digest.finish()
+    }
+}
+
+/// A hash of a stream of bytes that does not depend on how the stream is cut into the
+/// pieces handed to [`Digest::put`]: bytes are gathered into blocks of [`DIGEST_BLOCK`],
+/// and each full block is hashed together with the hash of the blocks before it.
+struct Digest {
+    state: u64,
+    block: Vec<u8>,
+}
+
+impl Digest {
+    fn new() -> Digest {
+        Digest { state: 0, block: Vec::with_capacity(DIGEST_BLOCK + 8) }
+    }
+
+    fn put(&mut self, mut bytes: &[u8]) {
+        while !bytes.is_empty() {
+            let take = (DIGEST_BLOCK - self.block.len()).min(bytes.len());
+            self.block.extend_from_slice(&bytes[..take]);
+            bytes = &bytes[take..];
+            if self.block.len() == DIGEST_BLOCK {
+                self.fold();
+            }
+        }
+    }
+
+    fn number(&mut self, n: u64) {
+        self.put(&n.to_le_bytes());
+    }
+
+    /// A string with its length in front, so that two strings never run into each other.
+    fn text(&mut self, s: &str) {
+        self.number(s.len() as u64);
+        self.put(s.as_bytes());
+    }
+
+    fn fold(&mut self) {
+        self.block.extend_from_slice(&self.state.to_le_bytes());
+        self.state = hash64(&self.block);
+        self.block.clear();
+    }
+
+    fn finish(mut self) -> u64 {
+        self.fold();
+        self.state
+    }
+}
+
+/// Size and hash of the file at `path`, read in blocks so that a large file is never held whole.
+fn file_digest(path: &Path) -> io::Result<(u64, u64)> {
+    let mut file = fs::File::open(path)?;
+    let mut digest = Digest::new();
+    let mut size = 0u64;
+    let mut buffer = vec![0u8; DIGEST_BLOCK];
+    loop {
+        match file.read(&mut buffer) {
+            Ok(0) => break,
+            Ok(n) => {
+                digest.put(&buffer[..n]);
+                size += n as u64;
+            }
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(error),
+        }
+    }
+    Ok((size, digest.finish()))
+}
+
+/// Errors unless the file at `path` has the size and hash that the table recorded for it.
+fn verify(path: &Path, size: u64, hash: u64) -> io::Result<()> {
+    if file_digest(path)? != (size, hash) {
+        return Err(invalid(format!("{} is damaged", path.display())));
+    }
+    Ok(())
+}
+
+/// Has `write` write a file under a temporary name beside `path`, takes the size and hash of
+/// that file and moves it to `path`. The figures describe the bytes that end up at `path`,
+/// not whatever another writer may have put there meanwhile.
+fn write_checked(path: &Path, write: impl FnOnce(&Path) -> io::Result<()>) -> io::Result<(u64, u64)> {
+    // The process id keeps two processes apart, the counter two threads of one process.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let mut name = path.as_os_str().to_owned();
+    name.push(format!(".{}.{}.check", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let temp = PathBuf::from(name);
+    let done = write(&temp).and_then(|()| file_digest(&temp)).and_then(|figures| fs::rename(&temp, path).map(|()| figures));
+    if done.is_err() {
+        let _ = fs::remove_file(&temp);
+    }
+    done
 }
 
 /// What is known about a file from its path alone.
@@ -171,13 +322,57 @@ fn invalid(message: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, message.into())
 }
 
-/// The text a chunk is indexed for words as: its own text, the file stem twice, the
+/// The text of a chunk as it is indexed, for words and for vectors: its own text, with the
+/// documentation line of its definition in front when the chunk is the one that begins the
+/// definition and does not hold that line already. The documentation of a Rust, Java or
+/// JavaScript definition is a comment above the declaration, outside the definition's lines,
+/// so it sits in a module chunk; this lets a search for it find the definition as well.
+/// A Python docstring is in the chunk already, and then nothing is added.
+fn indexed_text(chunk: &Chunk) -> Cow<'_, str> {
+    // A documentation line cut to 200 characters ends in "...".
+    let doc = chunk.doc.strip_suffix("...").unwrap_or(&chunk.doc);
+    let begins = chunk.kind != ChunkKind::Module && chunk.start == chunk.def_start;
+    if !begins || doc.is_empty() || chunk.text.split_whitespace().collect::<Vec<_>>().join(" ").contains(doc) {
+        return Cow::Borrowed(&chunk.text);
+    }
+    Cow::Owned(format!("{doc}\n{}", chunk.text))
+}
+
+/// The text a chunk is indexed for words as: its indexed text, the file stem twice, the
 /// names of the last three folders and the qualified name of its definition.
 fn words_text(chunk: &Chunk) -> String {
     let stem = rank::file_stem(&chunk.path);
     let folders = rank::folder_names(&chunk.path);
     let near = folders[folders.len().saturating_sub(3)..].join(" ");
-    format!("{} {stem} {stem} {near} {}", chunk.text, chunk.symbol)
+    format!("{} {stem} {stem} {near} {}", indexed_text(chunk), chunk.symbol)
+}
+
+/// Checks the table on its own: every row points at strings and a path that exist, has its
+/// lines in order and a known kind; the string table starts with the empty string; and a
+/// module entry points at a module chunk.
+fn check_table(table: &Table) -> io::Result<()> {
+    let (paths, strings) = (table.paths.len() as u32, table.strings.len() as u32);
+    for (i, row) in table.rows.iter().enumerate() {
+        let sound = row.path < paths
+            && row.symbol < strings
+            && row.sig < strings
+            && row.doc < strings
+            && row.kind <= KIND_MODULE
+            && row.start <= row.end
+            && row.def_start <= row.def_end;
+        if !sound {
+            return Err(invalid(format!("chunk {i} of the table is not valid")));
+        }
+    }
+    if table.strings.first().map(String::as_str) != Some("") {
+        return Err(invalid("the string table does not start with the empty string"));
+    }
+    for m in &table.modules {
+        if m.chunk as usize >= table.rows.len() || table.rows[m.chunk as usize].kind != KIND_MODULE {
+            return Err(invalid("a module entry does not point at a module chunk"));
+        }
+    }
+    Ok(())
 }
 
 impl SearchIndex {
@@ -186,11 +381,15 @@ impl SearchIndex {
     /// `chunks.bin` holds the chunk table (no chunk text), `bm25.bin` the word index and,
     /// when `embedder` is given, `vectors.bin` one vector of each chunk's text. Chunks are
     /// ordered by path and first line, which is also the order that equal scores keep.
+    ///
+    /// The table is checked before anything is written, so chunks that cannot make a sound
+    /// table give an error and leave a folder that held an index as it was. The table is
+    /// written last and records the size and hash of the other two files, so a build that
+    /// stops half way leaves a folder that [`SearchIndex::open`] refuses.
     pub fn build(mut chunks: Vec<Chunk>, embedder: Option<&Embedder>, dir: &Path) -> io::Result<SearchIndex> {
         if chunks.len() >= u32::MAX as usize {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "too many chunks: numbers are 32-bit"));
         }
-        fs::create_dir_all(dir)?;
         chunks.sort_by(|a, b| (a.path.as_str(), a.start, a.end).cmp(&(b.path.as_str(), b.start, b.end)));
 
         let mut paths = Interner::default();
@@ -223,6 +422,22 @@ impl SearchIndex {
                 (!general.is_empty() || !sql.is_empty()).then(|| ModuleNames { chunk: i as u32, general, sql })
             })
             .collect();
+        let mut table = Table {
+            format: FORMAT,
+            paths: paths.list,
+            strings: strings.list,
+            rows,
+            modules,
+            dim: 0,
+            bm25_len: 0,
+            bm25_hash: 0,
+            vectors_len: 0,
+            vectors_hash: 0,
+            probe: Vec::new(),
+            check: 0,
+        };
+        check_table(&table)?;
+        fs::create_dir_all(dir)?;
 
         let total = chunks.len();
         let docs = (0..total).step_by(TOKEN_BATCH).flat_map(|from| {
@@ -232,58 +447,63 @@ impl SearchIndex {
         let bm25 = Bm25::build(docs);
 
         let vectors_path = dir.join(VECTORS_FILE);
-        let dim = match embedder {
+        match embedder {
             Some(e) if total > 0 => {
                 let mut matrix: Vec<Vec<f32>> = Vec::with_capacity(total);
                 for batch in chunks.chunks(EMBED_BATCH) {
-                    let texts: Vec<&str> = batch.iter().map(|c| c.text.as_str()).collect();
-                    matrix.extend(e.embed_many(&texts));
+                    let texts: Vec<Cow<str>> = batch.iter().map(indexed_text).collect();
+                    let views: Vec<&str> = texts.iter().map(|t| t.as_ref()).collect();
+                    matrix.extend(e.embed_many(&views));
                 }
-                Vectors::write(&vectors_path, e.dim(), &matrix)?;
-                e.dim() as u32
+                let (size, hash) = write_checked(&vectors_path, |temp| Vectors::write(temp, e.dim(), &matrix))?;
+                table.dim = e.dim() as u32;
+                table.vectors_len = size;
+                table.vectors_hash = hash;
+                table.probe = e.embed(PROBE);
             }
             _ => {
                 let _ = fs::remove_file(&vectors_path);
-                0
             }
-        };
+        }
         drop(chunks);
 
-        let bm25_path = dir.join(BM25_FILE);
-        save(&bm25_path, &bm25)?;
-        let written = fs::read(&bm25_path)?;
-        let table = Table {
-            format: FORMAT,
-            paths: paths.list,
-            strings: strings.list,
-            rows,
-            modules,
-            dim,
-            bm25_len: written.len() as u64,
-            bm25_hash: hash64(&written),
-        };
-        drop(written);
+        let (size, hash) = write_checked(&dir.join(BM25_FILE), |temp| save(temp, &bm25))?;
+        table.bm25_len = size;
+        table.bm25_hash = hash;
+        table.check = table.digest();
         save(&dir.join(TABLE_FILE), &table)?;
-        let vectors = if dim > 0 { Some(Vectors::open(&vectors_path)?) } else { None };
+        let vectors = if table.dim > 0 { Some(Vectors::open(&vectors_path)?) } else { None };
         SearchIndex::from_parts(table, bm25, vectors)
     }
 
     /// Opens an index written by [`SearchIndex::build`]. A missing folder or file, a file
     /// of another version, a damaged file, or files that do not belong together give an error.
+    /// The table is checked against its own hash, and the word index and the vectors against
+    /// the size and hash that the table recorded for them.
     pub fn open(dir: &Path) -> io::Result<SearchIndex> {
-        let table: Table = load(&dir.join(TABLE_FILE))?;
+        let table_path = dir.join(TABLE_FILE);
+        let table: Table = load(&table_path)?;
         if table.format != FORMAT {
             return Err(invalid(format!("index format {} is not {FORMAT}", table.format)));
         }
-        let bm25_path = dir.join(BM25_FILE);
-        let bytes = fs::read(&bm25_path)?;
-        if bytes.len() as u64 != table.bm25_len || hash64(&bytes) != table.bm25_hash {
-            return Err(invalid(format!("{} is damaged", bm25_path.display())));
+        if table.check != table.digest() {
+            return Err(invalid(format!("{} is damaged", table_path.display())));
         }
-        drop(bytes);
-        let bm25: Bm25 = load(&bm25_path)?;
-        let vectors = if table.dim > 0 { Some(Vectors::open(&dir.join(VECTORS_FILE))?) } else { None };
-        SearchIndex::from_parts(table, bm25, vectors)
+        // A file is read into its structure first and checked after: a file that a rebuild
+        // replaced in between fails the check instead of being taken on the strength of
+        // a check made on the file it replaced.
+        let bm25_path = dir.join(BM25_FILE);
+        let bm25: io::Result<Bm25> = load(&bm25_path);
+        verify(&bm25_path, table.bm25_len, table.bm25_hash)?;
+        let vectors = if table.dim > 0 {
+            let vectors_path = dir.join(VECTORS_FILE);
+            let vectors = Vectors::open(&vectors_path);
+            verify(&vectors_path, table.vectors_len, table.vectors_hash)?;
+            Some(vectors?)
+        } else {
+            None
+        };
+        SearchIndex::from_parts(table, bm25?, vectors)
     }
 
     /// Checks that the parts agree with each other and derives what search needs.
@@ -299,31 +519,15 @@ impl SearchIndex {
             None if table.dim != 0 => return Err(invalid("the vectors are missing")),
             _ => {}
         }
-        let (paths, strings) = (table.paths.len() as u32, table.strings.len() as u32);
+        if table.probe.len() != table.dim as usize {
+            return Err(invalid("the embedder's probe vector does not match the vectors"));
+        }
+        check_table(&table)?;
         let mut file_chunks: Vec<Vec<u32>> = vec![Vec::new(); table.paths.len()];
         for (i, row) in table.rows.iter().enumerate() {
-            let sound = row.path < paths
-                && row.symbol < strings
-                && row.sig < strings
-                && row.doc < strings
-                && row.kind <= KIND_MODULE
-                && row.start <= row.end
-                && row.def_start <= row.def_end;
-            if !sound {
-                return Err(invalid(format!("chunk {i} of the table is not valid")));
-            }
             file_chunks[row.path as usize].push(i as u32);
         }
-        if table.strings.first().map(String::as_str) != Some("") {
-            return Err(invalid("the string table does not start with the empty string"));
-        }
-        let mut modules = HashMap::new();
-        for m in &table.modules {
-            if m.chunk as usize >= n || table.rows[m.chunk as usize].kind != KIND_MODULE {
-                return Err(invalid("a module entry does not point at a module chunk"));
-            }
-            modules.insert(m.chunk, m.clone());
-        }
+        let modules: HashMap<u32, ModuleNames> = table.modules.iter().map(|m| (m.chunk, m.clone())).collect();
         let files = table.paths.iter().map(|p| file_info(p)).collect();
         Ok(SearchIndex { table, files, file_chunks, modules, bm25, vectors })
     }
@@ -345,7 +549,9 @@ impl SearchIndex {
 
     /// The best hits for `query`, best first, at most `opts.limit`.
     ///
-    /// Each retriever offers five times `limit` chunks. Their ranks are fused (reciprocal
+    /// Each retriever offers five times `limit` chunks, and twice as many again, repeatedly,
+    /// while that gives fewer than `limit` hits and a retriever had more to offer (one
+    /// long definition can fill the first pool with its parts). Their ranks are fused (reciprocal
     /// rank, constant 60, the vectors weighted by alpha), then the best chunk of the file
     /// with the most good chunks is lifted, a query that names a symbol lifts the chunks
     /// that define it and any other query lifts files whose names match its words, chunks
@@ -367,8 +573,21 @@ impl SearchIndex {
             (true, false) => 0.0,
             _ => 1.0,
         };
-        let wanted = opts.limit.saturating_mul(5);
-        let semantic: Vec<u32> = match (&meaning, &self.vectors) {
+        let mut wanted = opts.limit.saturating_mul(5);
+        loop {
+            let (hits, more) = self.search_pool(query, meaning.as_deref(), alpha, opts.limit, wanted);
+            if hits.len() >= opts.limit || !more || wanted >= self.len() {
+                return hits;
+            }
+            wanted = wanted.saturating_mul(2);
+        }
+    }
+
+    /// One pass of [`SearchIndex::search`] over the best `wanted` chunks of each retriever.
+    /// The second value is true when a retriever had at least `wanted` chunks to offer, so
+    /// that a larger `wanted` could bring in more.
+    fn search_pool(&self, query: &str, meaning: Option<&[f32]>, alpha: f32, limit: usize, wanted: usize) -> (Vec<Hit>, bool) {
+        let semantic: Vec<u32> = match (meaning, &self.vectors) {
             (Some(q), Some(v)) if alpha > 0.0 => v.nearest(q, wanted).into_iter().map(|h| h.0).collect(),
             _ => Vec::new(),
         };
@@ -377,27 +596,36 @@ impl SearchIndex {
         } else {
             Vec::new()
         };
+        let more = semantic.len() >= wanted || lexical.len() >= wanted;
         let mut scores: BTreeMap<u32, f64> = rrf(&[semantic.as_slice(), lexical.as_slice()], rank::RRF_K, &[alpha, 1.0 - alpha])
             .into_iter()
             .filter(|&(_, score)| score != 0.0)
             .map(|(id, score)| (id, f64::from(score)))
             .collect();
         if scores.is_empty() {
-            return Vec::new();
+            return (Vec::new(), more);
         }
         self.lift_files(&mut scores);
         self.lift_query(&mut scores, query);
         let merged = self.merge_definitions(&scores);
-        self.rerank(merged, opts.limit, alpha < 1.0).into_iter().map(|(id, score)| self.hit(id, score)).collect()
+        let hits = self.rerank(merged, limit, alpha < 1.0).into_iter().map(|(id, score)| self.hit(id, score)).collect();
+        (hits, more)
     }
 
     /// The unit vector of the query, when the index has vectors, an embedder of the same
-    /// length is given, and the query has a word the model knows.
+    /// length and the same probe vector is given, and the query has a word the model knows.
     fn query_vector(&self, query: &str, embedder: Option<&Embedder>) -> Option<Vec<f32>> {
         let vectors = self.vectors.as_ref()?;
-        let embedder = embedder.filter(|e| e.dim() == vectors.dim())?;
+        let embedder = embedder.filter(|e| e.dim() == vectors.dim() && self.same_model(e))?;
         let vector = embedder.embed(query);
         vector.iter().any(|&x| x != 0.0).then_some(vector)
+    }
+
+    /// True when `embedder` gives for [`PROBE`] the vector that the embedder which made the
+    /// index's vectors gave. Vectors of another model would rank without meaning.
+    fn same_model(&self, embedder: &Embedder) -> bool {
+        let probe = embedder.embed(PROBE);
+        probe.len() == self.table.probe.len() && probe.iter().zip(&self.table.probe).all(|(a, b)| (a - b).abs() <= PROBE_TOLERANCE)
     }
 
     fn string(&self, id: u32) -> &str {
@@ -609,17 +837,15 @@ mod tests {
     /// "html" and "template" along the second, "socket", "connect" and "retry" along the
     /// third. Every other word is unknown.
     fn model(dir: &Path) -> Embedder {
-        let words: [(&str, [f32; 3]); 9] = [
-            ("parse", [1.0, 0.0, 0.0]),
-            ("config", [1.0, 0.0, 0.0]),
-            ("file", [1.0, 0.0, 0.0]),
-            ("render", [0.0, 1.0, 0.0]),
-            ("html", [0.0, 1.0, 0.0]),
-            ("template", [0.0, 1.0, 0.0]),
-            ("socket", [0.0, 0.0, 1.0]),
-            ("connect", [0.0, 0.0, 1.0]),
-            ("retry", [0.0, 0.0, 1.0]),
-        ];
+        let (a, b, c): (&[f32], &[f32], &[f32]) = (&[1.0, 0.0, 0.0], &[0.0, 1.0, 0.0], &[0.0, 0.0, 1.0]);
+        let words = [("parse", a), ("config", a), ("file", a), ("render", b), ("html", b), ("template", b)];
+        let rest = [("socket", c), ("connect", c), ("retry", c)];
+        model_of(dir, 3, &[words.as_slice(), rest.as_slice()].concat())
+    }
+
+    /// A model whose vectors have `dim` numbers: each word given has the vector beside it,
+    /// every other word is unknown.
+    fn model_of(dir: &Path, dim: usize, words: &[(&str, &[f32])]) -> Embedder {
         fs::create_dir_all(dir).unwrap();
         let mut vocab = String::from(r#""[UNK]":0"#);
         for (i, (word, _)) in words.iter().enumerate() {
@@ -631,13 +857,15 @@ mod tests {
             r###"{{"truncation":{{"direction":"Right","max_length":512,"strategy":"LongestFirst","stride":0}},"padding":{{"strategy":"BatchLongest","direction":"Right","pad_to_multiple_of":null,"pad_id":{pad},"pad_type_id":0,"pad_token":"[PAD]"}},"added_tokens":[{{"id":0,"content":"[UNK]","single_word":false,"lstrip":false,"rstrip":false,"normalized":false,"special":true}},{{"id":{pad},"content":"[PAD]","single_word":true,"lstrip":true,"rstrip":true,"normalized":true,"special":true}}],"normalizer":{{"type":"BertNormalizer","clean_text":true,"handle_chinese_chars":true,"strip_accents":null,"lowercase":true}},"pre_tokenizer":{{"type":"BertPreTokenizer"}},"model":{{"type":"WordPiece","unk_token":"[UNK]","continuing_subword_prefix":"##","max_input_chars_per_word":100,"vocab":{{{vocab}}}}}}}"###
         );
         fs::write(dir.join("tokenizer.json"), tokenizer).unwrap();
+        let zero = vec![0.0f32; dim];
         let mut data: Vec<u8> = Vec::new();
-        data.extend([0.0f32; 3].iter().flat_map(|v| v.to_le_bytes()));
-        for (_, vector) in &words {
+        data.extend(zero.iter().flat_map(|v| v.to_le_bytes()));
+        for (_, vector) in words {
+            assert_eq!(vector.len(), dim);
             data.extend(vector.iter().flat_map(|v| v.to_le_bytes()));
         }
-        data.extend([0.0f32; 3].iter().flat_map(|v| v.to_le_bytes()));
-        let header = format!(r#"{{"embeddings":{{"dtype":"F32","shape":[{},3],"data_offsets":[0,{}]}}}}"#, words.len() + 2, data.len());
+        data.extend(zero.iter().flat_map(|v| v.to_le_bytes()));
+        let header = format!(r#"{{"embeddings":{{"dtype":"F32","shape":[{},{dim}],"data_offsets":[0,{}]}}}}"#, words.len() + 2, data.len());
         let mut file = (header.len() as u64).to_le_bytes().to_vec();
         file.extend_from_slice(header.as_bytes());
         file.extend_from_slice(&data);
@@ -1047,5 +1275,337 @@ mod tests {
         SearchIndex::build(corpus()[..3].to_vec(), None, &other).unwrap();
         fs::copy(other.join(TABLE_FILE), at.join(TABLE_FILE)).unwrap();
         assert!(SearchIndex::open(&at).is_err());
+    }
+
+    /// The corpus with other texts: the same table apart from the hashes, other words and
+    /// other vectors. Files of this build can stand in for files of the first one.
+    fn other_corpus() -> Vec<Chunk> {
+        let mut chunks = corpus();
+        for c in &mut chunks {
+            c.text.push_str(" socket retry");
+        }
+        chunks
+    }
+
+    #[test]
+    fn a_file_from_another_build_of_the_same_size_is_refused() {
+        let dir = temp("swapped");
+        let embedder = model(&dir.join("m"));
+        for file in [VECTORS_FILE, BM25_FILE, TABLE_FILE] {
+            let (home, away) = (dir.join(format!("home-{file}")), dir.join(format!("away-{file}")));
+            SearchIndex::build(corpus(), Some(&embedder), &home).unwrap();
+            SearchIndex::build(other_corpus(), Some(&embedder), &away).unwrap();
+            assert!(SearchIndex::open(&home).is_ok(), "{file}");
+            fs::copy(away.join(file), home.join(file)).unwrap();
+            assert!(SearchIndex::open(&home).is_err(), "{file} of another build was accepted");
+        }
+    }
+
+    #[test]
+    fn a_changed_table_or_vectors_file_is_refused() {
+        let dir = temp("changed");
+        let embedder = model(&dir.join("m"));
+        let at = dir.join("index");
+        SearchIndex::build(corpus(), Some(&embedder), &at).unwrap();
+        assert!(SearchIndex::open(&at).is_ok());
+
+        // The first line of one chunk moves by one, a change that leaves the table sound.
+        let mut table: Table = load(&at.join(TABLE_FILE)).unwrap();
+        let row = table.rows.iter_mut().find(|r| r.end > r.start).unwrap();
+        row.start += 1;
+        save(&at.join(TABLE_FILE), &table).unwrap();
+        let error = SearchIndex::open(&at).unwrap_err();
+        assert!(error.to_string().contains("is damaged"), "{error}");
+
+        // One bit of one vector flips, a change that leaves the file well formed.
+        SearchIndex::build(corpus(), Some(&embedder), &at).unwrap();
+        let mut bytes = fs::read(at.join(VECTORS_FILE)).unwrap();
+        let last = bytes.len() - 1;
+        bytes[last] ^= 0x01;
+        fs::write(at.join(VECTORS_FILE), &bytes).unwrap();
+        let error = SearchIndex::open(&at).unwrap_err();
+        assert!(error.to_string().contains("is damaged"), "{error}");
+    }
+
+    #[test]
+    fn a_build_that_fails_leaves_an_existing_index_as_it_was() {
+        let dir = temp("failed");
+        let embedder = model(&dir.join("m"));
+        let at = dir.join("index");
+        SearchIndex::build(corpus(), Some(&embedder), &at).unwrap();
+        let files = |at: &Path| {
+            [TABLE_FILE, BM25_FILE, VECTORS_FILE].map(|f| {
+                let bytes = fs::read(at.join(f)).unwrap();
+                (bytes.len(), hash64(&bytes))
+            })
+        };
+        let before = files(&at);
+
+        // A chunk whose first line is after its last cannot be in a sound table.
+        let mut bad = corpus();
+        bad[0].start = bad[0].end + 1;
+        assert!(SearchIndex::build(bad, Some(&embedder), &at).is_err());
+        assert_eq!(files(&at), before, "the failed build changed the files");
+        assert!(SearchIndex::open(&at).is_ok());
+        let left: Vec<_> = fs::read_dir(&at).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left.len(), 3, "{left:?}");
+    }
+
+    #[test]
+    fn builds_racing_into_one_folder_never_leave_a_mixture() {
+        let dir = temp("racing");
+        let embedder = model(&dir.join("m"));
+        let (a, b) = (corpus(), other_corpus());
+        // What an index answers: words from its word index, meaning from its vectors.
+        let answers = |index: &SearchIndex| {
+            (index.search("retry", Some(&embedder), &opts(5, Mode::Words)), index.search("retry", Some(&embedder), &opts(5, Mode::Meaning)))
+        };
+        let alone = |name: &str, chunks: &Vec<Chunk>| answers(&SearchIndex::build(chunks.clone(), Some(&embedder), &dir.join(name)).unwrap());
+        let (only_a, only_b) = (alone("only-a", &a), alone("only-b", &b));
+        assert_ne!(only_a, only_b);
+        let at = dir.join("shared");
+        for round in 0..20 {
+            std::thread::scope(|scope| {
+                for chunks in [&a, &b] {
+                    let (at, embedder) = (&at, &embedder);
+                    scope.spawn(move || {
+                        let _ = SearchIndex::build(chunks.clone(), Some(embedder), at);
+                    });
+                }
+            });
+            // Either the folder is refused, or it is one of the two builds, whole.
+            if let Ok(index) = SearchIndex::open(&at) {
+                let found = answers(&index);
+                assert!(found == only_a || found == only_b, "round {round}: a mixture of the two builds");
+            }
+        }
+    }
+
+    #[test]
+    fn an_embedder_of_another_model_is_not_used_for_the_vectors() {
+        let (index, embedder, dir) = built("othermodel");
+        let (a, b, c): (&[f32], &[f32], &[f32]) = (&[1.0, 0.0, 0.0], &[0.0, 1.0, 0.0], &[0.0, 0.0, 1.0]);
+        // The same words and vectors of the same length, pointing along other axes.
+        let rotated = model_of(
+            &dir.join("rotated"),
+            3,
+            &[("parse", c), ("config", c), ("file", c), ("render", a), ("html", a), ("template", a), ("socket", b), ("connect", b), ("retry", b)],
+        );
+        assert_eq!(rotated.dim(), embedder.dim());
+        assert!(!index.search("retry", Some(&embedder), &opts(2, Mode::Meaning)).is_empty());
+        assert!(index.search("retry", Some(&rotated), &opts(2, Mode::Meaning)).is_empty());
+        let words = index.search("socket connect", None, &opts(4, Mode::Words));
+        assert!(!words.is_empty());
+        assert_eq!(index.search("socket connect", Some(&rotated), &opts(4, Mode::Hybrid)), words);
+    }
+
+    #[test]
+    fn an_embedder_with_vectors_of_another_length_is_not_used() {
+        let (index, embedder, dir) = built("otherdim");
+        let wide = model_of(
+            &dir.join("wide"),
+            4,
+            &[("retry", &[1.0, 0.0, 0.0, 0.0]), ("socket", &[0.0, 1.0, 0.0, 0.0]), ("html", &[0.0, 0.0, 1.0, 0.0])],
+        );
+        assert_ne!(wide.dim(), embedder.dim());
+        assert!(index.search("retry", Some(&wide), &opts(3, Mode::Meaning)).is_empty());
+        let words = index.search("retry socket", None, &opts(3, Mode::Words));
+        assert!(!words.is_empty());
+        assert_eq!(index.search("retry socket", Some(&wide), &opts(3, Mode::Hybrid)), words);
+    }
+
+    #[test]
+    fn the_callers_alpha_is_cut_to_0_and_1_and_its_ends_are_the_single_retrievers() {
+        let (index, embedder, _dir) = built("alpha");
+        let with = |query: &str, mode: Mode, alpha: Option<f32>| index.search(query, Some(&embedder), &SearchOpts { limit: 5, mode, alpha });
+        let text = "render the html template";
+        let (words, meaning) = (with(text, Mode::Words, None), with(text, Mode::Meaning, None));
+        assert!(!words.is_empty() && !meaning.is_empty());
+        // 0 weighs the vectors nothing and 1 weighs the words nothing; beyond them is cut to them.
+        assert_eq!(with(text, Mode::Hybrid, Some(0.0)), words);
+        assert_eq!(with(text, Mode::Hybrid, Some(-3.0)), words);
+        assert_eq!(with(text, Mode::Hybrid, Some(1.0)), meaning);
+        assert_eq!(with(text, Mode::Hybrid, Some(7.5)), meaning);
+        // Without an alpha a text query weighs the vectors 0.5 and a symbol query 0.3.
+        assert_eq!(with(text, Mode::Hybrid, Some(0.5)), with(text, Mode::Hybrid, None));
+        assert_eq!(with("load_config", Mode::Hybrid, Some(0.3)), with("load_config", Mode::Hybrid, None));
+    }
+
+    /// The parts of an index built from the corpus, read back, for a test to change.
+    fn parts(at: &Path) -> (Table, Bm25, Option<Vectors>) {
+        (load(&at.join(TABLE_FILE)).unwrap(), load(&at.join(BM25_FILE)).unwrap(), Some(Vectors::open(&at.join(VECTORS_FILE)).unwrap()))
+    }
+
+    #[test]
+    fn from_parts_refuses_a_table_that_does_not_hold_together() {
+        let dir = temp("parts");
+        let embedder = model(&dir.join("m"));
+        let at = dir.join("index");
+        SearchIndex::build(corpus(), Some(&embedder), &at).unwrap();
+        let module = parts(&at).0.rows.iter().position(|r| r.kind == KIND_MODULE).unwrap() as u32;
+        let definition = parts(&at).0.rows.iter().position(|r| r.kind == KIND_DEFINITION).unwrap() as u32;
+
+        let (table, bm25, vectors) = parts(&at);
+        assert!(SearchIndex::from_parts(table, bm25, vectors).is_ok());
+
+        let cases: Vec<(&str, Box<dyn Fn(&mut Table)>)> = vec![
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].start = t.rows[0].end + 1)),
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].def_start = t.rows[0].def_end + 1)),
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].kind = KIND_MODULE + 1)),
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].path = t.paths.len() as u32)),
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].symbol = t.strings.len() as u32)),
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].sig = t.strings.len() as u32)),
+            ("chunk 0 of the table is not valid", Box::new(|t: &mut Table| t.rows[0].doc = t.strings.len() as u32)),
+            ("does not start with the empty string", Box::new(|t: &mut Table| t.strings[0] = "x".to_string())),
+            (
+                "does not point at a module chunk",
+                Box::new(move |t: &mut Table| t.modules.push(ModuleNames { chunk: definition, general: Vec::new(), sql: Vec::new() })),
+            ),
+            (
+                "does not point at a module chunk",
+                Box::new(|t: &mut Table| t.modules.push(ModuleNames { chunk: t.rows.len() as u32, general: Vec::new(), sql: Vec::new() })),
+            ),
+            ("probe vector does not match", Box::new(|t: &mut Table| t.probe.truncate(1))),
+            ("vectors do not match", Box::new(|t: &mut Table| t.dim += 1)),
+            ("word index does not match", Box::new(|t: &mut Table| t.format += 1)),
+        ];
+        assert!(module != definition);
+        for (expected, change) in &cases {
+            let (mut table, bm25, vectors) = parts(&at);
+            change(&mut table);
+            let error = SearchIndex::from_parts(table, bm25, vectors).unwrap_err();
+            assert!(error.to_string().contains(expected), "{expected}: {error}");
+        }
+        // The vectors missing while the table says there are some.
+        let (table, bm25, _) = parts(&at);
+        assert!(SearchIndex::from_parts(table, bm25, None).unwrap_err().to_string().contains("vectors are missing"));
+        // A real module entry is accepted.
+        let (mut table, bm25, vectors) = parts(&at);
+        table.modules.push(ModuleNames { chunk: module, general: Vec::new(), sql: Vec::new() });
+        assert!(SearchIndex::from_parts(table, bm25, vectors).is_ok());
+    }
+
+    #[test]
+    fn a_definition_cut_into_many_parts_does_not_use_up_the_pool() {
+        let dir = temp("pool");
+        let text = "needle needle needle needle needle needle";
+        // 30 parts of one definition that repeat the word, and 6 small functions with it once.
+        let mut chunks: Vec<Chunk> =
+            (0..30).map(|i| chunk("src/table.py", 10 * i + 1, 10 * i + 9, ChunkKind::Part, "TABLE", (1, 400), text)).collect();
+        for i in 0..6 {
+            chunks.push(chunk(&format!("src/f{i}.py"), 1, 2, ChunkKind::Definition, &format!("f{i}"), (1, 2), "def f():\n    needle"));
+        }
+        let index = SearchIndex::build(chunks, None, &dir).unwrap();
+        // Five times the limit is 25 chunks, and all 25 are parts of TABLE.
+        let hits = index.search("needle", None, &opts(5, Mode::Words));
+        assert_eq!(hits.len(), 5, "{:?}", names(&hits));
+        let distinct: HashSet<&str> = hits.iter().map(|h| h.symbol.as_str()).collect();
+        assert_eq!(distinct.len(), 5);
+        // More are asked for than there are definitions: all seven come back.
+        assert_eq!(index.search("needle", None, &opts(20, Mode::Words)).len(), 7);
+    }
+
+    #[test]
+    fn the_documentation_above_a_declaration_finds_the_definition() {
+        let dir = temp("doc");
+        let text = "use std::fmt;\n\n/// Adds one.\n#[inline]\npub fn add(x: u32) -> u32 {\n    x + 1\n}\n\n/// Takes one away.\npub fn sub(x: u32) -> u32 {\n    x - 1\n}\n";
+        let facts = lxr_extract::extract("src/x.rs", lxr_core::Lang::Rust, text);
+        let chunks = crate::chunk_file(&facts, text);
+        // The comment lines are not lines of the function, so they are a chunk of their own.
+        assert!(chunks.iter().any(|c| c.kind == ChunkKind::Module && c.text.contains("Adds one.")), "{chunks:?}");
+        let add = chunks.iter().find(|c| c.symbol == "add").unwrap();
+        assert_eq!((add.doc.as_str(), add.text.contains("Adds one.")), ("Adds one.", false));
+        let index = SearchIndex::build(chunks, None, &dir).unwrap();
+        let hits = index.search("adds one", None, &opts(3, Mode::Words));
+        assert!(hits.iter().any(|h| h.symbol == "add"), "{:?}", names(&hits));
+        let hits = index.search("takes one away", None, &opts(3, Mode::Words));
+        assert!(hits.iter().any(|h| h.symbol == "sub"), "{:?}", names(&hits));
+    }
+
+    #[test]
+    fn the_indexed_text_adds_a_documentation_line_only_where_it_is_missing() {
+        let with_doc = |kind: ChunkKind, start: u32, doc: &str, text: &str| {
+            let mut c = chunk("src/x.py", start, start + 2, kind, "f", (4, 9), text);
+            c.doc = doc.to_string();
+            c
+        };
+        let def = ChunkKind::Definition;
+        // Missing from the chunk that begins the definition: put in front.
+        assert_eq!(indexed_text(&with_doc(def, 4, "Adds one.", "fn f() {}")), "Adds one.\nfn f() {}");
+        // Already in the chunk, also when the text breaks the line in another place or is cut.
+        assert!(matches!(indexed_text(&with_doc(def, 4, "Parse the config.", "def f():\n    \"\"\"Parse the\n    config.\"\"\"")), Cow::Borrowed(_)));
+        assert!(matches!(indexed_text(&with_doc(def, 4, "Parse the conf...", "def f():\n    \"\"\"Parse the config file.\"\"\"")), Cow::Borrowed(_)));
+        // A chunk in the middle of the definition, a module chunk and an empty line add nothing.
+        assert!(matches!(indexed_text(&with_doc(ChunkKind::Part, 6, "Adds one.", "x")), Cow::Borrowed(_)));
+        assert!(matches!(indexed_text(&with_doc(ChunkKind::Module, 4, "Adds one.", "x")), Cow::Borrowed(_)));
+        assert!(matches!(indexed_text(&with_doc(def, 4, "", "x")), Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn a_digest_does_not_depend_on_how_the_bytes_are_cut() {
+        let bytes: Vec<u8> = (0..3 * DIGEST_BLOCK + 123).map(|i| (i * 7 % 251) as u8).collect();
+        let digest_of = |pieces: usize| {
+            let mut digest = Digest::new();
+            for part in bytes.chunks(pieces) {
+                digest.put(part);
+            }
+            digest.finish()
+        };
+        let whole = digest_of(bytes.len());
+        for pieces in [1, 7, DIGEST_BLOCK - 1, DIGEST_BLOCK, DIGEST_BLOCK + 1] {
+            assert_eq!(digest_of(pieces), whole, "pieces of {pieces}");
+        }
+        let mut changed = bytes.clone();
+        changed[DIGEST_BLOCK] ^= 1;
+        let mut digest = Digest::new();
+        digest.put(&changed);
+        assert_ne!(digest.finish(), whole);
+    }
+
+    #[test]
+    fn verify_refuses_a_file_that_is_not_the_one_the_table_describes() {
+        let dir = temp("verify");
+        let path = dir.join("file.bin");
+        let bytes: Vec<u8> = (0..100_000u32).map(|i| (i % 253) as u8).collect();
+        fs::write(&path, &bytes).unwrap();
+        let (size, hash) = file_digest(&path).unwrap();
+        assert_eq!(size, bytes.len() as u64);
+        verify(&path, size, hash).unwrap();
+        let mut flipped = bytes.clone();
+        flipped[70_000] ^= 0x10;
+        fs::write(&path, &flipped).unwrap();
+        assert!(verify(&path, size, hash).is_err());
+        fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
+        assert!(verify(&path, size, hash).is_err());
+        fs::remove_file(&path).unwrap();
+        assert!(verify(&path, size, hash).is_err());
+    }
+
+    #[test]
+    fn write_checked_describes_the_bytes_it_leaves_at_the_path() {
+        let dir = temp("checked");
+        let path = dir.join("file.bin");
+        fs::write(&path, b"something else that was already here").unwrap();
+        let figures = write_checked(&path, |temp| fs::write(temp, b"the new bytes")).unwrap();
+        assert_eq!(fs::read(&path).unwrap(), b"the new bytes");
+        assert_eq!(figures, file_digest(&path).unwrap());
+        // A write that fails leaves the file as it was and no temporary file behind.
+        let failed = write_checked(&path, |temp| {
+            fs::write(temp, b"half")?;
+            Err(io::Error::new(io::ErrorKind::Other, "disk full"))
+        });
+        assert!(failed.is_err());
+        assert_eq!(fs::read(&path).unwrap(), b"the new bytes");
+        let left: Vec<_> = fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(left.len(), 1, "{left:?}");
+    }
+
+    #[test]
+    fn dropping_an_index_lets_go_of_its_files() {
+        let (index, _embedder, dir) = built("release");
+        assert!(index.has_vectors());
+        drop(index);
+        fs::remove_dir_all(dir.join("index")).unwrap();
+        assert!(!dir.join("index").exists());
     }
 }

@@ -7,7 +7,7 @@
 //! A call that sits in a decorator, a default value, an annotation or a base class list
 //! belongs to the scope the definition sits in, as Python evaluates it there.
 
-use crate::common::{clip, fold, LineIndex, Parts};
+use crate::common::{capped, clip, fold, in_source_order, without_comments, LineIndex, Parts};
 use crate::lexical;
 use lxr_core::{Call, Import, Lang, SymKind, Symbol};
 use rustpython_parser::ast::{self, Constant, Expr, Ranged, Stmt};
@@ -23,6 +23,11 @@ const BIG_FILE: usize = 12 * 1024;
 /// Stack of the thread that parses a big file: enough for a tree one link deep for every
 /// two bytes of a file of several megabytes.
 const BIG_STACK: usize = 256 * 1024 * 1024;
+
+/// Longest piece of source text kept for a signature, a receiver or a base name. `finish`
+/// cuts them much shorter; this only stops a huge expression from being copied around.
+const SIG_BYTES: usize = 2000;
+const TEXT_BYTES: usize = 400;
 
 /// The definitions, calls and imports of a Python file. `None` when the parser rejects
 /// the file.
@@ -42,14 +47,18 @@ fn parse_here(text: &str) -> Option<Parts> {
         ast::Mod::Module(module) => module,
         _ => return None,
     };
+    let masked = lexical::mask(text, Lang::Python);
     let mut walker = Walker {
         text,
-        code: lexical::mask(text, Lang::Python).code,
+        code: masked.code,
+        comments: masked.comments,
         lines: LineIndex::new(text),
         parts: Parts::default(),
+        call_at: Vec::new(),
         scopes: Vec::new(),
     };
     walker.body(&module.body);
+    in_source_order(&mut walker.parts.calls, &walker.call_at);
     Some(walker.parts)
 }
 
@@ -74,8 +83,12 @@ struct Walker<'a> {
     text: &'a str,
     /// The source with comments and strings blanked, for finding the end of a header.
     code: Vec<u8>,
+    /// Byte ranges of the comments, to leave out of a signature.
+    comments: Vec<(usize, usize)>,
     lines: LineIndex,
     parts: Parts,
+    /// The byte offset of the called name of each entry of `parts.calls`.
+    call_at: Vec<usize>,
     /// The definitions around the current statement, innermost last.
     scopes: Vec<Scope>,
 }
@@ -331,7 +344,7 @@ impl<'a> Walker<'a> {
         };
         let limit = body.first().map_or(end, |s| s.start().to_usize());
         let header_end = self.header_end(start, limit);
-        let sig = self.text.get(start..header_end).unwrap_or("").to_string();
+        let sig = without_comments(self.text, start, header_end, &self.comments, SIG_BYTES);
         let index = self.parts.symbols.len() as u32;
         self.parts.symbols.push(Symbol {
             name: name.to_string(),
@@ -412,7 +425,7 @@ impl<'a> Walker<'a> {
             Expr::Name(n) => (n.id.as_str(), "", n.range.start().to_usize()),
             Expr::Attribute(a) => (
                 a.attr.as_str(),
-                self.slice(a.value.range()),
+                capped(self.slice(a.value.range()), TEXT_BYTES),
                 a.range.end().to_usize().saturating_sub(a.attr.len()),
             ),
             _ => return,
@@ -423,6 +436,7 @@ impl<'a> Walker<'a> {
             recv: recv.to_string(),
             line: self.lines.line_of(at),
         });
+        self.call_at.push(at);
     }
 }
 
@@ -741,6 +755,23 @@ def outer(): pass
         let f = facts(&format!("TOTAL = {chain}\ndef f():\n    return g()\n"));
         assert_eq!(f.symbols.len(), 2);
         assert_eq!(calls(&f), ["f: g @3"]);
+    }
+
+    #[test]
+    fn a_receiver_is_copied_only_as_far_as_a_call_needs_it() {
+        let chain = format!("x = a{}\n", ".m(1)".repeat(3_000));
+        let parts = parse(&chain).expect("the chain is valid Python");
+        assert_eq!(parts.calls.len(), 3_000);
+        assert!(parts.calls.iter().all(|c| c.recv.len() <= TEXT_BYTES));
+        // The calls are in source order, so the innermost call comes first.
+        assert_eq!(parts.calls[0].recv, "a");
+        assert_eq!(parts.calls[1].recv, "a.m(1)");
+        assert_eq!(parts.calls[2_999].recv.len(), TEXT_BYTES);
+        // The cut falls inside a two-byte character and does not split it.
+        let wide = format!("x = {}.f()\n", "é".repeat(500));
+        let parts = parse(&wide).expect("a name may hold letters outside ASCII");
+        assert_eq!(parts.calls.len(), 1);
+        assert_eq!(parts.calls[0].recv.chars().count(), TEXT_BYTES / 2);
     }
 
     #[test]

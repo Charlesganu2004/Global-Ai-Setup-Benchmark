@@ -9,7 +9,7 @@
 <meta name="description" content="How the measurements were made, what they cover and what they leave out.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
 <script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=86cdedba">
+<link rel="stylesheet" href="assets/app.css?v=da33b975">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -24,9 +24,11 @@
         <li><a href="study.html" aria-current="page">Study</a>
         <ul class="side-sections" aria-label="On this page">
           <li><a href="#asked">What was asked</a></li>
+          <li><a href="#sets">Question sets</a></li>
           <li><a href="#graded">How answers were graded</a></li>
           <li><a href="#scale">How much was run</a></li>
           <li><a href="#classes">Model classes</a></li>
+          <li><a href="#sessions">Sessions, memory and the control</a></li>
           <li><a href="#limits">Limits</a></li>
           <li><a href="#unpublished">What is not published</a></li>
         </ul></li>
@@ -42,13 +44,24 @@
 
   <section class="section" aria-labelledby="asked">
     <h2 id="asked" class="section-title">What was asked</h2>
-    <p class="group-title">Three code-navigation questions, put to the agent in every run.</p>
+    <p class="group-title">Three code-navigation questions, put to the agent in every run on the original set. Three more, of the same shapes, make up the held-out set below.</p>
     <div class="card">
       <!--slot:questions--><ul class="rows">
       <li class="row stack"><span class="label">Who calls a function</span><span class="detail">Name every function in the repository that calls a given function.</span></li>
       <li class="row stack"><span class="label">Where a function is defined</span><span class="detail">Give the file and the line where a named function is defined, its parameter names and the functions that call it.</span></li>
       <li class="row stack"><span class="label">Which function does a job</span><span class="detail">Given a described job, name the function that does it, say where it is defined and name its counterpart, the function that reverses it.</span></li>
     </ul><!--/slot:questions-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="sets">
+    <h2 id="sets" class="section-title">Question sets</h2>
+    <p class="group-title">The same three kinds of lookup, asked on two sets of questions.</p>
+    <div class="card">
+      <!--slot:sets--><ul class="rows">
+      <li class="row stack"><span class="label">Original questions</span><span class="detail">The three questions above. Every round has used them, and the people who built the engine saw them while building it, so a result on them could reflect tuning to them.</span></li>
+      <li class="row stack"><span class="label">Held-out questions</span><span class="detail">Three more lookups of the same three shapes, written after the engine was built and never seen by the people or agents who built it. They exist to check that the engine was not fitted to the first set. They were run on six configurations, on the light and mid classes, with 2 to 3 runs in each cell.</span></li>
+    </ul><!--/slot:sets-->
     </div>
   </section>
 
@@ -65,10 +78,10 @@
     <div class="card">
       <!--slot:scale--><ul class="rows">
       <li class="row"><span class="label">Repository</span><span class="value">Python, 86 files, about 68,000 lines</span></li>
-      <li class="row"><span class="label">Questions</span><span class="value">3, each asked in every run</span></li>
-      <li class="row"><span class="label">Agents</span><span class="value">787</span></li>
-      <li class="row"><span class="label">Runs</span><span class="value">402</span></li>
-      <li class="row"><span class="label">Configurations tested</span><span class="value">36, of which 6 are published here</span></li>
+      <li class="row"><span class="label">Questions</span><span class="value">3 in each of 2 sets, each asked in every run on its set</span></li>
+      <li class="row"><span class="label">Agents</span><span class="value">884</span></li>
+      <li class="row"><span class="label">Runs</span><span class="value">499</span></li>
+      <li class="row"><span class="label">Configurations tested</span><span class="value">44, of which 14 are published here</span></li>
       <li class="row"><span class="label">Runs per configuration and class</span><span class="value">1 to 6</span></li>
     </ul><!--/slot:scale-->
     </div>
@@ -94,14 +107,28 @@
     </div>
   </section>
 
+  <section class="section" aria-labelledby="sessions">
+    <h2 id="sessions" class="section-title">Sessions, memory and the control</h2>
+    <p class="group-title">What differs between the two sessions the results come from, and what to keep in mind about the control.</p>
+    <div class="card">
+      <!--slot:sessions--><ul class="rows">
+      <li class="row stack"><span class="label">Two sessions</span><span class="detail">The results come from two sessions a few days apart. The first measured the earlier configurations. The second measured the second-generation engine and the held-out questions, and repeated three earlier configurations: no index and two builds of the first-generation engine. The leaderboard shows the repeats, so every configuration compared with the engine was measured on the same day. The earlier runs of those three are not shown here. Three configurations from the first session were not repeated and keep their first-session figures: Two separate tools: code graph and semantic search; Symbol index with embeddings; Read-compression tool.</span></li>
+      <li class="row stack"><span class="label">Start-up context</span><span class="detail">An agent&#x27;s start-up context, the text it reads before it sees a question, grew between the sessions. On the light and mid classes it averaged 62.9k tokens in the earlier runs of the three repeated configurations (23 agents) and 64.9k in their repeats (15 agents). Every turn reads it again, so the same configuration costs more tokens now than it did then. That is why the leaderboard compares runs made on the same day.</span></li>
+      <li class="row stack"><span class="label">How the memory was filled</span><span class="detail">Some configurations use a memory of earlier sessions. Before the runs, the memory was filled by one of two earlier sessions: one that answered the same questions the runs ask, and one that explored the repository without seeing any question. The first kind is a best case, because the memory already holds the answers. Neither is a test of the task memory is for: work that spans sessions was not measured.</span></li>
+      <li class="row stack"><span class="label">The control</span><span class="detail">On the test machine, the control&#x27;s file reads pass through a read-compression tool, which hid lines the control needed in some runs. In the second session the control was fully correct in 2 of 3 light-class runs and 0 of 3 mid-class runs on the original questions, and in 3 of 3 light-class runs and 2 of 2 mid-class runs on the held-out questions. In the first session, which had no such tool, it was fully correct in 4 of 5 light-class runs, 3 of 3 mid-class runs and 3 of 3 top-class runs.</span></li>
+    </ul><!--/slot:sessions-->
+    </div>
+  </section>
+
   <section class="section" aria-labelledby="limits">
     <h2 id="limits" class="section-title">Limits</h2>
     <div class="card">
       <!--slot:limits--><ul class="rows">
       <li class="row stack"><span class="label">One repository</span><span class="detail">Every result comes from one Python repository of 86 files. Other repositories may behave differently.</span></li>
       <li class="row stack"><span class="label">One language</span><span class="detail">Python only. Nothing here says how the configurations do on other languages.</span></li>
-      <li class="row stack"><span class="label">Three questions</span><span class="detail">Three lookup questions of modest difficulty. Harder questions may separate the configurations more, or less.</span></li>
+      <li class="row stack"><span class="label">Six questions</span><span class="detail">Six lookup questions of modest difficulty, in two sets of three. Harder questions may separate the configurations more, or less.</span></li>
       <li class="row stack"><span class="label">Small run counts</span><span class="detail">Each configuration and class was run between 1 and 6 times. A cell with one run is an example, not an average, and a difference of one turn is inside the noise.</span></li>
+      <li class="row stack"><span class="label">Three runs per cell</span><span class="detail">The second session ran each cell three times, and two of its 33 cells hold two complete runs. With three runs, a difference of one fully correct run is inside the noise.</span></li>
       <li class="row stack"><span class="label">Machine load</span><span class="detail">Wall time depends on what else the test machine was doing. Token counts do not.</span></li>
       <li class="row stack"><span class="label">Cost figures</span><span class="detail">Where a run is said to cost a multiple of another, the cost is list prices applied to the measured tokens.</span></li>
     </ul><!--/slot:limits-->
@@ -128,6 +155,6 @@
     <a href="study.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
-<script src="assets/app.js?v=aa42102c"></script>
+<script src="assets/app.js?v=338633b9"></script>
 </body>
 </html>

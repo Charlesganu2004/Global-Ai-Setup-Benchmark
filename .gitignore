@@ -17,3 +17,6 @@ installed-on-this-machine/
 .idea/
 Thumbs.db
 .DS_Store
+
+# The 4K renders stay on the machine that made them: the site serves the 1080p files.
+docs/media/*-2160p.mp4

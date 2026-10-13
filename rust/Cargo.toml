@@ -38,7 +38,7 @@ lexopt = "0.3"
 time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
 unicode-normalization = "0.1"
 
-rustpython-parser = "0.4"
+rustpython-parser = { version = "0.4", default-features = false, features = ["num-bigint", "location"] }
 oxc_allocator = "0.153"
 oxc_ast = "0.153"
 oxc_ast_visit = "0.153"

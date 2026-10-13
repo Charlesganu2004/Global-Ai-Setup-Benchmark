@@ -2,6 +2,7 @@
 //! pass that turns raw parts into checked [`FileFacts`].
 
 use lxr_core::{hash64, Call, FileFacts, Import, Lang, ParseGrade, Symbol};
+use std::collections::HashMap;
 
 /// What an extractor found in one file, before the last pass.
 ///
@@ -76,21 +77,98 @@ pub fn doc_line(doc: &str) -> String {
     doc.lines().map(str::trim).find(|line| !line.is_empty()).map(fold).unwrap_or_default()
 }
 
+/// `text` cut to at most `max` bytes, at a character boundary.
+pub fn capped(text: &str, max: usize) -> &str {
+    if text.len() <= max {
+        return text;
+    }
+    let mut end = max;
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    &text[..end]
+}
+
+/// `text[from..to]` with every comment in `comments` replaced by one space, cut to at most
+/// `max` bytes. `comments` are byte ranges of `text` in source order. A signature is cut from
+/// the source, and once its line breaks are folded away a comment between two parameters would
+/// read as part of it, and a line comment would seem to run on to the end of the signature.
+pub fn without_comments(text: &str, from: usize, to: usize, comments: &[(usize, usize)], max: usize) -> String {
+    let to = to.min(text.len());
+    let mut out = String::new();
+    let push = |out: &mut String, a: usize, b: usize| {
+        let room = max.saturating_sub(out.len());
+        out.push_str(capped(text.get(a..b).unwrap_or(""), room));
+    };
+    let mut at = from;
+    for &(start, end) in &comments[comments.partition_point(|&(_, end)| end <= from)..] {
+        if start >= to || out.len() >= max {
+            break;
+        }
+        if start > at {
+            push(&mut out, at, start);
+        }
+        out.push(' ');
+        at = at.max(end.min(to));
+    }
+    if at < to {
+        push(&mut out, at, to);
+    }
+    out
+}
+
+/// Puts `calls` in source order. `at[k]` is the byte offset of the name that `calls[k]` calls.
+/// A syntax tree is walked from the outside in, so `x.first().second()` is met as `second` before
+/// `first`, and `a() if b() else c()` as `b` before `a`; the offsets set that right. Calls at one
+/// offset keep the order they came in.
+pub fn in_source_order(calls: &mut Vec<Call>, at: &[usize]) {
+    if at.windows(2).all(|pair| pair[0] <= pair[1]) {
+        return;
+    }
+    let mut order: Vec<usize> = (0..calls.len()).collect();
+    order.sort_by_key(|&k| at.get(k).copied().unwrap_or(usize::MAX));
+    let mut slots: Vec<Option<Call>> = calls.drain(..).map(Some).collect();
+    calls.extend(order.into_iter().filter_map(|k| slots[k].take()));
+}
+
+/// How many bytes are hashed from each end of a definition that is longer than twice this.
+const HASH_EDGE: usize = 64 * 1024;
+
+/// A hash of the source of one definition. A definition longer than `2 * HASH_EDGE` bytes is
+/// hashed by its first and last `HASH_EDGE` bytes and its length: a change in the middle of
+/// it that keeps its length goes unseen, which is the price of a cost per definition that
+/// does not grow with the definition, in a file where definitions contain one another.
+fn span_hash(bytes: &[u8]) -> u64 {
+    if bytes.len() <= 2 * HASH_EDGE {
+        return hash64(bytes);
+    }
+    let mut parts = [0u8; 24];
+    parts[..8].copy_from_slice(&hash64(&bytes[..HASH_EDGE]).to_le_bytes());
+    parts[8..16].copy_from_slice(&hash64(&bytes[bytes.len() - HASH_EDGE..]).to_le_bytes());
+    parts[16..].copy_from_slice(&(bytes.len() as u64).to_le_bytes());
+    hash64(&parts)
+}
+
 /// The last pass: source order, valid indexes, clipped text and content hashes.
 pub fn finish(path: &str, lang: Lang, text: &str, grade: ParseGrade, parts: Parts) -> FileFacts {
     let index = LineIndex::new(text);
     let lines = index.count();
     let Parts { symbols, mut calls, mut imports } = parts;
 
-    // Source order, a container before what it holds. Indexes are remapped to match.
+    // Source order, a container before what it holds. Indexes are remapped to match. An extractor
+    // returns a container before its contents and siblings in the order it met them, which is
+    // source order, so the position it gave is what breaks a tie between symbols that start on
+    // one line: `fn a() {} fn b() {` keeps `a` before `b`, and `class A { m() {} }` keeps `A` first.
     let mut order: Vec<usize> = (0..symbols.len()).collect();
-    order.sort_by_key(|&i| (symbols[i].start, std::cmp::Reverse(symbols[i].end), i));
+    order.sort_by_key(|&i| (symbols[i].start, i));
     let mut new_index = vec![0u32; symbols.len()];
     for (new, &old) in order.iter().enumerate() {
         new_index[old] = new as u32;
     }
     let remap = |old: Option<u32>| old.and_then(|i| new_index.get(i as usize).copied());
 
+    // Spans are line-granular, so definitions that share their lines share their hash.
+    let mut hashes: HashMap<(usize, usize), u64> = HashMap::new();
     let mut sorted: Vec<Symbol> = Vec::with_capacity(symbols.len());
     let mut slots: Vec<Option<Symbol>> = symbols.into_iter().map(Some).collect();
     for (new, &old) in order.iter().enumerate() {
@@ -101,7 +179,7 @@ pub fn finish(path: &str, lang: Lang, text: &str, grade: ParseGrade, parts: Part
         symbol.doc = clip(&doc_line(&symbol.doc), 200);
         symbol.parent = remap(symbol.parent).filter(|&p| (p as usize) < new);
         let (from, to) = index.span(symbol.start, symbol.end);
-        symbol.hash = hash64(&text.as_bytes()[from..to]);
+        symbol.hash = *hashes.entry((from, to)).or_insert_with(|| span_hash(&text.as_bytes()[from..to]));
         sorted.push(symbol);
     }
 
@@ -186,5 +264,61 @@ mod tests {
     fn clip_marks_a_cut() {
         assert_eq!(clip("short", 10), "short");
         assert_eq!(clip("abcdefghij", 6), "abc...");
+    }
+
+    #[test]
+    fn capped_cuts_at_a_character_boundary() {
+        assert_eq!(capped("abcdef", 4), "abcd");
+        assert_eq!(capped("abc", 4), "abc");
+        // Each of these characters is two bytes, so a cut at 3 would split the second.
+        assert_eq!(capped("éééé", 3), "é");
+    }
+
+    #[test]
+    fn comments_are_replaced_by_a_space_in_a_cut_of_the_source() {
+        let text = "fn f(a, // one\n b /* two */, c) {}";
+        let one = text.find("// one").unwrap();
+        let two = text.find("/* two */").unwrap();
+        let comments = [(one, one + "// one".len()), (two, two + "/* two */".len())];
+        let end = text.find(" {}").unwrap();
+        assert_eq!(fold(&without_comments(text, 0, end, &comments, usize::MAX)), "fn f(a, b , c)");
+        // A comment that began before the cut is still a comment.
+        assert_eq!(without_comments("/* x */fn", 3, 9, &[(0, 7)], usize::MAX), " fn");
+        assert_eq!(without_comments("abcdef", 0, 6, &[], 4), "abcd");
+        assert_eq!(without_comments("abcdef", 4, 2, &[], 9), "");
+    }
+
+    #[test]
+    fn the_hash_of_a_long_definition_covers_its_ends_and_its_length() {
+        let short = vec![b'a'; 100];
+        let mut changed = short.clone();
+        changed[50] = b'b';
+        assert_ne!(span_hash(&short), span_hash(&changed), "a short definition is hashed whole");
+
+        let long = vec![b'a'; 4 * HASH_EDGE];
+        let mut middle = long.clone();
+        middle[2 * HASH_EDGE] = b'b';
+        assert_eq!(span_hash(&long), span_hash(&middle), "the middle of a long one is not read");
+        for at in [0, HASH_EDGE - 1, 3 * HASH_EDGE + 1, 4 * HASH_EDGE - 1] {
+            let mut edited = long.clone();
+            edited[at] = b'b';
+            assert_ne!(span_hash(&long), span_hash(&edited), "byte {at}");
+        }
+        assert_ne!(span_hash(&long), span_hash(&vec![b'a'; 4 * HASH_EDGE + 1]));
+        // The longest definition that is still hashed whole.
+        let mut edge = vec![b'a'; 2 * HASH_EDGE];
+        let whole = span_hash(&edge);
+        edge[HASH_EDGE] = b'b';
+        assert_ne!(whole, span_hash(&edge));
+    }
+
+    #[test]
+    fn definitions_on_the_same_lines_get_the_same_hash() {
+        let text = "def a(): pass\nx = 1\n";
+        let parts = Parts { symbols: vec![symbol("a", 1, 1, None), symbol("b", 1, 1, None), symbol("c", 2, 2, None)], ..Parts::default() };
+        let facts = finish("t.py", Lang::Python, text, ParseGrade::Ast, parts);
+        assert_eq!(facts.symbols[0].hash, facts.symbols[1].hash);
+        assert_ne!(facts.symbols[0].hash, facts.symbols[2].hash);
+        assert_eq!(facts.symbols[0].hash, hash64(b"def a(): pass\n"));
     }
 }

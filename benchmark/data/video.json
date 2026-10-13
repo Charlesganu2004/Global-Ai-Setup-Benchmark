@@ -1,0 +1,24 @@
+{
+  "public": [
+    {
+      "kind": "ad",
+      "src": "media/pgr-ad-1080p.mp4",
+      "poster": "media/pgr-ad-poster.jpg",
+      "captions": "media/pgr-ad.en.vtt",
+      "width": 1920,
+      "height": 1080,
+      "seconds": 21.6,
+      "title": "PeterGanuRusty in twenty seconds"
+    },
+    {
+      "kind": "explainer",
+      "src": "media/pgr-explainer-1080p.mp4",
+      "poster": "media/pgr-explainer-poster.jpg",
+      "captions": "media/pgr-explainer.en.vtt",
+      "width": 1920,
+      "height": 1080,
+      "seconds": 76.4,
+      "title": "PeterGanuRusty explained"
+    }
+  ]
+}

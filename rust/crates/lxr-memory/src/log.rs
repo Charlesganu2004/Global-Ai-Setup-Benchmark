@@ -28,13 +28,19 @@ pub(crate) fn id_for(seq: u64) -> String {
     format!("n{seq:06}")
 }
 
-/// The sequence number inside an id made by [`id_for`].
+/// Highest sequence number a bank can reach: a note's slot is a `u32`, and a sequence number is
+/// only ever one more than the notes made so far. An id beyond it was not made by a bank.
+const MAX_SEQ: u64 = u32::MAX as u64;
+
+/// The sequence number inside an id made by [`id_for`]. `None` for an id of another shape and
+/// for one beyond [`MAX_SEQ`], so that a line of an edited log cannot push the counter to the
+/// end of the range, where the next id would overflow or wrap onto an old one.
 pub(crate) fn id_seq(id: &str) -> Option<u64> {
     let digits = id.strip_prefix('n')?;
     if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
         return None;
     }
-    digits.parse().ok()
+    digits.parse().ok().filter(|&seq| seq <= MAX_SEQ)
 }
 
 fn trim(mut line: &[u8]) -> &[u8] {
@@ -142,6 +148,17 @@ mod tests {
         assert_eq!(id_seq("x1"), None);
         assert_eq!(id_seq("n"), None);
         assert_eq!(id_seq("n12a"), None);
+    }
+
+    #[test]
+    fn a_sequence_number_no_bank_can_reach_is_not_a_sequence_number() {
+        assert_eq!(id_seq("n4294967295"), Some(u64::from(u32::MAX)));
+        assert_eq!(id_seq("n4294967296"), None);
+        assert_eq!(id_seq("n18446744073709551615"), None);
+        assert_eq!(id_seq("n99999999999999999999999"), None);
+        // Such an id leaves the counter alone, so the next id cannot overflow or wrap.
+        let r = replay(&log(&[forget_line("n18446744073709551615", 0).unwrap(), note_line(&note("n000003", "x")).unwrap()]));
+        assert_eq!(r.max_seq, 3);
     }
 
     #[test]

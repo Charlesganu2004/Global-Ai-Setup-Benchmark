@@ -1,0 +1,119 @@
+{
+  "film": "explainer",
+  "title": "PeterGanuRusty: how it works and what we measured",
+  "fps": 30,
+  "lead": 0.7,
+  "tail": 1.4,
+  "speed": 0.9,
+  "scenes": [
+    {
+      "id": "cold",
+      "hold": 0.55,
+      "gap": 0.2,
+      "pre": 0.1,
+      "cues": [
+        {
+          "text": "Three simple code lookups."
+        },
+        {
+          "text": "{turns_ref} turns."
+        },
+        {
+          "text": "{tok_ref} tokens."
+        },
+        {
+          "text": "Every turn, an AI coding agent reads its whole conversation again."
+        }
+      ],
+      "bundle": true
+    },
+    {
+      "id": "change",
+      "hold": 0.55,
+      "gap": 0.22,
+      "pre": 0.1,
+      "cues": [
+        {
+          "text": "Now the same lookups, with PeterGanuRusty."
+        },
+        {
+          "text": "One question."
+        },
+        {
+          "text": "One answer."
+        },
+        {
+          "text": "The stream shortens to {tok_best} tokens. {pct} fewer, in {turns_best} turns."
+        }
+      ]
+    },
+    {
+      "id": "gives",
+      "hold": 0.6,
+      "gap": 0.3,
+      "pre": 0.1,
+      "cues": [
+        {
+          "text": "It gives an agent four things."
+        },
+        {
+          "text": "Where a function is defined, and what calls it, in one lookup."
+        },
+        {
+          "text": "Search by meaning: describe a job, get the function."
+        },
+        {
+          "text": "What a change reaches, before the edit."
+        },
+        {
+          "text": "And findings, remembered between sessions."
+        }
+      ]
+    },
+    {
+      "id": "study",
+      "hold": 0.6,
+      "gap": 0.3,
+      "pre": 0.1,
+      "cues": [
+        {
+          "text": "To measure it, we ran {agents} agents on one Python repository of {files} files."
+        },
+        {
+          "text": "Three questions, graded against the syntax tree, on three model classes: light, mid and top."
+        },
+        {
+          "text": "{configs} ways of finding code, ranked. The best one is marked."
+        },
+        {
+          "text": "Runs fully correct: {perfect_best} of {runs_best}. With no index, {perfect_ref} of {runs_ref}."
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "hold": 0.3,
+      "gap": 0.45,
+      "pre": 0.15,
+      "cues": [
+        {
+          "text": "The limits are real: one repository, a few runs for each setup.",
+          "gap": 0.3
+        },
+        {
+          "text": "The study measures the first two things only."
+        },
+        {
+          "text": "PeterGanuRusty. Private preview."
+        }
+      ]
+    }
+  ],
+  "voice_speed": {
+    "am_michael": 1.0
+  },
+  "poster": {
+    "cue": "change.4",
+    "offset": 4.6
+  }
+}

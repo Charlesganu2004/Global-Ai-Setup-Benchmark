@@ -1,0 +1,9 @@
+# Installed into video/.venv only. Exact versions that rendered the films.
+kokoro-onnx==0.6.1
+onnxruntime==1.31.0
+soundfile==0.14.0
+numpy==2.4.6
+av==18.1.0
+imageio-ffmpeg==0.6.0
+espeakng-loader==0.2.4
+phonemizer==3.4.0

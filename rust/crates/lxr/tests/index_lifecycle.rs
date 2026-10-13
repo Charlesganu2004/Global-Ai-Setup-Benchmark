@@ -2,7 +2,7 @@
 //! or a deletion, PGR_NO_REFRESH, damaged files, the lock and the folders pgr refuses.
 
 mod common;
-use common::{expect, Env};
+use common::{expect, Env, Locked};
 use std::fs;
 use std::time::{Duration, SystemTime};
 
@@ -242,4 +242,50 @@ fn a_repository_with_more_than_twenty_thousand_source_files_is_left_alone() {
     assert_eq!(run.code, 0, "{}", run.err);
     assert_eq!(run.out, "pgr: off for proj (more than 20000 source files)\n");
     assert!(fs::read_dir(&env.home).unwrap().next().is_none(), "nothing may be indexed");
+}
+
+#[test]
+fn a_folder_that_cannot_be_read_stops_the_refresh_instead_of_dropping_its_files() {
+    let env = Env::with_project();
+    env.write("app/private/vault.py", "def open_vault():\n    return 1\n");
+    let built = env.run(&["refresh"]);
+    assert_eq!(built.code, 0, "{}", built.err);
+    expect(&env.run(&["def", "open_vault"]), "open_vault app/private/vault.py:1-2 ()\n");
+
+    let Some(locked) = Locked::new(&env.proj.join("app/private")) else { return };
+    // `refresh` and every query that makes the index current stop, name the folder, and print no answer.
+    let refresh = env.run(&["refresh"]);
+    assert_eq!(refresh.code, 1, "stdout was: {}", refresh.out);
+    assert_eq!(refresh.out, "");
+    assert!(refresh.err.starts_with("pgr: cannot read the folder app/private in proj: "), "{}", refresh.err);
+    assert!(refresh.err.contains("the index was not changed"), "{}", refresh.err);
+    let query = env.run(&["def", "open_vault"]);
+    assert_eq!(query.code, 1, "stdout was: {}", query.out);
+    assert_eq!(query.out, "");
+    assert!(query.err.contains("cannot read the folder app/private"), "{}", query.err);
+    // The index still holds the file: it was not mistaken for a deleted one.
+    let kept = env.run_with(&["def", "open_vault"], &[("PGR_NO_REFRESH", "1")]);
+    expect(&kept, "open_vault app/private/vault.py:1-2 ()\n");
+    let counts = built.out.split(" old)").next().unwrap().rsplit_once(", ").unwrap().0.to_string();
+    let status = env.run(&["status"]);
+    assert!(status.out.starts_with(&counts), "the index changed: {} after {counts}", status.out);
+
+    // Once the folder can be read again, the next run finds nothing changed.
+    drop(locked);
+    let again = env.run(&["refresh"]);
+    assert_eq!(again.code, 0, "{}", again.err);
+    assert!(!again.err.contains("index built") && !again.err.contains("index refreshed"), "{}", again.err);
+    expect(&env.run(&["def", "open_vault"]), "open_vault app/private/vault.py:1-2 ()\n");
+}
+
+#[test]
+fn a_folder_that_cannot_be_read_stops_the_first_build_too() {
+    let env = Env::with_project();
+    env.write("app/private/vault.py", "def open_vault():\n    return 1\n");
+    let Some(_locked) = Locked::new(&env.proj.join("app/private")) else { return };
+    let run = env.run(&["refresh"]);
+    assert_eq!(run.code, 1, "stdout was: {}", run.out);
+    assert!(run.err.contains("cannot read the folder app/private"), "{}", run.err);
+    // Nothing was built from the part of the tree that could be read.
+    assert!(!env.home.exists() || fs::read_dir(&env.home).unwrap().all(|e| !e.unwrap().path().join("manifest.bin").exists()));
 }

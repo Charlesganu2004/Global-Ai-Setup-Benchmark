@@ -1,0 +1,13 @@
+{
+  "measured": "2026-10-13",
+  "fixture": "86 Python files, 68,316 lines",
+  "how": "Whole-process wall time, median of 20 runs, release build, index already current, on the same machine and the same day. The query is one call that answers all three lookup questions of the original set. Build time is a first build from nothing with embeddings. The first generation's build time was measured in an earlier session (about 130 s with embeddings, 12 s without). Its index size counts its graph file and its symbol index for the fixture (7.66 MB and 6.87 MB); its search cache is shared across repositories and is not counted.",
+  "detail": {
+    "pgr": {"build_seconds": 0.52, "ask_ms": 40.2, "about_ms": 25.8, "find_ms": 37.9, "status_ms": 13.8, "index_mb": 8.07, "binary_mb": 7.8},
+    "first_generation": {"build_seconds": 130, "build_seconds_no_embeddings": 12, "ask_ms": 1937, "about_ms": 319, "index_mb": 14.53}
+  },
+  "public": [
+    {"name": "Our engine, first generation", "build_seconds": 130, "query_ms": 1937, "index_mb": 14.5},
+    {"name": "PGR", "build_seconds": 0.52, "query_ms": 40, "index_mb": 8.1}
+  ]
+}

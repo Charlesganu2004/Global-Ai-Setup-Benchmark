@@ -45,7 +45,7 @@
     <h2 id="summary">In short</h2>
     <ul id="r-short">
       <li>Cheapest tier, one agent, methods run at least three times, fewest tokens first: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; C12 lx about + hybrid: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L3 lx + hybrid search: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.</li>
-      <li>Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 11 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, C7 token-goat + semble.</li>
+      <li>Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 17 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, S1r Shipped: lx ask, default index, run again with round five, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, C7 token-goat + semble, RM pgr, memory only, RGSO pgr, all three, memory from an exploring session, RGSM pgr, all three, memory from the same questions.</li>
       <li>The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.</li>
     </ul>
   </section>
@@ -92,8 +92,8 @@
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=fe799910"></script>
-<script src="data/bench-runs.js?v=8826b813"></script>
+<script src="data/benchmark.js?v=74a1014b"></script>
+<script src="data/bench-runs.js?v=1041c041"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/charts.js?v=1299e283"></script>
 <script src="assets/results.js?v=bb914d28"></script>

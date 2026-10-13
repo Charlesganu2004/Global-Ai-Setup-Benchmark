@@ -37,7 +37,7 @@ docs/         the public results site (GitHub Pages): measured outcomes only
 ## Results in short
 
 <!-- results:start -->
-787 agent runs on one repository: three lookup questions, 36 ways of finding the answer, three model tiers, three ways of organising the agents. 150.5 million tokens measured, 86% of them cache reads.
+884 agent runs on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
 
 One agent on the cheapest model tier, fewest tokens first (methods run at least three times):
 
@@ -54,27 +54,38 @@ One agent on the cheapest model tier, fewest tokens first (methods run at least 
 | 9 | N1 lx ask, no Rust embeddings | 3 | 2.0 | 130,381 | $0.0022 | 100% |
 | 10 | N2 lx, every new command, no Rust embeddings | 3 | 2.0 | 130,554 | $0.0021 | 100% |
 | 11 | C14 lx, every new command + token-goat | 3 | 2.0 | 130,642 | $0.0020 | 100% |
-| 12 | C7 token-goat + semble | 3 | 2.0 | 134,047 | $0.0027 | 100% |
-| 13 | C11 lx about + Rust cards | 3 | 2.3 | 152,676 | $0.0022 | 100% |
-| 14 | L2 lx + cards | 3 | 2.3 | 152,991 | $0.0024 | 100% |
-| 15 | R1 lx shipped + Rust embeddings | 3 | 2.7 | 175,536 | $0.0029 | 100% |
-| 16 | C2 lx + Rust embeddings + token-goat | 3 | 2.7 | 176,514 | $0.0028 | 100% |
-| 17 | A5 token-goat alone | 3 | 2.7 | 177,144 | $0.0027 | 100% |
-| 18 | C6 token-goat + graphify + semble | 3 | 2.7 | 180,129 | $0.0031 | 100% |
-| 19 | A9 lx, as shipped after round 1 | 6 | 3.0 | 197,045 | $0.0028 | 99% |
-| 20 | S4 Shipped: all commands, embeddings on | 3 | 3.0 | 197,588 | $0.0028 | 100% |
-| 21 | C10 lx about + cards | 3 | 3.3 | 219,611 | $0.0029 | 100% |
-| 22 | L1 lx + about | 3 | 3.3 | 219,739 | $0.0031 | 100% |
-| 23 | C9 lx finds, token-goat reads | 3 | 3.3 | 220,870 | $0.0032 | 100% |
-| 24 | C3 lx shipped + token-goat | 3 | 3.7 | 242,156 | $0.0031 | 100% |
-| 25 | C8 token-goat + graphify | 3 | 3.7 | 248,739 | $0.0037 | 100% |
-| 26 | C4 Rust index + token-goat | 3 | 4.0 | 281,589 | $0.0050 | 100% |
-| 27 | C5 Rust index + graphify + semble | 3 | 4.0 | 289,122 | $0.0056 | 100% |
-| 28 | C1 Rust index + token-goat + graphify + semble | 3 | 4.3 | 310,595 | $0.0052 | 99% |
-| 29 | A0 No index | 5 | 5.0 | 364,508 | $0.0074 | 98% |
+| 12 | S1r Shipped: lx ask, default index, run again with round five | 3 | 2.0 | 133,751 | $0.0019 | 100% |
+| 13 | S3r Shipped: lx ask, embeddings on, run again with round five | 3 | 2.0 | 133,923 | $0.0021 | 100% |
+| 14 | RGS pgr, graph and search in one call | 3 | 2.0 | 134,013 | $0.0019 | 100% |
+| 15 | C7 token-goat + semble | 3 | 2.0 | 134,047 | $0.0027 | 100% |
+| 16 | RM pgr, memory only | 3 | 2.0 | 134,819 | $0.0022 | 100% |
+| 17 | RGSO pgr, all three, memory from an exploring session | 3 | 2.0 | 134,902 | $0.0021 | 100% |
+| 18 | RGSM pgr, all three, memory from the same questions | 3 | 2.0 | 134,960 | $0.0021 | 100% |
+| 19 | C11 lx about + Rust cards | 3 | 2.3 | 152,676 | $0.0022 | 100% |
+| 20 | L2 lx + cards | 3 | 2.3 | 152,991 | $0.0024 | 100% |
+| 21 | RGM pgr, graph and memory | 3 | 2.3 | 157,105 | $0.0023 | 100% |
+| 22 | R1 lx shipped + Rust embeddings | 3 | 2.7 | 175,536 | $0.0029 | 100% |
+| 23 | C2 lx + Rust embeddings + token-goat | 3 | 2.7 | 176,514 | $0.0028 | 100% |
+| 24 | A5 token-goat alone | 3 | 2.7 | 177,144 | $0.0027 | 100% |
+| 25 | C6 token-goat + graphify + semble | 3 | 2.7 | 180,129 | $0.0031 | 100% |
+| 26 | A9 lx, as shipped after round 1 | 6 | 3.0 | 197,045 | $0.0028 | 99% |
+| 27 | S4 Shipped: all commands, embeddings on | 3 | 3.0 | 197,588 | $0.0028 | 100% |
+| 28 | C10 lx about + cards | 3 | 3.3 | 219,611 | $0.0029 | 100% |
+| 29 | L1 lx + about | 3 | 3.3 | 219,739 | $0.0031 | 100% |
+| 30 | C9 lx finds, token-goat reads | 3 | 3.3 | 220,870 | $0.0032 | 100% |
+| 31 | C3 lx shipped + token-goat | 3 | 3.7 | 242,156 | $0.0031 | 100% |
+| 32 | C8 token-goat + graphify | 3 | 3.7 | 248,739 | $0.0037 | 100% |
+| 33 | RS pgr, search only | 3 | 3.7 | 251,681 | $0.0037 | 74% |
+| 34 | RG pgr, code graph only | 3 | 4.0 | 273,398 | $0.0037 | 100% |
+| 35 | C4 Rust index + token-goat | 3 | 4.0 | 281,589 | $0.0050 | 100% |
+| 36 | C5 Rust index + graphify + semble | 3 | 4.0 | 289,122 | $0.0056 | 100% |
+| 37 | A0r No index, run again with round five | 3 | 4.0 | 293,653 | $0.0065 | 99% |
+| 38 | RSM pgr, search and memory | 3 | 4.3 | 301,711 | $0.0044 | 85% |
+| 39 | C1 Rust index + token-goat + graphify + semble | 3 | 4.3 | 310,595 | $0.0052 | 99% |
+| 40 | A0 No index | 5 | 5.0 | 364,508 | $0.0074 | 98% |
 
-- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 787 agents measured, 86% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
-- Where the shipped build, the round 1 leaders and the control stand among those 29 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 19; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 15; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 29.
+- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 884 agents measured, 87% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
+- Where the shipped build, the round 1 leaders and the control stand among those 40 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 26; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 22; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 40.
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier C, one agent: Shipped: lx ask, embeddings on 130k (2 turns over 3 runs), against Shipped: lx ask, default index 130k (2 turns over 3 runs); Shipped: all commands, embeddings on 198k (2 to 4 turns over 3 runs), against Shipped: all commands, default index 130k (2 turns over 3 runs).
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier B, one agent: Shipped: lx ask, embeddings on 129k (2 turns over 3 runs), against Shipped: lx ask, default index 196k (3 turns over 6 runs); Shipped: all commands, embeddings on 130k (2 turns over 3 runs), against Shipped: all commands, default index 196k (3 turns over 3 runs).
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier A, one agent: Shipped: lx ask, embeddings on 199k (3 turns over 1 run), against Shipped: lx ask, default index 201k (3 turns over 1 run); Shipped: all commands, embeddings on 199k (3 turns over 1 run), against Shipped: all commands, default index 199k (3 turns over 1 run).

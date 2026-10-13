@@ -5,9 +5,11 @@
 use crate::dates::now_secs;
 use crate::fail::{Fail, Res};
 use crate::guard;
-use crate::index::manifest::Manifest;
+use crate::index::manifest::{Generation, Manifest};
 use crate::index::refresh::{self, Refresh, Target};
-use crate::index::{graph_path, search_path, MEMORY_DIR};
+use crate::index::{graph_path, load_graph, open_search, search_path, BANK_LOCK_FILE, MEMORY_DIR};
+use crate::model;
+use crate::oslock::OsLock;
 use lxr_core::{find_root, index_dir, index_home};
 use lxr_graph::{Graph, NodeKind};
 use lxr_memory::{Anchor, Bank, CodeView, NoCode};
@@ -88,20 +90,23 @@ impl Engines {
     }
 }
 
-/// The graph, loaded when first asked for. `None` inside when the file cannot be read.
+/// The graph, loaded when first asked for. `None` inside when the file cannot be read, or
+/// is not the graph of the generation the slot was made for.
 pub struct GraphSlot {
     path: PathBuf,
+    gen: Generation,
     cell: OnceCell<Option<Graph>>,
 }
 
 impl GraphSlot {
-    fn new(path: PathBuf) -> GraphSlot {
-        GraphSlot { path, cell: OnceCell::new() }
+    fn new(path: PathBuf, gen: Generation) -> GraphSlot {
+        GraphSlot { path, gen, cell: OnceCell::new() }
     }
 
-    /// The graph, read from disk on the first call. `None` when it cannot be read.
+    /// The graph, read from disk on the first call. `None` when it cannot be read, when it
+    /// is not the one the manifest describes, or when no index has been looked at yet.
     pub fn get(&self) -> Option<&Graph> {
-        self.cell.get_or_init(|| Graph::load(&self.path).ok()).as_ref()
+        self.cell.get_or_init(|| if self.gen.id == 0 { None } else { load_graph(&self.path, self.gen.graph) }).as_ref()
     }
 }
 
@@ -147,17 +152,20 @@ impl CodeView for GraphSlot {
 /// The search index, opened when first asked for.
 pub struct SearchSlot {
     path: PathBuf,
+    gen: Generation,
     cell: OnceCell<Option<SearchIndex>>,
 }
 
 impl SearchSlot {
-    fn new(path: PathBuf) -> SearchSlot {
-        SearchSlot { path, cell: OnceCell::new() }
+    fn new(path: PathBuf, gen: Generation) -> SearchSlot {
+        SearchSlot { path, gen, cell: OnceCell::new() }
     }
 
-    /// The search index, opened on the first call. `None` when it cannot be opened.
+    /// The search index, opened on the first call. `None` when it cannot be opened, when it
+    /// is not the one of the generation the slot was made for, or when no index has been
+    /// looked at yet.
     pub fn get(&self) -> Option<&SearchIndex> {
-        self.cell.get_or_init(|| SearchIndex::open(&self.path).ok()).as_ref()
+        self.cell.get_or_init(|| if self.gen.id == 0 { None } else { open_search(&self.path, self.gen.id) }).as_ref()
     }
 }
 
@@ -169,13 +177,8 @@ pub struct EmbedSlot {
 impl EmbedSlot {
     /// The model, or `None` when there is none or it cannot be opened.
     pub fn get(&self) -> Option<&Embedder> {
-        self.cell.get_or_init(open_embedder).as_ref()
+        self.cell.get_or_init(model::open).as_ref()
     }
-}
-
-/// Finds and opens the embedding model. `None` when there is none or it cannot be opened.
-fn open_embedder() -> Option<Embedder> {
-    Embedder::locate().and_then(|dir| Embedder::open(&dir).ok())
 }
 
 /// Which parts of the index a command reads.
@@ -192,8 +195,9 @@ pub struct Needs {
 /// the answer sooner. The loaded parts are used only when the check found nothing to
 /// rebuild; otherwise they are dropped and loaded again from the new index.
 struct Early {
-    /// The build time of the manifest the loads started from.
-    stamp: u64,
+    /// The generation of the manifest the loads started from. The loads check their files
+    /// against it.
+    gen: Generation,
     graph: Option<JoinHandle<Option<Graph>>>,
     search: Option<JoinHandle<Option<SearchIndex>>>,
     embed: Option<JoinHandle<Option<Embedder>>>,
@@ -204,24 +208,25 @@ impl Early {
     /// when there is no index to load from.
     fn start(ctx: &Ctx, needs: Needs) -> Option<Early> {
         let manifest = Manifest::load(&ctx.dir)?;
+        let gen = manifest.generation();
         let graph = (needs.graph && ctx.graph.cell.get().is_none()).then(|| {
             let path = ctx.graph.path.clone();
-            thread::spawn(move || Graph::load(&path).ok())
+            thread::spawn(move || load_graph(&path, gen.graph))
         });
         let wants_search = needs.search && ctx.search.cell.get().is_none();
         let search = wants_search.then(|| {
             let path = ctx.search.path.clone();
-            thread::spawn(move || SearchIndex::open(&path).ok())
+            thread::spawn(move || open_search(&path, gen.id))
         });
         // A search by words alone never opens the model, so it is not loaded for one.
         let wants_model = needs.embed || (wants_search && manifest.embeddings);
-        let embed = (wants_model && ctx.embed.cell.get().is_none()).then(|| thread::spawn(open_embedder));
-        Some(Early { stamp: manifest.built, graph, search, embed })
+        let embed = (wants_model && ctx.embed.cell.get().is_none()).then(|| thread::spawn(model::open));
+        Some(Early { gen, graph, search, embed })
     }
 
     /// Hands the loaded parts to the slots, when the index did not change meanwhile.
     fn deliver(self, ctx: &mut Ctx) {
-        let same = ctx.stamp == self.stamp;
+        let same = ctx.gen == self.gen;
         if let Some(Some(graph)) = joined(self.graph, same) {
             let _ = ctx.graph.cell.set(Some(graph));
         }
@@ -267,7 +272,8 @@ pub struct Ctx {
     bank: Option<Bank>,
     no_refresh: bool,
     fresh: bool,
-    stamp: u64,
+    /// The generation of the index this run reads: what its slots check their files against.
+    gen: Generation,
     repaired: bool,
 }
 
@@ -287,8 +293,8 @@ impl Ctx {
         };
         let no_refresh = std::env::var("PGR_NO_REFRESH").map(|v| !v.is_empty() && v != "0").unwrap_or(false);
         Ok(Ctx {
-            graph: GraphSlot::new(graph_path(&dir)),
-            search: SearchSlot::new(search_path(&dir)),
+            graph: GraphSlot::new(graph_path(&dir), Generation::default()),
+            search: SearchSlot::new(search_path(&dir), Generation::default()),
             embed: EmbedSlot { cell: OnceCell::new() },
             root,
             name,
@@ -298,7 +304,7 @@ impl Ctx {
             bank: None,
             no_refresh,
             fresh: false,
-            stamp: 0,
+            gen: Generation::default(),
             repaired: false,
         })
     }
@@ -321,10 +327,23 @@ impl Ctx {
         }
     }
 
-    /// Forgets that the index was checked, so that the next query checks it again.
-    /// A server calls this before every request.
+    /// Forgets that the index was checked, so that the next query checks it again, and brings
+    /// the memory bank, if one is open, up to date with the notes other processes have written
+    /// since. The bank is kept between requests: a look at the log's size and time is all it
+    /// costs when nobody has written. A server calls this before every request.
     pub fn begin_request(&mut self) {
         self.fresh = false;
+        self.catch_up_bank();
+    }
+
+    /// Lets a bank that is held read what other processes wrote since it last looked. A bank
+    /// that cannot is let go, so that the next use opens it again and gives the error.
+    fn catch_up_bank(&mut self) {
+        if let Some(bank) = self.bank.as_mut() {
+            if bank.refresh().is_err() {
+                self.bank = None;
+            }
+        }
     }
 
     /// Gives `Fail::Off` when pgr must not index this folder.
@@ -348,7 +367,7 @@ impl Ctx {
         self.check_folder()?;
         if self.no_refresh {
             match Manifest::load(&self.dir) {
-                Some(manifest) => self.adopt(manifest.built),
+                Some(manifest) => self.adopt(manifest.generation()),
                 None => return Err(Fail::index("no index yet (run: pgr refresh)")),
             }
             if let Some(early) = early {
@@ -357,7 +376,7 @@ impl Ctx {
         } else {
             match refresh::check(&self.target(), false)? {
                 refresh::Checked::Clean(done) => {
-                    self.adopt(done.stamp);
+                    self.adopt(done.generation);
                     if let Some(early) = early {
                         early.deliver(self);
                     }
@@ -380,7 +399,7 @@ impl Ctx {
     pub fn run_refresh(&mut self, force: bool) -> Res<Refresh> {
         match refresh::check(&self.target(), force)? {
             refresh::Checked::Clean(done) => {
-                self.adopt(done.stamp);
+                self.adopt(done.generation);
                 Ok(done)
             }
             refresh::Checked::Dirty(dirty) => self.rebuild(dirty),
@@ -389,34 +408,40 @@ impl Ctx {
 
     /// Rebuilds the index after a check found changes.
     fn rebuild(&mut self, dirty: refresh::Dirty) -> Res<Refresh> {
-        // An open search index must not sit in the way of the folder swap.
-        self.search = SearchSlot::new(search_path(&self.dir));
+        // An open search index must not sit in the way of the folder swap. The slot that
+        // replaces it opens the folder again when it is asked for.
+        self.search = SearchSlot::new(search_path(&self.dir), self.gen);
         let done = refresh::complete(&self.target(), dirty)?;
         if let Some(line) = done.note() {
             crate::say(&line);
         }
-        self.adopt(done.stamp);
+        self.reset(done.generation);
         Ok(done)
     }
 
-    /// Notes the build time of the index now on disk and drops what an older one gave.
-    fn adopt(&mut self, stamp: u64) {
-        if stamp != self.stamp {
-            self.stamp = stamp;
-            self.graph = GraphSlot::new(graph_path(&self.dir));
-            self.search = SearchSlot::new(search_path(&self.dir));
+    /// Notes the generation of the index now on disk and drops what an older one gave.
+    fn adopt(&mut self, gen: Generation) {
+        if gen != self.gen {
+            self.reset(gen);
         }
     }
 
-    /// Rebuilds the whole index once when a part of it cannot be read.
+    /// Makes new, empty slots that check their files against `gen`.
+    fn reset(&mut self, gen: Generation) {
+        self.gen = gen;
+        self.graph = GraphSlot::new(graph_path(&self.dir), gen);
+        self.search = SearchSlot::new(search_path(&self.dir), gen);
+    }
+
+    /// Builds the index again, once, when a part of it cannot be used. If the parts only
+    /// seemed wrong because another process was putting a new generation in place, nothing
+    /// is built: the slots just read the new generation.
     fn repair(&mut self) -> Res<()> {
         if self.no_refresh || self.repaired {
             return Ok(());
         }
         self.repaired = true;
-        self.graph = GraphSlot::new(graph_path(&self.dir));
-        self.search = SearchSlot::new(search_path(&self.dir));
-        self.run_refresh(true)?;
+        self.rebuild(refresh::repairing())?;
         Ok(())
     }
 
@@ -445,10 +470,10 @@ impl Ctx {
             self.repair()?;
         }
         if needs.graph && self.graph.get().is_none() {
-            return Err(Fail::index("the graph cannot be read (run: pgr refresh --force)"));
+            return Err(Fail::index("the graph cannot be read or is not the graph of this index (run: pgr refresh --force)"));
         }
         if needs.search && self.search.get().is_none() {
-            return Err(Fail::index("the search index cannot be read (run: pgr refresh --force)"));
+            return Err(Fail::index("the search index cannot be read or is not the search index of this index (run: pgr refresh --force)"));
         }
         Ok(())
     }
@@ -476,12 +501,12 @@ impl Ctx {
 
     /// The graph, once `need_graph` succeeded.
     pub fn graph(&self) -> Res<&Graph> {
-        self.graph.get().ok_or_else(|| Fail::index("the graph cannot be read (run: pgr refresh --force)"))
+        self.graph.get().ok_or_else(|| Fail::index("the graph cannot be read or is not the graph of this index (run: pgr refresh --force)"))
     }
 
     /// The search index, once `need_search` succeeded.
     pub fn search_index(&self) -> Res<&SearchIndex> {
-        self.search.get().ok_or_else(|| Fail::index("the search index cannot be read (run: pgr refresh --force)"))
+        self.search.get().ok_or_else(|| Fail::index("the search index cannot be read or is not the search index of this index (run: pgr refresh --force)"))
     }
 
     /// The memory bank, opened (and created) on first use.
@@ -495,6 +520,17 @@ impl Ctx {
             Some(bank) => Ok(bank),
             None => Err(Fail::index("the memory bank is not open")),
         }
+    }
+
+    /// Takes the lock that orders the writes of pgr processes to the memory bank, and brings the
+    /// bank this run had open up to date: one opened before the lock may be behind notes written
+    /// since. A bank that is not open is opened inside the lock, by using it. The lock is held
+    /// until the value this gives back is dropped.
+    pub fn lock_bank(&mut self) -> Res<OsLock> {
+        let lock = OsLock::take(&self.bank_dir.join(BANK_LOCK_FILE))
+            .map_err(|e| Fail::index(format!("cannot lock the memory bank {}: {e}", self.bank_dir.display())))?;
+        self.catch_up_bank();
+        Ok(lock)
     }
 
     /// Runs `work` with the open bank, a view of the code (the graph, or none when the graph
@@ -530,5 +566,62 @@ fn plain(path: &Path) -> PathBuf {
     match text.strip_prefix(r"\\?\") {
         Some(rest) if !rest.starts_with("UNC") => PathBuf::from(rest),
         _ => path.to_path_buf(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lxr_memory::RetainOpts;
+
+    /// A context over a bank folder of its own.
+    fn context(tag: &str) -> (Ctx, PathBuf) {
+        let base = std::env::temp_dir().join(format!("pgr-ctx-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let mut ctx = Ctx::new(base.join("repo"), Engines::all()).unwrap();
+        ctx.bank_dir = base.join("bank");
+        (ctx, base)
+    }
+
+    /// Another process keeps a note in the bank of `ctx`.
+    fn another_process_keeps(ctx: &Ctx, text: &str) {
+        let mut other = Bank::open(&ctx.bank_dir).unwrap();
+        other.retain(text, &RetainOpts::default(), &NoCode, None).unwrap();
+        other.flush().unwrap();
+    }
+
+    #[test]
+    fn a_bank_is_kept_between_requests_and_reads_what_others_wrote_meanwhile() {
+        let (mut ctx, base) = context("held");
+        ctx.begin_request();
+        assert!(ctx.bank.is_none(), "nothing is opened for a request that does not use the bank");
+        assert_eq!(ctx.bank().unwrap().len(), 0);
+
+        another_process_keeps(&ctx, "The scheduler retries failed jobs.");
+        ctx.begin_request();
+        assert!(ctx.bank.is_some(), "the bank is kept for the next request, not opened again");
+        assert_eq!(ctx.bank().unwrap().len(), 1, "and it has the note the other process wrote");
+
+        // A request in which nobody wrote keeps it as it is.
+        ctx.begin_request();
+        assert!(ctx.bank.is_some());
+        assert_eq!(ctx.bank().unwrap().len(), 1);
+
+        another_process_keeps(&ctx, "The renderer paints widgets.");
+        ctx.begin_request();
+        assert_eq!(ctx.bank().unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn taking_the_write_lock_keeps_the_bank_and_brings_it_up_to_date() {
+        let (mut ctx, base) = context("locked");
+        assert_eq!(ctx.bank().unwrap().len(), 0);
+        another_process_keeps(&ctx, "The scheduler retries failed jobs.");
+        let lock = ctx.lock_bank().unwrap();
+        assert!(ctx.bank.is_some(), "the bank is kept");
+        assert_eq!(ctx.bank().unwrap().len(), 1, "and is up to date inside the lock");
+        drop(lock);
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

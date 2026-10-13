@@ -1,13 +1,18 @@
-/* The Benchmarks page: the model class control, the leaderboard, the chart of tokens against answers
-   correct, and the turn runners. The tables are already in the page for every class. This script shows
-   one class at a time: the leaderboard keeps one row for each configuration and moves it to its rank, with
-   its bar, ring and numbers following the measured values; the chart is drawn from window.SHOWCASE with one
-   axis for each measure, the names written beside the marks, a legend when there are two or more series,
-   a table view of the same numbers, a tooltip on hover and on focus. */
+/* The Benchmarks page: the model class control, the question set control, the leaderboard, the chart of tokens
+   against answers correct, the engine race and the turn runners. The tables are already in the page for every
+   class and every question set. This script shows one class and one set at a time: the leaderboard keeps one row
+   for each configuration measured on the set and moves it to its rank, with its bar, ring and numbers following
+   the measured values, and a row opens to show its model classes on that set; a configuration not measured on
+   the set is not in the view. The turn runners follow both controls. The chart is drawn from window.SHOWCASE
+   with one axis for each measure, every mark travelling from
+   the no-index value to its own, the names written beside the marks, a legend when there are two or more
+   series, a table view of the same numbers, a tooltip on hover and on focus. Whatever the data holds is
+   shown: a new family of configurations or an engine speed table needs no change here. */
 (function () {
   'use strict';
   var App = window.App, data = window.SHOWCASE;
-  var seg = document.querySelector('.seg');
+  var seg = document.querySelector('.seg[data-seg="class"]') || document.querySelector('.seg');
+  var setSeg = document.querySelector('.seg[data-seg="set"]');
   if (!App || !data || !data.configs || !seg) return;
 
   var NS = 'http://www.w3.org/2000/svg';
@@ -21,6 +26,13 @@
   var familyName = {}, className = {};
   (data.families || []).forEach(function (f) { familyName[f.id] = f.name; });
   data.classes.forEach(function (c) { className[c.id] = c.name; });
+  var setName = {};
+  (data.sets || []).forEach(function (s) { setName[s.id] = s.name; });
+  function setLabel(sid) { return (setName[sid] || sid).toLowerCase(); }
+  function valueOf(button) { return button.getAttribute('data-value') || button.getAttribute('data-class'); }
+  // The view the two controls choose: a model class and a question set.
+  var view = { cid: valueOf(seg.querySelector('[aria-checked="true"]') || seg.querySelector('[role="radio"]')),
+    sid: setSeg ? valueOf(setSeg.querySelector('[aria-checked="true"]') || setSeg.querySelector('[role="radio"]')) : 'original' };
 
   function svg(tag, attrs, text) {
     var node = document.createElementNS(NS, tag);
@@ -38,10 +50,10 @@
     var p = Math.pow(10, Math.floor(Math.log10(v))), m = v / p;
     return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p;
   }
-  function itemsFor(cid) {
+  function itemsFor(cid, sid) {
     var items = [];
     data.configs.forEach(function (c) {
-      c.points.forEach(function (p) { if (p.class === cid) items.push({ c: c, p: p }); });
+      c.points.forEach(function (p) { if (p.class === cid && (p.set || 'original') === sid) items.push({ c: c, p: p }); });
     });
     // The same order as the leaderboard: the best first, then fewest tokens.
     items.sort(function (a, b) { return (b.c.best ? 1 : 0) - (a.c.best ? 1 : 0) || a.p.tokens - b.p.tokens; });
@@ -70,21 +82,23 @@
 
     var wrap = el('div', 'lb-wrap'), card = el('div', 'card lb'), head = el('div', 'lb-head'), list = el('div', 'lb-list');
     var lead = el('p', 'group-title', 'One agent answering three lookups. The best configuration first, then fewest tokens.');
+    var empty = el('p', 'note empty');
+    empty.style.display = 'none';
     card.setAttribute('role', 'table');
     head.setAttribute('role', 'row');
     list.setAttribute('role', 'rowgroup');
-    ['Rank', 'Configuration', 'Tokens per task', 'Turns', 'Answers correct', 'Fully correct runs'].forEach(function (label, i) {
+    ['Rank', 'Configuration', 'Tokens per task', 'Turns', 'Answers correct', 'Fully correct runs', 'By model class'].forEach(function (label, i) {
       var h = cell('columnheader');
-      if (i === 0) {
-        h.appendChild(el('span', null, '#')).setAttribute('aria-hidden', 'true');
-        h.appendChild(el('span', 'sr-only', label));
-      } else h.textContent = label;
+      if (i === 0) h.appendChild(el('span', null, '#')).setAttribute('aria-hidden', 'true');
+      if (i === 0 || i === 6) h.appendChild(el('span', 'sr-only', label));
+      else h.textContent = label;
       head.appendChild(h);
     });
     card.appendChild(head);
     card.appendChild(list);
     wrap.appendChild(lead);
     wrap.appendChild(card);
+    wrap.appendChild(empty);
 
     var rows = [], bySlug = {};
     data.configs.forEach(function (c) {
@@ -118,6 +132,43 @@
       r.node.appendChild(f.s);
       r.full = f.b;
       r.runs = f.v.appendChild(el('small'));
+      // The row opens to show the same configuration on each of the three model classes, on the same scale.
+      var open = r.node.appendChild(cell('cell', 'lb-open')), more = open.appendChild(el('button', 'lb-more'));
+      var sub = r.node.appendChild(cell('cell', 'lb-sub')), inner = sub.appendChild(el('div', 'lb-sub-in')), classes = inner.appendChild(el('ul', 'lb-classes'));
+      var arrow = more.appendChild(svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }));
+      arrow.appendChild(svg('path', { d: 'm6 9 6 6 6-6' }));
+      inner.id = 'by-class-' + c.slug;
+      more.type = 'button';
+      more.setAttribute('aria-expanded', 'false');
+      more.setAttribute('aria-controls', inner.id);
+      more.setAttribute('aria-label', c.name + ': show each model class');
+      r.subs = {};
+      r.shown = null;
+      // The model classes of this configuration on one question set, written into the open row.
+      r.fill = function (sid) {
+        if (r.shown === sid) return;
+        r.shown = sid;
+        classes.replaceChildren();
+        classes.setAttribute('aria-label', c.name + ' on each model class, ' + setLabel(sid) + ' questions');
+        r.subs = {};
+        data.classes.forEach(function (cls) {
+          var p = c.points.filter(function (pt) { return pt.class === cls.id && (pt.set || 'original') === sid; })[0], li = classes.appendChild(el('li', 'lb-class'));
+          r.subs[cls.id] = li;
+          li.appendChild(el('b', null, cls.name));
+          if (!p) { li.classList.add('none'); li.appendChild(el('span', null, 'Not measured on this class.')); return; }
+          li.appendChild(el('span', 'lb-bar')).appendChild(document.createElement('i')).style.setProperty('--v', (p.tokens / scaleMax).toFixed(4));
+          var facts = li.appendChild(el('span', 'lb-facts'));
+          facts.appendChild(el('b', null, App.tokens(p.tokens)));
+          facts.appendChild(document.createTextNode(' tokens, ' + App.turns(p.turns) + ' turns, ' + App.share(p.correct) + ' correct, ' +
+            App.of(p.perfect_runs, p.runs) + (p.runs === 1 ? ' run' : ' runs') + ' fully correct'));
+        });
+      };
+      r.fill('original');
+      more.addEventListener('click', function () {
+        var on = more.getAttribute('aria-expanded') !== 'true';
+        more.setAttribute('aria-expanded', String(on));
+        r.node.classList.toggle('open', on);
+      });
       r.node.hidden = true;
       list.appendChild(r.node);
       rows.push(r);
@@ -153,19 +204,25 @@
       r.full.textContent = App.of(it.p.perfect_runs, it.p.runs);
       r.runs.textContent = it.p.runs + (it.p.runs === 1 ? ' run' : ' runs');
     }
-    function flip(r, was, now) {
-      var node = r.node, opts = { duration: 640, easing: spring }, frames;
+    // A row travels to its new rank with weight: the further it goes the longer it takes, it lifts off the card
+    // while it moves, and a row that climbs passes over the ones it overtakes.
+    function flip(r, was, now, order) {
+      var node = r.node, move = was === undefined ? 0 : was - now, frames;
       if (was === undefined) frames = [{ opacity: 0, transform: 'translateY(14px)' }, { opacity: 1, transform: 'none' }];
-      else if (Math.abs(was - now) > 1) frames = [{ transform: 'translateY(' + (was - now) + 'px)' }, { transform: 'none' }];
-      else return;
-      node.style.zIndex = '2';
+      else if (Math.abs(move) > 1) {
+        frames = [{ transform: 'translateY(' + move + 'px) scale(1)' }, { transform: 'translateY(' + move * 0.12 + 'px) scale(1.012)', offset: 0.62 },
+          { transform: 'none' }];
+      } else return;
+      var opts = { duration: 560 + Math.min(360, Math.abs(move) * 0.9), delay: order * 26, easing: spring, fill: 'backwards' };
+      node.style.zIndex = move > 0 ? '3' : '2';
+      node.classList.add('moving');
       var a;
       try { a = node.animate(frames, opts); } catch (err) { a = node.animate(frames, { duration: 400, easing: 'ease-out' }); }
-      a.onfinish = a.oncancel = function () { node.style.zIndex = ''; };
+      a.onfinish = a.oncancel = function () { node.style.zIndex = ''; node.classList.remove('moving'); };
     }
     var current = null;
-    function update(cid) {
-      var items = itemsFor(cid), keep = {}, was = {};
+    function update(cid, sid) {
+      var items = itemsFor(cid, sid), keep = {}, was = {};
       rows.forEach(function (r) { if (!r.node.hidden) was[r.slug] = r.node.getBoundingClientRect().top; });
       items.forEach(function (it) {
         var r = bySlug[it.c.slug];
@@ -174,21 +231,26 @@
         list.appendChild(r.node);
       });
       rows.forEach(function (r) { if (!keep[r.slug]) r.node.hidden = true; });
-      card.setAttribute('aria-label', (className[cid] || cid) + ' class leaderboard');
+      card.setAttribute('aria-label', (className[cid] || cid) + ' class leaderboard, ' + setLabel(sid) + ' questions');
+      empty.style.display = items.length ? 'none' : '';
+      empty.textContent = 'No configuration was measured on the ' + (className[cid] || cid).toLowerCase() + ' class with the ' + setLabel(sid) + ' questions.';
+      card.style.display = items.length ? '' : 'none';
       items.forEach(function (it, i) {
         var r = bySlug[it.c.slug];
         meta(r, it, i);
         r.it = it;
+        r.fill(sid);
+        Object.keys(r.subs).forEach(function (id) { r.subs[id].classList.toggle('is-best', id === cid && !!it.c.best); r.subs[id].classList.toggle('now', id === cid); });
         if (!revealed) return;
         paint(r, it.p, 0);
-        if (!App.reduced && r.node.animate && current !== null) flip(r, was[r.slug], r.node.getBoundingClientRect().top);
+        if (!App.reduced && r.node.animate && current !== null) flip(r, was[r.slug], r.node.getBoundingClientRect().top, i);
       });
-      current = cid;
+      current = { cid: cid, sid: sid };
     }
     // The first time the board is seen, every bar and ring draws in from nothing, one row after another.
     App.once(card, function () {
       revealed = true;
-      var slugs = itemsFor(current).map(function (it) { return it.c.slug; });
+      var slugs = itemsFor(current.cid, current.sid).map(function (it) { return it.c.slug; });
       rows.forEach(function (r) { var n = slugs.indexOf(r.slug); if (n >= 0) paint(r, r.it.p, n * 70); });
     }, 0.2);
     return { update: update };
@@ -219,14 +281,15 @@
 
   /* ---------- the chart: the ranges draw in and the marks settle one after another when it comes into view ---------- */
   var drawn = {};
-  function draw(cid, animate) {
-    var host = document.querySelector('.chart[data-chart="' + cid + '"]');
+  function chartHost(cid, sid) { return document.querySelector('.chart[data-chart="' + cid + '"][data-set="' + sid + '"]'); }
+  function draw(cid, sid, animate) {
+    var host = chartHost(cid, sid);
     if (!host || !host.clientWidth) return;
-    var items = itemsFor(cid);
+    var items = itemsFor(cid, sid);
     if (!items.length) return;
     var card = host.closest('.chart-card');
     var W = Math.max(280, Math.round(host.clientWidth)), H = Math.max(300, Math.round(host.clientHeight));
-    drawn[cid] = W;
+    drawn[cid + '/' + sid] = W;
     var narrow = W < 560, m = { l: 60, r: 20, t: 22, b: 52 };
     var plot = { x0: m.l, x1: W - m.r, y0: m.t, y1: H - m.b };
 
@@ -244,7 +307,7 @@
     var y = function (share) { return plot.y1 - (share - yLo) / (1 - yLo) * (plot.y1 - plot.y0 - 8); };
 
     var root = svg('svg', { viewBox: '0 0 ' + W + ' ' + H, role: 'group',
-      'aria-label': className[cid] + ' class: tokens against answers correct for each configuration. Use the arrow keys to move between marks.' });
+      'aria-label': className[cid] + ' class, ' + setLabel(sid) + ' questions: tokens against answers correct for each configuration. Use the arrow keys to move between marks.' });
     yTicks.forEach(function (tick, i) {
       root.appendChild(svg('line', { class: i ? 'grid' : 'axis', x1: plot.x0, x2: plot.x1, y1: y(tick), y2: y(tick) }));
       root.appendChild(svg('text', { class: 'tick', x: plot.x0 - 8, y: y(tick) + 4, 'text-anchor': 'end' }, Math.round(tick * 100) + '%'));
@@ -267,6 +330,27 @@
       }
       return { it: it, i: i, cx: cx, cy: cy, r: 7, style: style };
     });
+
+    // Every mark starts on the no-index value and travels to its own. The thin line it leaves behind is the
+    // difference, in tokens and in answers correct, between that configuration and no index.
+    var ref = marks.filter(function (k) { return k.it.c.family === 'control'; })[0] || null;
+    if (ref) {
+      marks.forEach(function (k) {
+        if (k === ref || Math.hypot(k.cx - ref.cx, k.cy - ref.cy) < 14) return;
+        root.appendChild(svg('line', { class: 'trail', pathLength: 1, style: '--n:' + k.i, x1: ref.cx, y1: ref.cy, x2: k.cx, y2: k.cy }));
+      });
+    }
+    function travel() {
+      host.classList.remove('pre');
+      if (!ref) return;
+      marks.forEach(function (k) {
+        if (k === ref || !k.node.animate) return;
+        try {
+          k.node.animate([{ transform: 'translate(' + ref.cx + 'px,' + ref.cy + 'px)' }, { transform: 'translate(' + k.cx + 'px,' + k.cy + 'px)' }],
+            { duration: 900, delay: 120 + k.i * 90, easing: 'cubic-bezier(.23,1,.32,1)', fill: 'backwards' });
+        } catch (err) { /* the mark is already in place */ }
+      });
+    }
 
     var order = marks.slice().sort(function (a, b) { return a.cx - b.cx || a.cy - b.cy; });
     marks.forEach(function (k) {
@@ -298,7 +382,7 @@
     // Hidden at once, released when the chart is in view, so the draw-in is seen and not spent off screen.
     host.classList.toggle('pre', !!animate && !App.reduced);
     if (animate && !App.reduced) {
-      App.once(host, function () { requestAnimationFrame(function () { requestAnimationFrame(function () { host.classList.remove('pre'); }); }); }, 0.35);
+      App.once(host, function () { requestAnimationFrame(function () { requestAnimationFrame(travel); }); }, 0.35);
     }
     var keyed = narrow;
     marks.forEach(function (k) {
@@ -323,7 +407,7 @@
           }
         }
         if (found) {
-          placed.push(found.box);
+          placed.push({ x0: found.box.x0 - 5, x1: found.box.x1 + 5, y0: found.box.y0 - 1, y1: found.box.y1 + 1 });
           root.appendChild(svg('text', { class: 'name', x: found.spot.x, y: found.spot.y, 'text-anchor': found.spot.a }, words[w]));
           if (w === 1) keyed = true;
           return;
@@ -384,27 +468,31 @@
     });
   }
 
-  /* ---------- show one class at a time ---------- */
-  var status = document.getElementById('seg-status');
-  function show(cid, label) {
+  /* ---------- show one class and one question set at a time ---------- */
+  var status = document.getElementById('seg-status'), note = document.getElementById('set-note');
+  var runners = null;   // set by the turn runners below
+  function show(spoken) {
     Array.prototype.forEach.call(document.querySelectorAll('.panel'), function (panel) {
-      panel.classList.toggle('on', panel.getAttribute('data-class') === cid);
+      panel.classList.toggle('on', panel.getAttribute('data-class') === view.cid && (panel.getAttribute('data-set') || 'original') === view.sid);
     });
+    // The line under the controls says what the chosen set is; a page without a script shows both lines.
+    if (note) Array.prototype.forEach.call(note.querySelectorAll('[data-set]'), function (line) { line.hidden = line.getAttribute('data-set') !== view.sid; });
     App.tip.hide();
-    draw(cid, true);
-    if (board) board.update(cid);
-    if (status && label) status.textContent = 'Showing the ' + label.toLowerCase() + ' class.';
+    draw(view.cid, view.sid, true);
+    if (board) board.update(view.cid, view.sid);
+    if (runners) runners.change();
+    if (status && spoken) status.textContent = 'Showing the ' + spoken.toLowerCase() + '.';
   }
-  var first = seg.querySelector('[role="radio"]');
-  App.segmented(seg, show);
-  show(first ? first.getAttribute('data-class') : data.classes[0].id);
+  App.segmented(seg, function (value, label) { view.cid = value; show(label + ' class, ' + setLabel(view.sid) + ' questions'); });
+  if (setSeg) App.segmented(setSeg, function (value, label) { view.sid = value; show((className[view.cid] || view.cid) + ' class, ' + label + ' questions'); });
+  show();
 
   // Redraw when the width of the visible chart changes: a rotation, a window resize, the sidebar appearing.
   if ('ResizeObserver' in window) {
     var watcher = new ResizeObserver(function () {
-      Object.keys(drawn).forEach(function (cid) {
-        var host = document.querySelector('.chart[data-chart="' + cid + '"]');
-        if (host && host.clientWidth && Math.round(host.clientWidth) !== drawn[cid]) draw(cid, false);
+      Object.keys(drawn).forEach(function (key) {
+        var parts = key.split('/'), host = chartHost(parts[0], parts[1]);
+        if (host && host.clientWidth && Math.round(host.clientWidth) !== drawn[key]) draw(parts[0], parts[1], false);
       });
     });
     Array.prototype.forEach.call(document.querySelectorAll('.chart'), function (host) { watcher.observe(host); });
@@ -417,20 +505,54 @@
   (function () {
     var fig = document.getElementById('runners');
     if (!fig) return;
-    var note = fig.querySelector('.runner-status'), again = fig.querySelector('.replay');
-    var runs = Array.prototype.slice.call(fig.querySelectorAll('.runner')), timers = [], STEP = 480;
-    if (App.reduced) { if (note) note.hidden = false; return; }
+    var status = fig.querySelector('.runner-status'), again = fig.querySelector('.replay');
+    var all = Array.prototype.slice.call(fig.querySelectorAll('.runner')), runs = all, timers = [], STEP = 480, seen = false;
+    if (App.reduced) { if (status) status.hidden = false; return; }
+    // The runs of the panel the controls have chosen; the others are not on screen.
+    function current() {
+      runs = Array.prototype.slice.call(fig.querySelectorAll('.panel.on .runner'));
+      if (!runs.length && !fig.querySelector('.panel')) runs = all;
+    }
     function play() {
       timers.forEach(clearTimeout);
       timers = [];
+      current();
       fig.classList.remove('run');
-      runs.forEach(function (r) { r.classList.remove('done'); });
+      all.forEach(function (r) { r.classList.remove('done'); });
       void fig.offsetWidth;
       fig.classList.add('run');
       // A run is done when its last dot has arrived: the delay of the last dot plus the three steps it travels.
       runs.forEach(function (r) {
         var turns = r.querySelectorAll('.dot').length;
         timers.push(setTimeout(function () { r.classList.add('done'); }, (turns + 2) * STEP));
+      });
+    }
+    fig.classList.add('armed');
+    App.once(fig, function () { seen = true; play(); }, 0.6);
+    if (again) again.addEventListener('click', play);
+    // A new class or question set shows another panel: its runs play again, once the figure has been seen.
+    runners = { change: function () { current(); if (seen) play(); } };
+  })();
+
+  /* ---------- the engine race: every bar runs at one speed for its measured time, so the quickest stops first ---------- */
+  (function () {
+    var fig = document.getElementById('race');
+    if (!fig) return;
+    var rows = Array.prototype.slice.call(fig.querySelectorAll('.race-row')), note = fig.querySelector('.race-status'), again = fig.querySelector('.replay');
+    var most = Math.max.apply(null, rows.map(function (row) { return parseFloat(row.getAttribute('data-ms')) || 0; })), stops = [], LONGEST = 2600;
+    if (App.reduced || !(most > 0)) { if (note && App.reduced) note.hidden = false; return; }
+    function play() {
+      stops.forEach(function (stop) { stop(); });
+      stops = rows.map(function (row) {
+        var ms = parseFloat(row.getAttribute('data-ms')) || 0, bar = row.querySelector('.race-track i'), value = row.querySelector('.race-val b');
+        var final = value.getAttribute('data-final') || value.textContent, places = (final.split('.')[1] || '').length;
+        value.setAttribute('data-final', final);
+        row.classList.remove('done');
+        // No easing: here a bar is a clock.
+        return App.run(LONGEST * ms / most, function (p) {
+          bar.style.transform = 'scaleX(' + (ms / most * p).toFixed(4) + ')';
+          value.textContent = p >= 1 ? final : (ms * p).toFixed(places);
+        }, function () { row.classList.add('done'); });
       });
     }
     fig.classList.add('armed');

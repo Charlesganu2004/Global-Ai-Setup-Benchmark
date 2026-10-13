@@ -1,17 +1,17 @@
 # Benchmark results
 
-787 agent runs on one repository: three lookup questions, 36 ways of finding the answer, three model tiers, three ways of organising the agents. 150.5 million tokens measured, 86% of them cache reads.
+884 agent runs on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
 
 The charts are on the project site. This file is the same data as tables, written by `benchmark/harness/build_site.py`.
 
 ## Findings
 
-- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 787 agents measured, 86% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
+- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 884 agents measured, 87% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
 - Tokens follow turns. Among methods run at least twice, one agent answering all three questions averaged from 2.0 turns (Shipped: lx ask, embeddings on, Tier B, 3 runs: 129k tokens) to 7.0 turns (graphify + semble, Tier C, 2 runs: 480k tokens).
 - Cheapest tier, one agent, methods run at least three times, fewest tokens first: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; C12 lx about + hybrid: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L3 lx + hybrid search: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.
-- Where the shipped build, the round 1 leaders and the control stand among those 29 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 19; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 15; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 29.
-- Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 11 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, C7 token-goat + semble.
-- Two turns is the floor for this task: one to ask and one to answer. On Tier B, coder, 11 methods took exactly two turns and answered everything correctly in each of their 2 to 3 runs: C15 lx ask + token-goat read, L2 lx + cards, S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, R1 lx shipped + Rust embeddings, C2 lx + Rust embeddings + token-goat, C12 lx about + hybrid, C11 lx about + Rust cards, S4 Shipped: all commands, embeddings on, C13 lx, every new command, C14 lx, every new command + token-goat.
+- Where the shipped build, the round 1 leaders and the control stand among those 40 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 26; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 22; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 40.
+- Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 17 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, S1r Shipped: lx ask, default index, run again with round five, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, C7 token-goat + semble, RM pgr, memory only, RGSO pgr, all three, memory from an exploring session, RGSM pgr, all three, memory from the same questions.
+- Two turns is the floor for this task: one to ask and one to answer. On Tier B, coder, 17 methods took exactly two turns and answered everything correctly in each of their 2 to 3 runs: C15 lx ask + token-goat read, L2 lx + cards, S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, R1 lx shipped + Rust embeddings, C2 lx + Rust embeddings + token-goat, C12 lx about + hybrid, C11 lx about + Rust cards, S4 Shipped: all commands, embeddings on, C13 lx, every new command, C14 lx, every new command + token-goat, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, RGM pgr, graph and memory, RGSM pgr, all three, memory from the same questions, RM pgr, memory only, RG pgr, code graph only.
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier C, one agent: Shipped: lx ask, embeddings on 130k (2 turns over 3 runs), against Shipped: lx ask, default index 130k (2 turns over 3 runs); Shipped: all commands, embeddings on 198k (2 to 4 turns over 3 runs), against Shipped: all commands, default index 130k (2 turns over 3 runs).
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier B, one agent: Shipped: lx ask, embeddings on 129k (2 turns over 3 runs), against Shipped: lx ask, default index 196k (3 turns over 6 runs); Shipped: all commands, embeddings on 130k (2 turns over 3 runs), against Shipped: all commands, default index 196k (3 turns over 3 runs).
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier A, one agent: Shipped: lx ask, embeddings on 199k (3 turns over 1 run), against Shipped: lx ask, default index 201k (3 turns over 1 run); Shipped: all commands, embeddings on 199k (3 turns over 1 run), against Shipped: all commands, default index 199k (3 turns over 1 run).
@@ -23,12 +23,12 @@ The charts are on the project site. This file is the same data as tables, writte
 - Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Tier B, one agent: lx, as shipped after round 1 217k (3 to 4 turns over 3 runs), against lx shipped + token-goat 196k (3 turns over 2 runs); lx shipped + Rust embeddings 129k (2 turns over 2 runs), against lx + Rust embeddings + token-goat 129k (2 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against lx, every new command + token-goat 130k (2 turns over 2 runs); lx ask, one call 129k (2 turns over 2 runs), against lx ask + token-goat read 129k (2 turns over 2 runs).
 - Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier C, one agent: lx, every new command 130k (2 turns over 3 runs), against Rust index + graphify + semble 289k (3 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat + graphify + semble 311k (4 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat 282k (3 to 5 turns over 3 runs).
 - Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier B, one agent: lx, every new command 130k (2 turns over 2 runs), against Rust index + graphify + semble 428k (5 to 7 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat + graphify + semble 314k (3 to 6 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat 393k (5 to 6 turns over 2 runs).
-- Tier C, scout, one agent: no index used 365k tokens and $0.0074 over 5 runs. Among the 28 methods run at least twice and fully correct every time, the leanest was Shipped: lx ask, embeddings on at 130k tokens and $0.0019 over 3 runs, 64% fewer tokens.
-- Tier B, coder, one agent: no index used 281k tokens and $0.103 over 3 runs. Among the 24 methods run at least twice and fully correct every time, the leanest was lx ask + token-goat read at 129k tokens and $0.0309 over 2 runs, 54% fewer tokens. 5 methods ran once on this tier and answered everything; the lowest of those single runs was lx improved + Rust embeddings at 128k tokens.
+- Tier C, scout, one agent: no index used 365k tokens and $0.0074 over 5 runs. Among the 36 methods run at least twice and fully correct every time, the leanest was Shipped: lx ask, embeddings on at 130k tokens and $0.0019 over 3 runs, 64% fewer tokens.
+- Tier B, coder, one agent: no index used 281k tokens and $0.103 over 3 runs. Among the 31 methods run at least twice and fully correct every time, the leanest was lx ask + token-goat read at 129k tokens and $0.0309 over 2 runs, 54% fewer tokens. 5 methods ran once on this tier and answered everything; the lowest of those single runs was lx improved + Rust embeddings at 128k tokens.
 - Tier A, apex, one agent: no index used 298k tokens and $0.343 over 3 runs. Only one method was run twice on this tier and was fully correct both times: lx, as shipped after round 1 at 272k tokens and $0.164 over 2 runs, 9% fewer tokens. 32 methods ran once on this tier and answered everything; the lowest of those single runs was lx ask + token-goat read at 135k tokens.
 - The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.
 - Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything.
-- A cold start costs far more than a warm one. Writing the 63k start-up context to the cache costs $0.314 on Tier A against $0.0126 to read it back, 25 times as much. Subagents started together all pay the cold price; started one after another within five minutes they share the cached part.
+- A cold start costs far more than a warm one. Writing the 63k start-up context to the cache costs $0.316 on Tier A against $0.0127 to read it back, 25 times as much. Subagents started together all pay the cold price; started one after another within five minutes they share the cached part.
 - token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.
 
 ## One agent
@@ -51,32 +51,49 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | N1 lx ask, no Rust embeddings | C | 3 | 2.0 | 63,028 | 63,026 | 3,396 | 931 | 130,381 | $0.0022 | $0.0094 | 100% |
 | N2 lx, every new command, no Rust embeddings | C | 3 | 2.0 | 63,179 | 63,177 | 3,238 | 960 | 130,554 | $0.0021 | $0.0094 | 100% |
 | C14 lx, every new command + token-goat | C | 3 | 2.0 | 63,313 | 63,311 | 3,322 | 696 | 130,642 | $0.0020 | $0.0093 | 100% |
+| S1r Shipped: lx ask, default index, run again with round five | C | 3 | 2.0 | 64,986 | 64,984 | 3,320 | 461 | 133,751 | $0.0019 | $0.0094 | 100% |
+| S3r Shipped: lx ask, embeddings on, run again with round five | C | 3 | 2.0 | 64,978 | 64,976 | 3,286 | 683 | 133,923 | $0.0021 | $0.0095 | 100% |
+| RGS pgr, graph and search in one call | C | 3 | 2.0 | 64,988 | 64,986 | 3,678 | 361 | 134,013 | $0.0019 | $0.0094 | 100% |
 | C7 token-goat + semble | C | 3 | 2.0 | 63,042 | 63,040 | 6,821 | 1,143 | 134,047 | $0.0027 | $0.0099 | 100% |
+| S3h Shipped: lx ask, embeddings on, held-out questions | C | 3 | 2.0 | 64,994 | 64,992 | 3,582 | 551 | 134,120 | $0.0020 | $0.0095 | 97% |
+| RM pgr, memory only | C | 3 | 2.0 | 64,980 | 64,978 | 4,125 | 736 | 134,819 | $0.0022 | $0.0097 | 100% |
+| RGSO pgr, all three, memory from an exploring session | C | 3 | 2.0 | 65,093 | 65,091 | 4,081 | 637 | 134,902 | $0.0021 | $0.0096 | 100% |
+| RGSM pgr, all three, memory from the same questions | C | 3 | 2.0 | 65,087 | 65,085 | 4,170 | 618 | 134,960 | $0.0021 | $0.0096 | 100% |
 | H9 Round 1 lx, hooks on | C | 3 | 2.3 | 62,896 | 84,920 | 3,300 | 778 | 151,894 | $0.0023 | $0.0095 | 100% |
 | SB Shipped lx ask through Bash, hooks off | C | 3 | 2.3 | 63,186 | 85,267 | 3,552 | 354 | 152,360 | $0.0021 | $0.0094 | 100% |
 | C11 lx about + Rust cards | C | 3 | 2.3 | 63,070 | 85,179 | 3,858 | 570 | 152,676 | $0.0022 | $0.0095 | 100% |
 | L2 lx + cards | C | 3 | 2.3 | 63,028 | 85,233 | 3,779 | 952 | 152,991 | $0.0024 | $0.0097 | 100% |
 | H5 token-goat commands, hooks on | C | 3 | 2.3 | 62,860 | 85,549 | 5,603 | 977 | 154,990 | $0.0027 | $0.0099 | 100% |
+| RGM pgr, graph and memory | C | 3 | 2.3 | 65,178 | 87,945 | 3,359 | 623 | 157,105 | $0.0023 | $0.0098 | 100% |
 | A8 lx improved + Rust embeddings | C | 2 | 2.5 | 62,637 | 95,472 | 3,880 | 706 | 162,695 | $0.0024 | $0.0096 | 95% |
 | R1 lx shipped + Rust embeddings | C | 3 | 2.7 | 63,012 | 106,959 | 4,197 | 1,368 | 175,536 | $0.0029 | $0.0102 | 100% |
 | C2 lx + Rust embeddings + token-goat | C | 3 | 2.7 | 63,097 | 107,452 | 4,956 | 1,010 | 176,514 | $0.0028 | $0.0101 | 100% |
 | A5 token-goat alone | C | 3 | 2.7 | 62,806 | 107,987 | 5,765 | 586 | 177,144 | $0.0027 | $0.0099 | 100% |
 | C6 token-goat + graphify + semble | C | 3 | 2.7 | 63,076 | 108,610 | 7,437 | 1,006 | 180,129 | $0.0031 | $0.0104 | 100% |
+| RGSh pgr, graph and search in one call, held-out questions | C | 3 | 2.7 | 65,004 | 111,127 | 4,370 | 554 | 181,055 | $0.0026 | $0.0101 | 100% |
 | A4 lx first version + Rust embeddings | C | 2 | 3.0 | 62,635 | 128,320 | 3,676 | 837 | 195,468 | $0.0028 | $0.0100 | 100% |
 | A9 lx, as shipped after round 1 | C | 6 | 3.0 | 62,852 | 129,520 | 3,899 | 773 | 197,045 | $0.0028 | $0.0100 | 99% |
 | A6 token-goat + lx improved | C | 2 | 3.0 | 62,729 | 129,008 | 4,732 | 798 | 197,267 | $0.0029 | $0.0101 | 99% |
 | S4 Shipped: all commands, embeddings on | C | 3 | 3.0 | 63,171 | 129,759 | 3,929 | 730 | 197,588 | $0.0028 | $0.0100 | 100% |
+| RGSOh pgr, all three, memory from an exploring session, held-out questions | C | 3 | 3.0 | 65,109 | 134,639 | 4,882 | 560 | 205,190 | $0.0029 | $0.0104 | 97% |
 | C10 lx about + cards | C | 3 | 3.3 | 63,075 | 151,814 | 4,247 | 475 | 219,611 | $0.0029 | $0.0102 | 100% |
 | L1 lx + about | C | 3 | 3.3 | 63,080 | 151,629 | 4,105 | 925 | 219,739 | $0.0031 | $0.0104 | 100% |
 | C9 lx finds, token-goat reads | C | 3 | 3.3 | 63,068 | 151,943 | 5,147 | 712 | 220,870 | $0.0032 | $0.0104 | 100% |
 | A7 lx, improved | C | 2 | 3.5 | 62,644 | 161,653 | 4,056 | 481 | 228,834 | $0.0030 | $0.0102 | 95% |
 | C3 lx shipped + token-goat | C | 3 | 3.7 | 63,118 | 174,323 | 4,351 | 364 | 242,156 | $0.0031 | $0.0104 | 100% |
 | C8 token-goat + graphify | C | 3 | 3.7 | 63,031 | 178,243 | 6,431 | 1,034 | 248,739 | $0.0037 | $0.0110 | 100% |
+| RGh pgr, code graph only, held-out questions | C | 3 | 3.7 | 65,084 | 179,884 | 5,091 | 640 | 250,699 | $0.0034 | $0.0109 | 100% |
+| RS pgr, search only | C | 3 | 3.7 | 64,924 | 180,039 | 5,594 | 1,125 | 251,681 | $0.0037 | $0.0112 | 74% |
+| RG pgr, code graph only | C | 3 | 4.0 | 65,068 | 202,513 | 4,945 | 872 | 273,398 | $0.0037 | $0.0112 | 100% |
 | C4 Rust index + token-goat | C | 3 | 4.0 | 63,075 | 202,897 | 14,703 | 914 | 281,589 | $0.0050 | $0.0122 | 100% |
 | C5 Rust index + graphify + semble | C | 3 | 4.0 | 63,069 | 208,367 | 15,779 | 1,906 | 289,122 | $0.0056 | $0.0129 | 100% |
+| A0r No index, run again with round five | C | 3 | 4.0 | 64,804 | 210,585 | 14,483 | 3,781 | 293,653 | $0.0065 | $0.0139 | 99% |
 | A3 lx, first version | C | 2 | 4.5 | 62,630 | 229,832 | 6,220 | 1,524 | 300,206 | $0.0045 | $0.0117 | 100% |
+| RSM pgr, search and memory | C | 3 | 4.3 | 65,034 | 228,821 | 6,502 | 1,354 | 301,711 | $0.0044 | $0.0119 | 85% |
 | C1 Rust index + token-goat + graphify + semble | C | 3 | 4.3 | 63,154 | 232,189 | 14,429 | 823 | 310,595 | $0.0052 | $0.0124 | 99% |
+| RSh pgr, search only, held-out questions | C | 3 | 4.3 | 64,940 | 233,201 | 11,660 | 3,127 | 312,927 | $0.0060 | $0.0135 | 72% |
 | A2 Rust index alone, embeddings on | C | 2 | 5.0 | 62,629 | 273,990 | 13,282 | 1,794 | 351,694 | $0.0059 | $0.0131 | 100% |
+| A0h No index, held-out questions | C | 3 | 4.7 | 64,820 | 266,802 | 22,191 | 6,957 | 360,770 | $0.0096 | $0.0170 | 100% |
 | H0 No index, hooks on | C | 3 | 5.0 | 62,709 | 279,467 | 15,414 | 4,458 | 362,048 | $0.0076 | $0.0148 | 99% |
 | A0 No index | C | 5 | 5.0 | 62,702 | 281,856 | 15,960 | 3,990 | 364,508 | $0.0074 | $0.0146 | 98% |
 | A1 graphify + semble | C | 2 | 7.0 | 62,630 | 407,221 | 8,293 | 1,879 | 480,023 | $0.0067 | $0.0139 | 96% |
@@ -96,8 +113,17 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | C13 lx, every new command | B | 2 | 2.0 | 63,231 | 64,657 | 1,430 | 309 | 129,627 | $0.0322 | $0.178 | 100% |
 | C14 lx, every new command + token-goat | B | 2 | 2.0 | 63,316 | 63,314 | 2,882 | 307 | 129,820 | $0.0356 | $0.181 | 100% |
 | H5 token-goat commands, hooks on | B | 2 | 2.0 | 62,863 | 62,861 | 4,953 | 424 | 131,102 | $0.0418 | $0.186 | 100% |
+| S3r Shipped: lx ask, embeddings on, run again with round five | B | 3 | 2.0 | 64,981 | 66,946 | 986 | 216 | 133,129 | $0.0310 | $0.180 | 100% |
+| RGS pgr, graph and search in one call | B | 3 | 2.0 | 64,991 | 67,047 | 1,031 | 298 | 133,367 | $0.0320 | $0.181 | 100% |
+| RGM pgr, graph and memory | B | 3 | 2.0 | 65,181 | 67,259 | 1,042 | 286 | 133,768 | $0.0320 | $0.182 | 100% |
+| RGSM pgr, all three, memory from the same questions | B | 3 | 2.0 | 65,090 | 66,234 | 2,295 | 267 | 133,886 | $0.0347 | $0.184 | 100% |
+| RGh pgr, code graph only, held-out questions | B | 3 | 2.0 | 65,087 | 67,342 | 1,131 | 335 | 133,895 | $0.0327 | $0.182 | 100% |
+| RM pgr, memory only | B | 3 | 2.0 | 64,983 | 64,981 | 3,980 | 177 | 134,120 | $0.0377 | $0.187 | 100% |
+| RGSOh pgr, all three, memory from an exploring session, held-out questions | B | 3 | 2.0 | 65,112 | 65,110 | 3,996 | 197 | 134,415 | $0.0380 | $0.188 | 100% |
+| RG pgr, code graph only | B | 3 | 2.0 | 65,071 | 65,069 | 3,939 | 659 | 134,738 | $0.0425 | $0.192 | 100% |
 | C6 token-goat + graphify + semble | B | 2 | 2.5 | 63,079 | 99,420 | 2,700 | 456 | 165,656 | $0.0438 | $0.189 | 100% |
 | A5 token-goat alone | B | 3 | 2.7 | 62,980 | 109,943 | 3,779 | 583 | 177,285 | $0.0499 | $0.195 | 100% |
+| RGSh pgr, graph and search in one call, held-out questions | B | 3 | 2.7 | 65,007 | 111,963 | 2,873 | 276 | 180,119 | $0.0453 | $0.195 | 100% |
 | A6 token-goat + lx improved | B | 1 | 3.0 | 62,732 | 128,176 | 3,072 | 271 | 194,251 | $0.0486 | $0.193 | 100% |
 | H9 Round 1 lx, hooks on | B | 2 | 3.0 | 62,899 | 129,907 | 1,764 | 280 | 194,850 | $0.0458 | $0.190 | 100% |
 | HB Shipped lx ask through Bash, hooks on | B | 2 | 3.0 | 62,902 | 130,062 | 1,850 | 278 | 195,092 | $0.0460 | $0.191 | 100% |
@@ -109,16 +135,23 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | N2 lx, every new command, no Rust embeddings | B | 2 | 3.0 | 63,182 | 129,228 | 3,320 | 425 | 196,154 | $0.0510 | $0.196 | 100% |
 | C7 token-goat + semble | B | 2 | 3.0 | 63,045 | 130,050 | 5,106 | 531 | 198,733 | $0.0567 | $0.202 | 100% |
 | C8 token-goat + graphify | B | 2 | 3.0 | 63,034 | 134,227 | 3,363 | 406 | 201,030 | $0.0519 | $0.197 | 100% |
+| RGSO pgr, all three, memory from an exploring session | B | 3 | 3.0 | 65,096 | 135,923 | 1,917 | 408 | 203,344 | $0.0491 | $0.199 | 100% |
 | A9 lx, as shipped after round 1 | B | 3 | 3.3 | 62,916 | 151,400 | 2,323 | 321 | 216,959 | $0.0519 | $0.197 | 100% |
 | L1 lx + about | B | 2 | 3.5 | 63,083 | 163,347 | 1,820 | 280 | 228,529 | $0.0526 | $0.198 | 100% |
+| A0h No index, held-out questions | B | 2 | 3.5 | 64,823 | 172,050 | 11,878 | 1,679 | 250,430 | $0.0939 | $0.243 | 100% |
 | A7 lx, improved | B | 1 | 4.0 | 62,647 | 193,715 | 3,503 | 415 | 260,280 | $0.0642 | $0.208 | 100% |
+| A0r No index, run again with round five | B | 3 | 3.7 | 64,807 | 183,758 | 10,794 | 1,824 | 261,183 | $0.0949 | $0.244 | 97% |
 | C10 lx about + cards | B | 2 | 4.0 | 63,078 | 196,714 | 2,072 | 366 | 262,230 | $0.0608 | $0.206 | 100% |
 | A1 graphify + semble | B | 1 | 4.0 | 62,633 | 197,221 | 5,763 | 456 | 266,073 | $0.0709 | $0.215 | 100% |
 | A2 Rust index alone, embeddings on | B | 1 | 4.0 | 62,632 | 197,316 | 6,237 | 1,003 | 267,188 | $0.0776 | $0.222 | 100% |
+| S3h Shipped: lx ask, embeddings on, held-out questions | B | 2 | 4.0 | 64,997 | 202,437 | 4,296 | 300 | 272,030 | $0.0672 | $0.217 | 100% |
+| RS pgr, search only | B | 3 | 4.0 | 64,927 | 204,739 | 4,912 | 725 | 275,303 | $0.0735 | $0.223 | 99% |
+| RSM pgr, search and memory | B | 3 | 4.0 | 65,037 | 203,483 | 5,842 | 1,002 | 275,364 | $0.0783 | $0.228 | 98% |
 | H0 No index, hooks on | B | 2 | 4.0 | 62,712 | 202,058 | 11,334 | 2,094 | 278,198 | $0.102 | $0.246 | 97% |
 | A0 No index | B | 3 | 4.0 | 62,729 | 203,924 | 11,872 | 2,023 | 280,547 | $0.103 | $0.248 | 100% |
 | N1 lx ask, no Rust embeddings | B | 2 | 4.5 | 63,031 | 230,031 | 2,362 | 606 | 296,030 | $0.0706 | $0.216 | 100% |
 | C1 Rust index + token-goat + graphify + semble | B | 2 | 4.5 | 63,157 | 239,939 | 9,282 | 1,222 | 313,600 | $0.0960 | $0.241 | 99% |
+| RSh pgr, search only, held-out questions | B | 3 | 4.7 | 64,943 | 253,472 | 7,698 | 1,432 | 327,546 | $0.0973 | $0.247 | 100% |
 | C4 Rust index + token-goat | B | 2 | 5.5 | 63,078 | 314,357 | 14,724 | 1,316 | 393,476 | $0.125 | $0.271 | 99% |
 | C5 Rust index + graphify + semble | B | 2 | 6.0 | 63,072 | 349,728 | 13,704 | 1,226 | 427,730 | $0.129 | $0.274 | 99% |
 | C15 lx ask + token-goat read | A | 1 | 2.0 | 63,052 | 63,050 | 3,307 | 5,377 | 134,786 | $0.149 | $0.452 | 100% |
@@ -367,6 +400,23 @@ Orchestrated, with the cheapest model as reviewer, allowed the method's own tool
 | H5 | token-goat commands, hooks on | The same prompt as A5 with the hooks installed: token-goat's own commands, and its hooks as well. |
 | SB | Shipped lx ask through Bash, hooks off | The one-call command sent through the client's Bash tool instead of PowerShell, with token-goat's hooks uninstalled. The control for HB. |
 | HB | Shipped lx ask through Bash, hooks on | The same through Bash with the hooks installed. Bash is a tool the hooks do match. |
+| RG | pgr, code graph only | The graph engine alone: definitions, callers and what a change reaches, with no search and no memory. |
+| RS | pgr, search only | The hybrid search alone, by meaning and by words together, with no graph and no memory. |
+| RM | pgr, memory only | The memory alone, on a copy of the repository whose notes were written beforehand by a session that answered the same three questions, with no graph and no search. |
+| RGS | pgr, graph and search in one call | The graph and the hybrid search behind one one-call command, with no memory. |
+| RGM | pgr, graph and memory | The graph commands and the memory, on a copy of the repository whose notes were written beforehand by a session that answered the same three questions, with no search. |
+| RSM | pgr, search and memory | The hybrid search and the memory, on a copy of the repository whose notes were written beforehand by a session that answered the same three questions, with no graph. |
+| RGSM | pgr, all three, memory from the same questions | The one-call command with the graph, the search and the memory, on a copy of the repository whose memory was filled beforehand by a session that answered the same three questions. |
+| RGSO | pgr, all three, memory from an exploring session | The one-call command with the graph, the search and the memory, on a copy of the repository whose memory was filled beforehand by a session that explored the repository without seeing any question. |
+| A0h | No index, held-out questions | The same method as A0 on three questions nobody tuned for. |
+| S3h | Shipped: lx ask, embeddings on, held-out questions | The same method as S3 on three questions nobody tuned for. |
+| RGh | pgr, code graph only, held-out questions | The same method as RG on three questions nobody tuned for. |
+| RSh | pgr, search only, held-out questions | The same method as RS on three questions nobody tuned for. |
+| RGSh | pgr, graph and search in one call, held-out questions | The same method as RGS on three questions nobody tuned for. |
+| RGSOh | pgr, all three, memory from an exploring session, held-out questions | The same method as RGSO on three questions nobody tuned for. |
+| A0r | No index, run again with round five | The same prompt and commands as A0, measured on the day of the fifth round. |
+| S1r | Shipped: lx ask, default index, run again with round five | The same prompt and commands as S1, measured on the day of the fifth round. |
+| S3r | Shipped: lx ask, embeddings on, run again with round five | The same prompt and commands as S3, measured on the day of the fifth round. |
 
 ## How it was measured
 
@@ -811,3 +861,93 @@ Means per run. Hook runs, calls rewritten, notes added and calls refused are per
 - The install also adds a token-goat skill to the client. Its name, without a description, was in the skill list of every agent measured with the hooks on: a few tokens of start-up context their twins did not have.
 - The two sides of a pair share one prompt, word for word, but not one start-up context. Every round's agents inherit what the session had loaded when the round ran: the version of the global rules file, the request the session relays to its agents, the skill list. The runs with the hooks were all made in one round, the runs without them before and after it, and the start-up context differs by a few hundred tokens between rounds. The start-up columns of the table show it pair by pair. The Bash pair has one more difference from the PowerShell methods, the same on both of its sides: on this machine two unrelated hooks of the owner's own setup are launched before every Bash call, which adds to a Bash method's seconds and not to its tokens.
 - How this was measured: The runs without the hooks come from the earlier rounds, made before the hooks were ever installed, and from a round made after they were uninstalled again. The runs with the hooks were made in between, in one round. The client applies hook changes at once, so no restart was needed. A hook run that let a call through is a row in the agent's transcript, and its answer says whether it rewrote the result. A note the hook added beside a result is a row of its own. A call the hook refused leaves no hook row: the agent gets an error in place of the result, starting `PreToolUse:<Tool> hook error`, and each of those is counted as one hook run and one refused call.
+
+## Round five
+
+The Rust engine in every combination of its parts, three earlier methods run again on the same day, and a held-out set B of three more questions of the same shapes. One agent answering all three questions; light is Tier C and mid is Tier B. Hooks were on for every run of the round.
+
+### Original questions, set A
+
+| Arm | Method | Kind | Class | Runs | Turns | Tokens | Fully correct | Share correct |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| RG | pgr, code graph only | Rust engine | light (C) | 3 | 4.0 | 273,398 | 3 of 3 | 100% |
+| RG | pgr, code graph only | Rust engine | mid (B) | 3 | 2.0 | 134,738 | 3 of 3 | 100% |
+| RS | pgr, search only | Rust engine | light (C) | 3 | 3.7 | 251,681 | 0 of 3 | 74% |
+| RS | pgr, search only | Rust engine | mid (B) | 3 | 4.0 | 275,303 | 2 of 3 | 99% |
+| RM | pgr, memory only | Rust engine | light (C) | 3 | 2.0 | 134,819 | 3 of 3 | 100% |
+| RM | pgr, memory only | Rust engine | mid (B) | 3 | 2.0 | 134,120 | 3 of 3 | 100% |
+| RGS | pgr, graph and search in one call | Rust engine | light (C) | 3 | 2.0 | 134,013 | 3 of 3 | 100% |
+| RGS | pgr, graph and search in one call | Rust engine | mid (B) | 3 | 2.0 | 133,367 | 3 of 3 | 100% |
+| RGM | pgr, graph and memory | Rust engine | light (C) | 3 | 2.3 | 157,105 | 3 of 3 | 100% |
+| RGM | pgr, graph and memory | Rust engine | mid (B) | 3 | 2.0 | 133,768 | 3 of 3 | 100% |
+| RSM | pgr, search and memory | Rust engine | light (C) | 3 | 4.3 | 301,711 | 0 of 3 | 85% |
+| RSM | pgr, search and memory | Rust engine | mid (B) | 3 | 4.0 | 275,364 | 1 of 3 | 98% |
+| RGSM | pgr, all three, memory from the same questions | Rust engine | light (C) | 3 | 2.0 | 134,960 | 3 of 3 | 100% |
+| RGSM | pgr, all three, memory from the same questions | Rust engine | mid (B) | 3 | 2.0 | 133,886 | 3 of 3 | 100% |
+| RGSO | pgr, all three, memory from an exploring session | Rust engine | light (C) | 3 | 2.0 | 134,902 | 3 of 3 | 100% |
+| RGSO | pgr, all three, memory from an exploring session | Rust engine | mid (B) | 3 | 3.0 | 203,344 | 3 of 3 | 100% |
+| A0r | No index, run again with round five | Same-day control | light (C) | 3 | 4.0 | 293,653 | 2 of 3 | 99% |
+| A0r | No index, run again with round five | Same-day control | mid (B) | 3 | 3.7 | 261,183 | 0 of 3 | 97% |
+| S1r | Shipped: lx ask, default index, run again with round five | Same-day control | light (C) | 3 | 2.0 | 133,751 | 3 of 3 | 100% |
+| S3r | Shipped: lx ask, embeddings on, run again with round five | Same-day control | light (C) | 3 | 2.0 | 133,923 | 3 of 3 | 100% |
+| S3r | Shipped: lx ask, embeddings on, run again with round five | Same-day control | mid (B) | 3 | 2.0 | 133,129 | 3 of 3 | 100% |
+
+### Held-out questions, set B
+
+| Arm | Method | Kind | Class | Runs | Turns | Tokens | Fully correct | Share correct |
+|---|---|---|---|---:|---:|---:|---:|---:|
+| A0h | No index, held-out questions | Held-out run | light (C) | 3 | 4.7 | 360,770 | 3 of 3 | 100% |
+| A0h | No index, held-out questions | Held-out run | mid (B) | 2 | 3.5 | 250,430 | 2 of 2 | 100% |
+| S3h | Shipped: lx ask, embeddings on, held-out questions | Held-out run | light (C) | 3 | 2.0 | 134,120 | 2 of 3 | 97% |
+| S3h | Shipped: lx ask, embeddings on, held-out questions | Held-out run | mid (B) | 2 | 4.0 | 272,030 | 2 of 2 | 100% |
+| RGh | pgr, code graph only, held-out questions | Held-out run | light (C) | 3 | 3.7 | 250,699 | 3 of 3 | 100% |
+| RGh | pgr, code graph only, held-out questions | Held-out run | mid (B) | 3 | 2.0 | 133,895 | 3 of 3 | 100% |
+| RSh | pgr, search only, held-out questions | Held-out run | light (C) | 3 | 4.3 | 312,927 | 1 of 3 | 72% |
+| RSh | pgr, search only, held-out questions | Held-out run | mid (B) | 3 | 4.7 | 327,546 | 3 of 3 | 100% |
+| RGSh | pgr, graph and search in one call, held-out questions | Held-out run | light (C) | 3 | 2.7 | 181,055 | 3 of 3 | 100% |
+| RGSh | pgr, graph and search in one call, held-out questions | Held-out run | mid (B) | 3 | 2.7 | 180,119 | 3 of 3 | 100% |
+| RGSOh | pgr, all three, memory from an exploring session, held-out questions | Held-out run | light (C) | 3 | 3.0 | 205,190 | 2 of 3 | 97% |
+| RGSOh | pgr, all three, memory from an exploring session, held-out questions | Held-out run | mid (B) | 3 | 2.0 | 134,415 | 3 of 3 | 100% |
+
+### Memory, cell by cell
+
+Each row sets a configuration with memory beside the same configuration without it, on the same question set and class. RGSM had its memory filled by a session that answered the same questions (a best case); RGSO and RGSOh by a session that explored the repository without seeing any question.
+
+| With memory | Without | Set | Class | Tokens with | Tokens without | Change | Turns with | Turns without | Fully correct with | Fully correct without |
+|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|
+| RGSM | RGS | A | light (C) | 134,960 | 134,013 | +0.7% | 2.0 | 2.0 | 3 of 3 | 3 of 3 |
+| RGSM | RGS | A | mid (B) | 133,886 | 133,367 | +0.4% | 2.0 | 2.0 | 3 of 3 | 3 of 3 |
+| RGSO | RGS | A | light (C) | 134,902 | 134,013 | +0.7% | 2.0 | 2.0 | 3 of 3 | 3 of 3 |
+| RGSO | RGS | A | mid (B) | 203,344 | 133,367 | +52.5% | 3.0 | 2.0 | 3 of 3 | 3 of 3 |
+| RGSOh | RGSh | B | light (C) | 205,190 | 181,055 | +13.3% | 3.0 | 2.7 | 2 of 3 | 3 of 3 |
+| RGSOh | RGSh | B | mid (B) | 134,415 | 180,119 | -25.4% | 2.0 | 2.7 | 3 of 3 | 3 of 3 |
+
+Memory from the exploring session (RGSO, RGSOh) used fewer tokens than the same configuration without memory in 1 of 4 cells and more in 3. It was fully correct in 11 of 12 runs, against 12 of 12 without memory.
+
+### Engine speed
+
+Measured 2026-10-13 on 86 Python files, 68,316 lines.
+
+| Measure | pgr | first generation |
+|---|---:|---:|
+| Build, from nothing | 0.52 s | 130 s |
+| Build, without embeddings | not measured | 12 s |
+| One call that answers all three questions | 40.2 ms | 1937 ms |
+| About, one symbol | 25.8 ms | 319 ms |
+| Find, one concept | 37.9 ms | not measured |
+| Status | 13.8 ms | not measured |
+| Index on disk | 8.07 MB | 14.53 MB |
+| Binary | 7.8 MB | not measured |
+
+Whole-process wall time, median of 20 runs, release build, index already current, on the same machine and the same day. The query is one call that answers all three lookup questions of the original set. Build time is a first build from nothing with embeddings. The first generation's build time was measured in an earlier session (about 130 s with embeddings, 12 s without). Its index size counts its graph file and its symbol index for the fixture (7.66 MB and 6.87 MB); its search cache is shared across repositories and is not counted.
+
+### Measurement notes
+
+- Hooks were on for every run of the round. Hook calls were recorded in 35 of 97 runs (348 calls).
+- The public control is the same-day one: A0r, S1r and S3r are the repeats of A0, S1 and S3 and are the ones the public leaderboard shows. The earlier A0, S1 and S3 runs stay in this report only.
+- Start-up context grew between the sessions: the earlier A0, S1 and S3 single-agent runs averaged 62,937 tokens (23 agents) and the repeats A0r, S1r and S3r 64,911 (15 agents), on the light and mid classes.
+- The control's file reads pass through token-goat's read compression on the test machine, which hid lines the control needed in some runs. The earlier session (A0) ran without it.
+- Control, fully correct runs: A0r light 2 of 3, mid 0 of 3; A0h light 3 of 3, mid 2 of 2; earlier A0 light 4 of 5, mid 3 of 3, top 3 of 3.
+- Memory was filled before the runs by two earlier sessions: RM, RGM, RSM and RGSM from one that answered the same three questions, RGSO and RGSOh from one that explored the repository without seeing any question.
+- Cells with fewer than three complete runs in the round: 2 of 33.
+

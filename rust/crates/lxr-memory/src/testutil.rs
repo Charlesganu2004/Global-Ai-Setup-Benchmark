@@ -43,11 +43,17 @@ impl Drop for TempDir {
     }
 }
 
-/// The embedder, or `None` (the test then skips itself) when no model is installed.
+/// The embedder. Without a model the tests that need one cannot run, and a green run that
+/// skipped them would say nothing about them, so a missing model fails the test. Setting
+/// `LXR_SKIP_MODEL_TESTS` skips those tests on purpose: this then returns `None`.
 pub(crate) fn embedder() -> Option<&'static Embedder> {
     static EMBEDDER: OnceLock<Option<Embedder>> = OnceLock::new();
     let found = EMBEDDER.get_or_init(|| Embedder::locate().and_then(|dir| Embedder::open(&dir).ok())).as_ref();
     if found.is_none() {
+        assert!(
+            std::env::var_os("LXR_SKIP_MODEL_TESTS").is_some(),
+            "no embedding model is installed, so the tests that need one cannot run; install it, or set LXR_SKIP_MODEL_TESTS=1 to skip them"
+        );
         eprintln!("skipped: no embedding model is installed");
     }
     found

@@ -1,11 +1,12 @@
-/* The Overview page: the two token streams. One canvas draws two lanes to the same scale: lane length is
-   tokens per task, one particle stands for 1k tokens, the stream speed follows turns per task. Every number
-   comes from window.SHOWCASE. The lanes, their labels and the difference are also written in the page, so
-   without a script, without canvas or with reduced motion the page shows the same measurements as a still. */
+/* The Overview page where the particle stage cannot run (no WebGL2, or a screen too short for it): the two
+   token streams on a 2D canvas. One canvas draws two lanes to the same scale: lane length is tokens per task,
+   one particle stands for 1k tokens, the stream speed follows turns per task. Every number comes from
+   window.SHOWCASE. The lanes, their labels and the difference are also written in the page, so without a
+   script, without canvas or with reduced motion the page shows the same measurements as a still. */
 (function () {
   'use strict';
   var App = window.App, data = window.SHOWCASE, fig = document.getElementById('stream');
-  if (!App || !data || !fig) return;
+  if (!App || !data || !fig || App.gl) return;
   var found = App.headline(data);
   if (!found || !found.c) return;
   var host = fig.querySelector('.lanes'), els = [fig.querySelector('.lane-ref'), fig.querySelector('.lane-best')];

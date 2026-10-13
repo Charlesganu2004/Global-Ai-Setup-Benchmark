@@ -5,9 +5,10 @@
 //! author's spacing. One walk collects definitions, calls and imports; a stack of scopes tells
 //! every new symbol its parent and dotted name, and every call the function it sits in.
 
-use crate::common::{fold, LineIndex, Parts};
+use crate::common::{fold, in_source_order, without_comments, LineIndex, Parts};
 use crate::ecma::on_deep_stack;
-use lxr_core::{Call, Import, SymKind, Symbol};
+use crate::lexical;
+use lxr_core::{Call, Import, Lang, SymKind, Symbol};
 use proc_macro2::{Span, TokenStream, TokenTree};
 use syn::parse::Parser as _;
 use syn::punctuated::Punctuated;
@@ -151,6 +152,7 @@ fn read(text: &str) -> Option<Parts> {
     let parts = syn::parse_file(body).ok().map(|file| {
         let mut walker = Walker::new(body);
         walker.visit_file(&file);
+        in_source_order(&mut walker.parts.calls, &walker.call_at);
         walker.parts
     });
     // The source map of proc-macro2 lives in the thread and would otherwise grow with every file.
@@ -185,7 +187,11 @@ struct Def<'x> {
 struct Walker<'t> {
     text: &'t str,
     lines: LineIndex,
+    /// Byte ranges of the comments, to leave out of a signature.
+    comments: Vec<(usize, usize)>,
     parts: Parts,
+    /// The byte offset of the called name of each entry of `parts.calls`.
+    call_at: Vec<usize>,
     scopes: Vec<Scope>,
     /// The method call that the walk reaches next along a chain, with the offset where the whole
     /// chain starts. It spares a long chain of calls from looking for its start once per call.
@@ -194,7 +200,16 @@ struct Walker<'t> {
 
 impl<'t> Walker<'t> {
     fn new(text: &'t str) -> Walker<'t> {
-        Walker { text, lines: LineIndex::new(text), parts: Parts::default(), scopes: Vec::new(), chain: None }
+        let comments = lexical::mask(text, Lang::Rust).comments;
+        Walker {
+            text,
+            lines: LineIndex::new(text),
+            comments,
+            parts: Parts::default(),
+            call_at: Vec::new(),
+            scopes: Vec::new(),
+            chain: None,
+        }
     }
 
     fn slice(&self, from: usize, to: usize) -> &'t str {
@@ -225,7 +240,7 @@ impl<'t> Walker<'t> {
             Some(scope) => (scope.parent, format!("{}.{}", scope.qual, def.name)),
             None => (None, def.name.clone()),
         };
-        let sig = capped(self.slice(def.start, def.cut), SIG_BYTES).trim().to_string();
+        let sig = without_comments(self.text, def.start, def.cut, &self.comments, SIG_BYTES).trim().to_string();
         let symbol = Symbol {
             name: def.name,
             qual,
@@ -258,6 +273,7 @@ impl<'t> Walker<'t> {
     fn call(&mut self, name: String, recv: String, at: usize) {
         let call = Call { caller: self.caller(), name, recv, line: self.line(at) };
         self.parts.calls.push(call);
+        self.call_at.push(at);
     }
 
     /// The offset of the first token of an expression, found without turning the whole
@@ -505,7 +521,7 @@ impl<'ast> Visit<'ast> for Walker<'_> {
     }
 
     fn visit_item_const(&mut self, i: &'ast ItemConst) {
-        if i.ident != "_" {
+        let sym = (i.ident != "_").then(|| {
             self.define(Def {
                 name: plain(&i.ident),
                 kind: SymKind::Const,
@@ -514,13 +530,13 @@ impl<'ast> Visit<'ast> for Walker<'_> {
                 cut: i.eq_token.span().byte_range().start,
                 attrs: &i.attrs,
                 bases: Vec::new(),
-            });
-        }
-        syn::visit::visit_item_const(self, i);
+            })
+        });
+        self.within(sym, |walker| syn::visit::visit_item_const(walker, i));
     }
 
     fn visit_item_static(&mut self, i: &'ast ItemStatic) {
-        self.define(Def {
+        let sym = self.define(Def {
             name: plain(&i.ident),
             kind: SymKind::Const,
             start: self.first(&[vis(&i.vis), Some(i.static_token.span())]),
@@ -529,7 +545,7 @@ impl<'ast> Visit<'ast> for Walker<'_> {
             attrs: &i.attrs,
             bases: Vec::new(),
         });
-        syn::visit::visit_item_static(self, i);
+        self.within(Some(sym), |walker| syn::visit::visit_item_static(walker, i));
     }
 
     fn visit_item_type(&mut self, i: &'ast ItemType) {
@@ -546,7 +562,7 @@ impl<'ast> Visit<'ast> for Walker<'_> {
     }
 
     fn visit_impl_item_const(&mut self, i: &'ast ImplItemConst) {
-        if i.ident != "_" {
+        let sym = (i.ident != "_").then(|| {
             self.define(Def {
                 name: plain(&i.ident),
                 kind: SymKind::Const,
@@ -555,9 +571,9 @@ impl<'ast> Visit<'ast> for Walker<'_> {
                 cut: i.eq_token.span().byte_range().start,
                 attrs: &i.attrs,
                 bases: Vec::new(),
-            });
-        }
-        syn::visit::visit_impl_item_const(self, i);
+            })
+        });
+        self.within(sym, |walker| syn::visit::visit_impl_item_const(walker, i));
     }
 
     fn visit_impl_item_type(&mut self, i: &'ast ImplItemType) {
@@ -576,7 +592,7 @@ impl<'ast> Visit<'ast> for Walker<'_> {
     fn visit_trait_item_const(&mut self, i: &'ast TraitItemConst) {
         let semi = i.semi_token.span().byte_range();
         let cut = i.default.as_ref().map_or(semi.start, |(eq, _)| eq.span().byte_range().start);
-        if i.ident != "_" {
+        let sym = (i.ident != "_").then(|| {
             self.define(Def {
                 name: plain(&i.ident),
                 kind: SymKind::Const,
@@ -585,9 +601,9 @@ impl<'ast> Visit<'ast> for Walker<'_> {
                 cut,
                 attrs: &i.attrs,
                 bases: Vec::new(),
-            });
-        }
-        syn::visit::visit_trait_item_const(self, i);
+            })
+        });
+        self.within(sym, |walker| syn::visit::visit_trait_item_const(walker, i));
     }
 
     fn visit_trait_item_type(&mut self, i: &'ast TraitItemType) {
@@ -661,6 +677,19 @@ impl<'ast> Visit<'ast> for Walker<'_> {
 }
 
 impl Walker<'_> {
+    /// Runs `walk` with the symbol `sym`, when there is one, as the scope of what it finds. A
+    /// constant is not a function, so the calls inside it stay with the function around it, but
+    /// an item declared in its initialiser is named and parented under the constant.
+    fn within(&mut self, sym: Option<u32>, walk: impl FnOnce(&mut Self)) {
+        if let Some(sym) = sym {
+            self.open(sym);
+        }
+        walk(self);
+        if sym.is_some() {
+            self.scopes.pop();
+        }
+    }
+
     /// The offset of the first of these spans that exists.
     fn first(&self, spans: &[Option<Span>]) -> usize {
         spans.iter().flatten().next().map_or(0, |span| span.byte_range().start)
@@ -961,10 +990,10 @@ mod tests {
             calls(&parts),
             [
                 "outer.inner.deep||helper|3",
-                "run|items.iter().map(|b| local(*b) as usize)|sum|12",
-                "run|items.iter()|map|12",
                 "run|items|iter|12",
+                "run|items.iter()|map|12",
                 "run||local|12",
+                "run|items.iter().map(|b| local(*b) as usize)|sum|12",
                 "run|Vec|new|13",
             ]
         );
@@ -991,8 +1020,8 @@ mod tests {
             [
                 "main|String|from|2",
                 "main||compute|3",
-                "main|parse(&name)|len|4",
                 "main||parse|4",
+                "main|parse(&name)|len|4",
                 "main||make|5",
                 "main||make|5",
                 "main||lookup|6",

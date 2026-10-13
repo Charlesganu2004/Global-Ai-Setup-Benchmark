@@ -8,10 +8,10 @@
 <title>PeterGanuRusty (PGR): a local engine that lets AI coding agents find code in one step</title>
 <meta name="description" content="PeterGanuRusty (PGR) is a local engine that lets AI coding agents find code in one step. Measured results: tokens, turns and correct answers on one Python repository.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
-<script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=86cdedba">
+<script>document.documentElement.className += " js" + (window.WebGL2RenderingContext ? " gl-on" : "");</script>
+<link rel="stylesheet" href="assets/app.css?v=da33b975">
 </head>
-<body>
+<body class="home">
 <a class="skip" href="#main">Skip to content</a>
 <div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></div>
 <!--slot:sidebar--><nav class="sidebar" aria-label="Pages">
@@ -21,9 +21,12 @@
       <ul class="side-pages">
         <li><a href="index.html" aria-current="page">Overview</a>
         <ul class="side-sections" aria-label="On this page">
+          <li><a href="#problem">Every turn re-reads everything</a></li>
+          <li><a href="#change">One question, one answer</a></li>
           <li><a href="#result">Headline result</a></li>
           <li><a href="#best">Best configuration</a></li>
           <li><a href="#benefits">What it does for an agent</a></li>
+          <li><a href="#films">Films</a></li>
           <li><a href="#next">Next</a></li>
         </ul></li>
         <li><a href="benchmarks.html">Benchmarks</a></li>
@@ -33,71 +36,184 @@
     </div>
   </nav><!--/slot:sidebar-->
 <main id="main" class="page">
-  <header class="large-title">
-    <p class="brandline"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>PeterGanuRusty</p>
-    <h1 id="title" aria-label="A local engine that lets AI coding agents find code in one step"><span class="w" aria-hidden="true" style="--i:0"><span>A</span></span> <span class="w" aria-hidden="true" style="--i:1"><span>local</span></span> <span class="w" aria-hidden="true" style="--i:2"><span>engine</span></span> <span class="w" aria-hidden="true" style="--i:3"><span>that</span></span> <span class="w" aria-hidden="true" style="--i:4"><span>lets</span></span> <span class="w" aria-hidden="true" style="--i:5"><span>AI</span></span> <span class="w" aria-hidden="true" style="--i:6"><span>coding</span></span> <span class="w" aria-hidden="true" style="--i:7"><span>agents</span></span> <span class="w" aria-hidden="true" style="--i:8"><span>find</span></span> <span class="w" aria-hidden="true" style="--i:9"><span>code</span></span> <span class="w" aria-hidden="true" style="--i:10"><span>in</span></span> <span class="w" aria-hidden="true" style="--i:11"><span>one</span></span> <span class="w" aria-hidden="true" style="--i:12"><span>step</span></span></h1>
-    <p class="lede"><!--slot:lede-->PeterGanuRusty (PGR) answers where a function is defined and what calls it in one lookup. We ran 787 agents on one Python repository and measured what each way of finding code costs in tokens and turns, and how often the answers were right.<!--/slot:lede--></p>
+  <header class="hero pin" id="hero">
+    <div class="pin-stage hero-stage">
+      <div class="hero-copy large-title">
+        <p class="brandline"><svg class="logo draw" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path pathLength="1" d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>PeterGanuRusty</p>
+        <h1 id="title" aria-label="A local engine that lets AI coding agents find code in one step"><span class="w" aria-hidden="true" style="--i:0"><span>A</span></span> <span class="w" aria-hidden="true" style="--i:1"><span>local</span></span> <span class="w" aria-hidden="true" style="--i:2"><span>engine</span></span> <span class="w" aria-hidden="true" style="--i:3"><span>that</span></span> <span class="w" aria-hidden="true" style="--i:4"><span>lets</span></span> <span class="w" aria-hidden="true" style="--i:5"><span>AI</span></span> <span class="w" aria-hidden="true" style="--i:6"><span>coding</span></span> <span class="w" aria-hidden="true" style="--i:7"><span>agents</span></span> <span class="w" aria-hidden="true" style="--i:8"><span>find</span></span> <span class="w" aria-hidden="true" style="--i:9"><span>code</span></span> <span class="w" aria-hidden="true" style="--i:10"><span>in</span></span> <span class="w" aria-hidden="true" style="--i:11"><span>one</span></span> <span class="w" aria-hidden="true" style="--i:12"><span>step</span></span></h1>
+        <p class="lede"><!--slot:lede-->PeterGanuRusty (PGR) answers where a function is defined and what calls it in one lookup. We ran 884 agents on one Python repository and measured what each way of finding code costs in tokens and turns, and how often the answers were right.<!--/slot:lede--></p>
+      </div>
+      <!--slot:stage--><div class="hero-read">
+    <p class="sr-only">No index: 294k tokens and 4.0 turns. Best configuration, PGR: graph and search: 134k tokens and 2.0 turns. That is 160k fewer tokens, 54%.</p>
+    <div class="hero-vis" aria-hidden="true">
+      <p class="body-tag tag-ref"><span class="bt-name">No index</span><span class="bt-val"><b>294k</b> tokens, <b>4.0</b> turns</span></p>
+      <p class="body-tag tag-best"><span class="bt-name">PGR: graph and search</span><span class="bt-val"><b>134k</b> tokens, <b>2.0</b> turns</span></p>
+      <div class="hero-count">
+        <p class="hero-count-label">Tokens per task</p>
+        <p class="hero-num" data-from="293653" data-to="134013">294k</p>
+        <p class="hero-state"><span class="st-ref">No index</span><span class="st-best">PGR: graph and search</span></p>
+        <p class="hero-delta">160k fewer tokens, 54%</p>
+      </div>
+      <p class="hero-key">One particle is <b data-per>10</b> tokens. The thickness of a stream is its tokens per task.</p>
+      <svg class="logo hero-mark" viewBox="0 0 24 24" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>
+      <p class="hero-word">PeterGanuRusty</p>
+    </div>
+  </div><!--/slot:stage-->
+    </div>
   </header>
 
   <!--slot:hero--><figure class="card stream" id="stream" aria-labelledby="stream-title">
-  <p class="stream-title" id="stream-title">Tokens per task, light model class, one agent answering three lookups</p>
+  <p class="stream-title" id="stream-title">Tokens per task, light model class, original questions, one agent answering three lookups</p>
   <div class="lanes">
-    <div class="lane lane-ref" style="--w:100%"><p class="lane-label"><span class="lane-name">No index</span><span class="lane-val"><b data-tok>365k</b> tokens, <b data-turns>5.0</b> turns</span></p><div class="lane-track"></div></div>
-    <div class="lane lane-best" style="--w:35.65%"><p class="lane-label"><span class="lane-name">Our engine, first generation, with embeddings</span><span class="lane-val"><b data-tok>130k</b> tokens, <b data-turns>2.0</b> turns</span></p><div class="lane-track"></div><div class="gap"><span>235k fewer tokens, 64%</span></div></div>
+    <div class="lane lane-ref" style="--w:100%"><p class="lane-label"><span class="lane-name">No index</span><span class="lane-val"><b data-tok>294k</b> tokens, <b data-turns>4.0</b> turns</span></p><div class="lane-track"></div></div>
+    <div class="lane lane-best" style="--w:45.64%"><p class="lane-label"><span class="lane-name">PGR: graph and search</span><span class="lane-val"><b data-tok>134k</b> tokens, <b data-turns>2.0</b> turns</span></p><div class="lane-track"></div><div class="gap"><span>160k fewer tokens, 54%</span></div></div>
   </div>
-  <div class="scale" aria-hidden="true"><span style="--t:0.00" data-v="0">0</span><span style="--t:27.43" data-v="100000">100k</span><span style="--t:54.87" data-v="200000">200k</span><span style="--t:82.30" data-v="300000">300k</span><span style="--t:100.00" data-v="364508">365k</span></div>
+  <div class="scale" aria-hidden="true"><span style="--t:0.00" data-v="0">0</span><span style="--t:34.05" data-v="100000">100k</span><span style="--t:68.11" data-v="200000">200k</span><span style="--t:100.00" data-v="293653">294k</span></div>
   <p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task.</p>
-  <p class="sr-only">No index: 365k tokens and 5.0 turns. Best configuration: 130k tokens and 2.0 turns. That is 235k fewer tokens, 64%.</p>
+  <p class="sr-only">No index: 294k tokens and 4.0 turns. Best configuration: 134k tokens and 2.0 turns. That is 160k fewer tokens, 54%.</p>
 </figure><!--/slot:hero-->
 
-  <section class="section" aria-labelledby="result">
-    <h2 id="result" class="section-title">Headline result</h2>
-    <!--slot:figures--><p class="group-title">Best configuration against no index, light model class, one agent answering three lookups</p>
-    <dl class="figures">
-      <div class="figure card spot"><dt class="figure-label">Tokens per task</dt><dd class="figure-value" data-count="tokens" data-from="364508" data-to="129954">130k</dd><dd class="figure-note">No index: 365k, 64% fewer</dd></div>
-      <div class="figure card spot"><dt class="figure-label">Turns per task</dt><dd class="figure-value" data-count="turns" data-from="5.0000" data-to="2.0000">2.0</dd><dd class="figure-note">No index: 5.0</dd></div>
-      <div class="figure card spot"><dt class="figure-label">Fully correct runs</dt><dd class="figure-value" data-count="of" data-from-text="4 of 5">3 of 3</dd><dd class="figure-note">No index: 4 of 5</dd></div>
-      <div class="figure card spot"><dt class="figure-label">Answers correct</dt><dd class="figure-value" data-count="share" data-from="0.9833" data-to="1.0000">100%</dd><dd class="figure-note">No index: 98%</dd></div>
-    </dl><!--/slot:figures-->
-  </section>
+  <!--slot:problem--><section class="chapter ch-problem pin" aria-labelledby="problem">
+  <div class="pin-stage">
+    <div class="ch-copy">
+      <h2 id="problem" class="kin" aria-label="Every turn re-reads everything"><span class="kl" aria-hidden="true"><span>Every turn</span></span> <span class="kl" aria-hidden="true"><span>re-reads</span></span> <span class="kl" aria-hidden="true"><span>everything</span></span></h2>
+      <p class="ch-lede">An agent works in turns, and on each turn it reads its whole conversation again. Every extra turn pays for the same context one more time.</p>
+    </div>
+    <figure class="stacks" aria-labelledby="stacks-cap">
+      <div class="stack ref" style="--n:4"><p class="stack-total"><b data-od="tokens" data-to="293653">294k</b> tokens</p><div class="stack-col"><i class="slab" style="--h:25.000%;--i:0"><span>1</span></i><i class="slab" style="--h:25.000%;--i:1"><span>2</span></i><i class="slab" style="--h:25.000%;--i:2"><span>3</span></i><i class="slab" style="--h:25.000%;--i:3"><span>4</span></i></div><p class="stack-name">No index<span>4.0 turns, about 73k a turn</span></p></div>
+      <div class="stack best" style="--n:2"><p class="stack-total"><b data-od="tokens" data-to="134013">134k</b> tokens</p><div class="stack-col"><i class="slab" style="--h:22.818%;--i:0"><span>1</span></i><i class="slab" style="--h:22.818%;--i:1"><span>2</span></i></div><p class="stack-name">PGR: graph and search<span>2.0 turns, about 67k a turn</span></p></div>
+      <figcaption id="stacks-cap">One block is one turn, at the average tokens a turn. Both stacks are drawn to one scale. Light model class, original questions, one agent answering three lookups.</figcaption>
+    </figure>
+  </div>
+</section><!--/slot:problem-->
 
-  <!--slot:video--><!--/slot:video-->
+  <!--slot:change--><section class="chapter ch-change" aria-labelledby="change">
+  <h2 id="change" class="kin wide" aria-label="One question, one answer"><span class="kl" aria-hidden="true"><span>One question,</span></span> <span class="kl" aria-hidden="true"><span>one answer</span></span></h2>
+  <div class="change-grid">
+    <figure class="hops" aria-labelledby="hops-cap">
+      <div class="hop ref"><svg viewBox="0 0 200 60" style="--c:4" aria-hidden="true" focusable="false"><polyline points="12.0,14 70.7,46 129.3,14 188.0,46" pathLength="1"/><circle cx="12.0" cy="14" r="4" style="--i:0"/><circle cx="70.7" cy="46" r="4" style="--i:1"/><circle cx="129.3" cy="14" r="4" style="--i:2"/><circle cx="188.0" cy="46" r="4" style="--i:3"/></svg><p class="hop-val"><b>4.0</b> turns<span>No index</span></p></div>
+      <div class="hop best"><svg viewBox="0 0 200 60" style="--c:2" aria-hidden="true" focusable="false"><polyline points="12.0,30 188.0,30" pathLength="1"/><circle cx="12.0" cy="30" r="4" style="--i:0"/><circle cx="188.0" cy="30" r="4" style="--i:1"/></svg><p class="hop-val"><b>2.0</b> turns<span>PGR: graph and search</span></p></div>
+      <figcaption id="hops-cap">One node is one turn of a task, from the question to the answer.</figcaption>
+    </figure>
+    <p class="ch-lede">Two turns is the floor for a lookup: one to ask and one to answer. The best configuration took 2.0 turns per task on the light class and the original questions. No index took 4.0.</p>
+  </div>
+</section><!--/slot:change-->
+
+  <section class="section proof" aria-labelledby="result">
+    <h2 id="result" class="section-title">Headline result</h2>
+    <!--slot:figures--><p class="group-title">Best configuration against no index, light model class, original questions, one agent answering three lookups</p>
+    <dl class="figures card">
+      <div class="figure spot lead"><dt class="figure-label">Tokens per task</dt><dd class="figure-value" data-count="tokens" data-from="293653" data-to="134013">134k</dd><dd class="figure-note">No index: 294k, 54% fewer</dd><dd class="meter bars" aria-hidden="true"><span class="m ref"><i style="--v:1.0000"></i></span><span class="m best"><i style="--v:0.4564"></i></span></dd></div>
+      <div class="figure spot"><dt class="figure-label">Turns per task</dt><dd class="figure-value" data-count="turns" data-from="4.0000" data-to="2.0000">2.0</dd><dd class="figure-note">No index: 4.0</dd><dd class="meter pips" aria-hidden="true"><span class="m ref"><i></i><i></i><i></i><i></i></span><span class="m best"><i></i><i></i></span></dd></div>
+      <div class="figure spot"><dt class="figure-label">Fully correct runs</dt><dd class="figure-value" data-count="of" data-from-text="2 of 3">3 of 3</dd><dd class="figure-note">No index: 2 of 3</dd><dd class="meter pips" aria-hidden="true"><span class="m ref"><i></i><i></i><i class="off"></i></span><span class="m best"><i></i><i></i><i></i></span></dd></div>
+      <div class="figure spot"><dt class="figure-label">Answers correct</dt><dd class="figure-value" data-count="share" data-from="0.9915" data-to="1.0000">100%</dd><dd class="figure-note">No index: 99%</dd><dd class="meter rings" aria-hidden="true"><span class="m ref"><svg viewBox="0 0 26 26" focusable="false"><circle class="t" cx="13" cy="13" r="11"/><circle class="p" cx="13" cy="13" r="11" pathLength="1" style="--v:0.9915"/></svg></span><span class="m best"><svg viewBox="0 0 26 26" focusable="false"><circle class="t" cx="13" cy="13" r="11"/><circle class="p" cx="13" cy="13" r="11" pathLength="1" style="--v:1.0000"/></svg></span></dd></div>
+    </dl>
+    <p class="group-title spaced">Fully correct runs on questions the builders never saw</p>
+    <div class="card prose"><p class="proof-text">Across both question sets and both model classes, one agent using &quot;PGR: graph and search&quot; was fully correct in 12 of 12 runs, against 10 of 11 with &quot;Our engine, first generation, with embeddings&quot; and 7 of 11 with no index.</p></div>
+    <p class="footnote">Counted over four cells: the light and mid classes, on the original and the held-out questions.</p><!--/slot:figures-->
+  </section>
 
   <section class="section" aria-labelledby="best">
     <h2 id="best" class="section-title">Best configuration</h2>
     <!--slot:best--><div class="card best-card spot tilt">
-    <div class="best-head"><h3 class="best-name">Our engine, first generation, with embeddings</h3><span class="tag">Best</span></div>
+    <div class="best-head"><h3 class="best-name">PGR: graph and search</h3><span class="tag">Best</span></div>
     <ul class="rows">
-      <li class="row"><span class="label">Tokens per task</span><span class="value">130k</span></li>
+      <li class="row"><span class="label">Shown for</span><span class="value">Light class, original questions</span></li>
+      <li class="row"><span class="label">Tokens per task</span><span class="value">134k</span></li>
       <li class="row"><span class="label">Turns per task</span><span class="value">2.0</span></li>
       <li class="row"><span class="label">Fully correct runs</span><span class="value">3 of 3</span></li>
       <li class="row"><span class="label">Answers correct</span><span class="value">100%</span></li>
       <li class="row"><span class="label">Runs</span><span class="value">3</span></li>
+      <li class="row"><span class="label">Fully correct, all four cells</span><span class="value">12 of 12</span></li>
     </ul>
   </div>
-  <p class="footnote">The best configuration is chosen on the light class, one agent, among those run at least 3 times: the highest share of fully correct runs, then the fewest tokens.</p><!--/slot:best-->
+  <p class="footnote">The best configuration is chosen among those run at least 3 times in each of four cells, the original and the held-out questions on the light and mid classes: the highest share of its runs that were fully correct, and on a tie the lower mean tokens over the four cells.</p><!--/slot:best-->
   </section>
 
   <section class="section" aria-labelledby="benefits">
     <h2 id="benefits" class="section-title">What it does for an agent</h2>
-    <div class="card">
-      <ul class="rows">
-        <li class="row stack"><span class="label">Finds definitions and callers in one call</span><span class="detail">An agent asks once and gets where a function is defined, its parameters and every function that calls it.</span></li>
-        <li class="row stack"><span class="label">Searches code by meaning</span><span class="detail">An agent describes a job in words and gets the function that does it.</span></li>
-        <li class="row stack"><span class="label">Shows what a change touches</span><span class="detail">Before editing, an agent sees what depends on the code it is about to change.</span></li>
-        <li class="row stack"><span class="label">Remembers findings across sessions</span><span class="detail">What an agent has already worked out does not have to be found again next time.</span></li>
-      </ul>
-    </div>
+    <ul class="card does">
+      <li class="do">
+        <svg class="fig fig-one" viewBox="0 0 160 100" aria-hidden="true" focusable="false">
+          <path class="wire" pathLength="1" d="M22 50H72"/>
+          <g class="fan"><path pathLength="1" d="M94 50 138 15"/><path pathLength="1" d="M94 50 144 32"/><path pathLength="1" d="M94 50h52"/><path pathLength="1" d="M94 50 144 68"/><path pathLength="1" d="M94 50 138 85"/></g>
+          <circle class="node" cx="16" cy="50" r="5"/>
+          <rect class="hit" x="72" y="39" width="22" height="22" rx="4"/>
+          <g class="lit"><circle cx="138" cy="15" r="4"/><circle cx="144" cy="32" r="4"/><circle cx="146" cy="50" r="4"/><circle cx="144" cy="68" r="4"/><circle cx="138" cy="85" r="4"/></g>
+          <circle class="tok" cx="22" cy="50" r="3"/>
+        </svg>
+        <div class="do-text"><h3 class="do-title">Finds definitions and callers in one call</h3><p class="do-detail">An agent asks once and gets where a function is defined, its parameters and every function that calls it.</p></div>
+      </li>
+      <li class="do">
+        <svg class="fig fig-mean" viewBox="0 0 160 100" aria-hidden="true" focusable="false">
+          <g class="words"><rect x="8" y="35" width="36" height="5" rx="2.5"/><rect x="8" y="47.5" width="48" height="5" rx="2.5"/><rect x="8" y="60" width="28" height="5" rx="2.5"/></g>
+          <path class="wire" pathLength="1" d="M62 50c18 0 30 8 49 8"/>
+          <g class="cloud"><circle cx="88" cy="18" r="3"/><circle cx="104" cy="30" r="3"/><circle cx="126" cy="20" r="3"/><circle cx="146" cy="34" r="3"/><circle cx="92" cy="40" r="3"/><circle cx="138" cy="52" r="3"/><circle cx="98" cy="74" r="3"/><circle cx="84" cy="88" r="3"/><circle cx="116" cy="84" r="3"/><circle cx="134" cy="76" r="3"/><circle cx="150" cy="90" r="3"/><circle cx="150" cy="66" r="3"/></g>
+          <circle class="halo" cx="116" cy="58" r="11"/>
+          <circle class="hit" cx="116" cy="58" r="5"/>
+        </svg>
+        <div class="do-text"><h3 class="do-title">Searches code by meaning</h3><p class="do-detail">An agent describes a job in words and gets the function that does it.</p></div>
+      </li>
+      <li class="do">
+        <svg class="fig fig-reach" viewBox="0 0 160 100" aria-hidden="true" focusable="false">
+          <g class="links"><path d="M36 50 72 24M36 50h42M36 50 70 80"/><path d="M72 24 112 14M78 50 116 40M78 50 114 66M70 80 106 90"/><path d="M116 40 150 32M114 66 150 72"/></g>
+          <circle class="wave" cx="36" cy="50" r="12"/>
+          <g class="hop h1"><circle cx="72" cy="24" r="4"/><circle cx="78" cy="50" r="4"/><circle cx="70" cy="80" r="4"/></g>
+          <g class="hop h2"><circle cx="112" cy="14" r="4"/><circle cx="116" cy="40" r="4"/><circle cx="114" cy="66" r="4"/><circle cx="106" cy="90" r="4"/></g>
+          <g class="hop h3"><circle cx="150" cy="32" r="4"/><circle cx="150" cy="72" r="4"/></g>
+          <rect class="hit" x="27" y="41" width="18" height="18" rx="4"/>
+        </svg>
+        <div class="do-text"><h3 class="do-title">Shows what a change touches</h3><p class="do-detail">Before editing, an agent sees what depends on the code it is about to change.</p></div>
+      </li>
+      <li class="do">
+        <svg class="fig fig-mem" viewBox="0 0 160 100" aria-hidden="true" focusable="false">
+          <path class="rail" d="M10 34h140M10 76h140"/>
+          <text x="10" y="20">First session</text><text x="10" y="94">Next session</text>
+          <path class="wire" pathLength="1" d="M122 39v32"/>
+          <circle class="hit" cx="122" cy="34" r="5"/>
+          <circle class="hit kept" cx="122" cy="76" r="5"/>
+          <circle class="tok t1" cx="10" cy="34" r="3"/>
+          <circle class="tok t2" cx="10" cy="76" r="3"/>
+        </svg>
+        <div class="do-text"><h3 class="do-title">Remembers findings across sessions</h3><p class="do-detail">What an agent has already worked out does not have to be found again next time.</p></div>
+      </li>
+    </ul>
     <p class="footnote">The study measures the first two. The other two are not covered by the measurements on this site.</p>
   </section>
 
-  <section class="section" aria-labelledby="next">
+  <!--slot:video--><section class="section cinema" aria-labelledby="films">
+  <h2 id="films" class="section-title">Films</h2>
+  <div class="cine-grid multi">
+    <figure class="cine lead" data-kind="ad">
+      <div class="cine-frame" style="aspect-ratio:1920/1080">
+        <video controls playsinline preload="none" width="1920" height="1080" poster="media/pgr-ad-poster.jpg" aria-label="PeterGanuRusty in twenty seconds">
+          <source src="media/pgr-ad-1080p.mp4" type="video/mp4">
+          <track kind="captions" src="media/pgr-ad.en.vtt" srclang="en" label="English" default>
+          <p>This browser cannot play the video.</p>
+        </video>
+      </div>
+      <figcaption class="cine-cap"><span class="cine-title">PeterGanuRusty in twenty seconds</span><span class="cine-meta">Ad, 21.6 seconds, with captions</span></figcaption>
+    </figure>
+    <figure class="cine" data-kind="explainer">
+      <div class="cine-frame" style="aspect-ratio:1920/1080">
+        <video controls playsinline preload="none" width="1920" height="1080" poster="media/pgr-explainer-poster.jpg" aria-label="PeterGanuRusty explained">
+          <source src="media/pgr-explainer-1080p.mp4" type="video/mp4">
+          <track kind="captions" src="media/pgr-explainer.en.vtt" srclang="en" label="English" default>
+          <p>This browser cannot play the video.</p>
+        </video>
+      </div>
+      <figcaption class="cine-cap"><span class="cine-title">PeterGanuRusty explained</span><span class="cine-meta">Explainer, 76.4 seconds, with captions</span></figcaption>
+    </figure>
+  </div>
+</section>
+<!--/slot:video-->
+
+  <section class="section closing" aria-labelledby="next">
     <h2 id="next" class="section-title">Next</h2>
-    <div class="card">
-      <ul class="rows">
-        <li><a class="row" href="benchmarks.html"><span class="text"><span class="label">Benchmarks</span><span class="detail">Every published configuration, by model class</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6"/></svg></a></li>
-        <li><a class="row" href="install.html"><span class="text"><span class="label">Install</span><span class="detail">Availability and what installing gives you</span></span><svg class="chev" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m9 6 6 6-6 6"/></svg></a></li>
-      </ul>
+    <div class="card close-card spot">
+      <svg class="logo close-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path pathLength="1" d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>
+      <p class="close-text">Every published configuration is on Benchmarks, by model class and question set. Availability and what installing gives you are on Install.</p>
+      <p class="close-actions"><a class="btn magnet" href="benchmarks.html">Open the benchmarks</a><a class="btn quiet" href="install.html">Install</a><a class="btn quiet" href="study.html">How it was measured</a></p>
     </div>
   </section>
 
@@ -113,8 +229,10 @@
     <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
-<script src="data/showcase.js?v=69eb2dbe"></script>
-<script src="assets/app.js?v=aa42102c"></script>
-<script src="assets/home.js?v=05f7bad8"></script>
+<script src="data/showcase.js?v=5e12a467"></script>
+<script src="assets/app.js?v=338633b9"></script>
+<script src="assets/hero.js?v=bb64ef61"></script>
+<script src="assets/home.js?v=1b643da6"></script>
+<script src="assets/cinema.js?v=0e9aa947"></script>
 </body>
 </html>
