@@ -7,6 +7,12 @@ one this reads the transcript, adds up what the API reported it used, prices
 it, lists the tools it ran, and grades its answer against the syntax-tree truth.
 Agents are then grouped into cells (arm, setup, tier, rep): the tokens of every
 agent in the cell are summed and the cell's final answer is graded.
+
+There are two question sets. Set A is the original q1, q2, q3. Set B is held out:
+three questions nobody tuned for, run by an arm id plus `h` ("RGSh" is "RGS" on
+set B). A set B answer is still stored under q1, q2, q3. Every agent row and
+every cell carries `set`, "A" or "B", and an `h` arm follows the rules of its
+base arm: allowed shell words, read rules, repository paths.
 """
 from __future__ import annotations
 
@@ -34,6 +40,18 @@ TRUTH = {
     "q3": {"function": "_register_merge_driver", "file": "hooks.py", "line": 736,
            "removed_by": "_unregister_merge_driver"},
 }
+# Set B, the held-out questions. The same shapes; the fourth field of q3 is read_by.
+TRUTH_B = {
+    "q1": {"_prune_graph_json_sources", "_save_global_graph", "_save_manifest", "dispatch_command",
+           "save_manifest", "to_canvas", "to_json"},
+    "q2": {"file": "security.py", "line": 103, "parameters": ["url"],
+           "called_by": {"download_audio", "ingest", "redirect_request", "safe_fetch"}},
+    "q3": {"function": "_is_ignored", "file": "detect.py", "line": 1448,
+           # Two functions read .graphifyignore files: the loader for a whole tree and
+           # the one it uses for a single folder. Either is a correct answer.
+           "read_by": frozenset({"_load_graphifyignore", "_load_dir_own_ignore"})},
+}
+TRUTHS = {"A": TRUTH, "B": TRUTH_B}
 
 ALLOWED = {   # first word of a shell command each arm may run
     "A0": set(),
@@ -69,6 +87,25 @@ ALLOWED = {   # first word of a shell command each arm may run
 NO_READ_TOOL = {"C9", "C15"}
 
 
+def base_arm(arm: str) -> str:
+    """`RGSh` is the method `RGS` run on the held-out question set B; every per-arm rule uses the base id."""
+    # `A0r` is `A0` run again on the day of a later round, on the same set A.
+    return arm[:-1] if arm[-1:] in ("h", "r") and len(arm) > 1 else arm
+
+
+def question_set(arm: str) -> str:
+    return "B" if arm.endswith("h") and len(arm) > 1 else "A"
+
+
+def allowed_words(arm: str) -> set:
+    """The shell words an arm may run. A pgr arm is R and a letter (RG, RS, RM, RGS, RGM, RSM, RGSM,
+    RGSO) and may run `pgr`; R1, which also starts with R, is an lx arm."""
+    base = base_arm(arm)
+    if re.match(r"R[A-Z]", base):
+        return {"pgr"}
+    return ALLOWED.get(base, set())
+
+
 def bare(name) -> str:
     """`pkg.mod.fn()`, `cli.py:fn`, `fn (cli.py:10-20)` and `fn` are the same answer."""
     words = str(name).replace("`", " ").split("(")[0].split()
@@ -97,22 +134,27 @@ def same_line(given, truth: int) -> bool:
     return str(given).strip().isdigit() and int(str(given).strip()) == truth
 
 
-def grade(question: str, answer) -> float | None:
+def grade(question: str, answer, which: str = "A") -> float | None:
+    """Score one answer against the truth of question set `which` ("A" or "B")."""
     if not isinstance(answer, dict):
         return None
+    truth = TRUTHS[which]
     if question == "q1":
-        return f1(answer.get("callers"), TRUTH["q1"])
+        return f1(answer.get("callers"), truth["q1"])
     if question == "q2":
-        want = TRUTH["q2"]
+        want = truth["q2"]
         return sum([same_file(answer.get("file"), want["file"]),
                     same_line(answer.get("line"), want["line"]),
                     [bare(p) for p in answer.get("parameters") or []] == want["parameters"],
                     {bare(c) for c in answer.get("called_by") or []} == want["called_by"]]) / 4
-    want = TRUTH["q3"]
+    want = truth["q3"]
+    fourth = "read_by" if "read_by" in want else "removed_by"
+    # A truth may name several functions that all answer the question: any one is right.
+    accepted = want[fourth] if isinstance(want[fourth], (set, frozenset)) else {want[fourth]}
     return sum([bare(answer.get("function")) == want["function"],
                 same_file(answer.get("file"), want["file"]),
                 same_line(answer.get("line"), want["line"]),
-                bare(answer.get("removed_by")) == want["removed_by"]]) / 4
+                bare(answer.get(fourth)) in accepted]) / 4
 
 
 def first_word(command: str) -> str:
@@ -270,7 +312,7 @@ def read_agent(path: pathlib.Path) -> dict:
                 answer=answer, seconds=seconds, began=min(stamps) if stamps else "", **hooks)
 
 
-HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb)?)[\\/]*")
+HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb|-mem-orient|-mem)?)[\\/]*")
 
 
 def portable(value):
@@ -290,13 +332,14 @@ def off_policy(arm: str, row: dict, setup: str = "", role: str = "") -> list[str
     if setup == "orch-notools" and role == "verify":
         # This reviewer is told to call nothing but the structured output.
         return sorted(row["tools"])
-    found = [f"shell:{word}" for word in row["shell"] if word not in ALLOWED.get(arm, set())]
-    if arm == "A0" and row["shell"]:
+    base = base_arm(arm)
+    found = [f"shell:{word}" for word in row["shell"] if word not in allowed_words(base)]
+    if base == "A0" and row["shell"]:
         found = [f"shell:{word}" for word in row["shell"]]
     for name in row["tools"]:
         if name in ("Agent", "WebSearch", "WebFetch", "Edit", "Write"):
             found.append(name)
-        elif name == "Read" and arm in NO_READ_TOOL:
+        elif name == "Read" and base in NO_READ_TOOL:
             found.append("Read")
     return found
 
@@ -318,9 +361,10 @@ def main() -> int:
             # The callers this agent's own answer to question 1 left out: None when it was not asked.
             own = row["answer"] if isinstance(row["answer"], dict) else None
             asked = (own or {}).get("q1") if role in ("all", "verify") else own if role in ("q1", "w-q1") else None
-            row["missed_callers"] = (sorted(TRUTH["q1"] - {bare(c) for c in asked.get("callers") or []})
+            which = question_set(arm)
+            row["missed_callers"] = (sorted(TRUTHS[which]["q1"] - {bare(c) for c in asked.get("callers") or []})
                                      if isinstance(asked, dict) else None)
-            row.update(arm=arm, setup=setup, tier=tier, role=role, rep=rep, run=folder.name,
+            row.update(arm=arm, setup=setup, tier=tier, role=role, rep=rep, run=folder.name, set=which,
                        off_policy=off_policy(arm, row, setup, role), answer=portable(row["answer"]))
             agents.append(row)
 
@@ -348,12 +392,13 @@ def main() -> int:
 
     # The planning prompt is identical for every method and tier, so it was run
     # a few times and its briefs reused. A cell that reused them is charged the
-    # mean of the planning calls that were measured.
+    # mean of the planning calls that were measured. That holds for set A only:
+    # a set B cell plans for itself, so it is neither averaged in nor charged the mean.
     SUMMED = ("input", "output", "cache_read", "cache_write", "cost", "requests",
               "tool_calls", "tool_output_chars", "start", "start_cached", "reread", "added",
               "cost_warm", "cost_cold", "hook_calls", "hook_rewrites", "hook_denials", "hook_notes",
               "hook_redactions")
-    plans = [row for row in agents if row["role"] == "plan"]
+    plans = [row for row in agents if row["role"] == "plan" and row["set"] == "A"]
     mean_plan = None
     if plans:
         mean_plan = {field: sum(row[field] for row in plans) / len(plans) for field in SUMMED}
@@ -367,7 +412,8 @@ def main() -> int:
     for (arm, setup, tier, rep), rows in sorted(cells.items()):
         measured = len(rows)
         orch = setup.startswith("orch")
-        if orch and mean_plan and not any(row["role"] == "plan" for row in rows):
+        which = question_set(arm)
+        if orch and which == "A" and mean_plan and not any(row["role"] == "plan" for row in rows):
             rows = rows + [mean_plan]
         by_role = {row["role"]: row for row in rows}
         if setup == "single":
@@ -376,13 +422,13 @@ def main() -> int:
             final = {q: (by_role.get(q) or {}).get("answer") for q in ("q1", "q2", "q3")}
         else:
             final = (by_role.get("verify") or {}).get("answer") or {}
-        scores = {q: grade(q, final.get(q)) for q in ("q1", "q2", "q3")}
-        workers = {q: grade(q, (by_role.get("w-" + q) or {}).get("answer")) for q in ("q1", "q2", "q3")}
+        scores = {q: grade(q, final.get(q), which) for q in ("q1", "q2", "q3")}
+        workers = {q: grade(q, (by_role.get("w-" + q) or {}).get("answer"), which) for q in ("q1", "q2", "q3")}
         expected = 5 if orch else {"single": 1, "parallel": 3}[setup]
         # Complete means every agent of the cell ran to its structured answer: a
         # transcript still being written, or one that died, must not count as a run.
         answered = all(row.get("answer") is not None for row in rows if not row.get("imputed"))
-        cell = dict(arm=arm, setup=setup, tier=tier, rep=rep, agents=measured,
+        cell = dict(arm=arm, setup=setup, tier=tier, rep=rep, set=which, agents=measured,
                     complete=len(rows) == expected and answered,
                     plan_imputed=len(rows) != measured, scores=scores,
                     quality=round(sum(v or 0 for v in scores.values()) / 3, 4),

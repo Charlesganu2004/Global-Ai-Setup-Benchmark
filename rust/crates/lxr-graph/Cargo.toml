@@ -1,0 +1,11 @@
+[package]
+name = "lxr-graph"
+description = "The code graph: definitions, calls, imports, and the questions asked of them"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lxr-core.workspace = true
+serde.workspace = true
+regex.workspace = true

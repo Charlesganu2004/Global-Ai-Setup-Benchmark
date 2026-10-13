@@ -1,0 +1,14 @@
+[package]
+name = "lxr-memory"
+description = "Notes that outlive a session, recalled by meaning, words, links and time"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lxr-core.workspace = true
+lxr-text.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+postcard.workspace = true
+time.workspace = true

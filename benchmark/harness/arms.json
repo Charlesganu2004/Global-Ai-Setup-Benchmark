@@ -24,6 +24,21 @@
    "id": "hooks",
    "name": "With token-goat hooks",
    "detail": "Round 4: the same prompts as five earlier methods, run while token-goat's hooks were installed in the client, and the one-call command sent through the Bash tool with the hooks off and on."
+  },
+  {
+   "id": "rust",
+   "name": "Rust engine",
+   "detail": "Round 5: the engines rewritten in Rust behind one command, pgr, measured alone and in every combination of its three parts, the code graph, the hybrid search and the memory of earlier sessions."
+  },
+  {
+   "id": "heldout",
+   "name": "Held-out questions",
+   "detail": "Round 5: six methods run again on a second set of three questions that nobody tuned for, because the builders of pgr saw the first set while building it."
+  },
+  {
+   "id": "rerun",
+   "name": "Earlier methods, run again",
+   "detail": "Three earlier methods measured again on the day of the fifth round, so that the Rust engine is compared with runs made under the same instructions and the same client setup."
   }
  ],
  "commands": {
@@ -52,7 +67,13 @@
   "tg_symbol": "token-goat symbol <name>               where a symbol is defined",
   "tg_callers": "token-goat callers <name>              every function that calls it",
   "tg_semantic": "token-goat semantic \"<description>\"    search by meaning",
-  "tg_read": "token-goat read \"<file>::<symbol>\"     the body of one symbol"
+  "tg_read": "token-goat read \"<file>::<symbol>\"     the body of one symbol",
+  "pgr_about": "pgr about <name>...          one answer per name: its definition as name path:first-last signature, then \"doc: <line>\" when it has a doc line, then \"N callers:\" and one caller per line as name path:first-last @line (the line the call is on), then \"calls:\" and the names it calls. A name that is not defined prints \"<name>: not found\"",
+  "pgr_affected": "pgr affected <name> [--depth N]   everything that reaches <name> through calls, nearest first. Prints \"N affected by <name> (depth D):\" and one line per hit: dK name path:first-last via calls @line, where K is the number of calls between them. The default depth is 2",
+  "pgr_find": "pgr find \"<description>\"     search by meaning and by words together, prints each hit as the definition it sits in: name path:first-last signature, then its doc line when it has one",
+  "pgr_recall": "pgr recall \"<question>\"      notes kept from earlier work in this repository, most relevant first, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. Prints \"no notes\" when none match",
+  "pgr_ask": "pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\"",
+  "pgr_ask_memory": "pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\" When notes kept from earlier work bear on the questions, up to four follow under a closing \"== memory\" line, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists."
  },
  "arms": [
   {
@@ -616,6 +637,225 @@
    "index": "no Rust embeddings",
    "shell": "Bash",
    "detail": "The same through Bash with the hooks installed. Bash is a tool the hooks do match."
+  },
+  {
+   "id": "RG",
+   "group": "rust",
+   "name": "pgr, code graph only",
+   "public": {
+    "slug": "engine-v2-graph",
+    "name": "PGR: code graph",
+    "family": "engine-v2",
+    "order": 7
+   },
+   "detail": "The graph engine alone: definitions, callers and what a change reaches, with no search and no memory.",
+   "uses": [
+    "pgr_about",
+    "pgr_affected"
+   ]
+  },
+  {
+   "id": "RS",
+   "group": "rust",
+   "name": "pgr, search only",
+   "public": {
+    "slug": "engine-v2-search",
+    "name": "PGR: search",
+    "family": "engine-v2",
+    "order": 8
+   },
+   "detail": "The hybrid search alone, by meaning and by words together, with no graph and no memory.",
+   "uses": [
+    "pgr_find"
+   ]
+  },
+  {
+   "id": "RM",
+   "group": "rust",
+   "name": "pgr, memory only",
+   "public": {
+    "slug": "engine-v2-memory",
+    "name": "PGR: memory",
+    "family": "engine-v2",
+    "order": 9
+   },
+   "detail": "The memory alone, on a copy of the repository whose notes were written beforehand by a session that answered the same three questions, with no graph and no search.",
+   "uses": [
+    "pgr_recall"
+   ]
+  },
+  {
+   "id": "RGS",
+   "group": "rust",
+   "name": "pgr, graph and search in one call",
+   "public": {
+    "slug": "engine-v2-graph-search",
+    "name": "PGR: graph and search",
+    "family": "engine-v2",
+    "order": 10
+   },
+   "detail": "The graph and the hybrid search behind one one-call command, with no memory.",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "RGM",
+   "group": "rust",
+   "name": "pgr, graph and memory",
+   "public": {
+    "slug": "engine-v2-graph-memory",
+    "name": "PGR: graph and memory",
+    "family": "engine-v2",
+    "order": 11
+   },
+   "detail": "The graph commands and the memory, on a copy of the repository whose notes were written beforehand by a session that answered the same three questions, with no search.",
+   "uses": [
+    "pgr_about",
+    "pgr_affected",
+    "pgr_recall"
+   ]
+  },
+  {
+   "id": "RSM",
+   "group": "rust",
+   "name": "pgr, search and memory",
+   "public": {
+    "slug": "engine-v2-search-memory",
+    "name": "PGR: search and memory",
+    "family": "engine-v2",
+    "order": 12
+   },
+   "detail": "The hybrid search and the memory, on a copy of the repository whose notes were written beforehand by a session that answered the same three questions, with no graph.",
+   "uses": [
+    "pgr_find",
+    "pgr_recall"
+   ]
+  },
+  {
+   "id": "RGSM",
+   "group": "rust",
+   "name": "pgr, all three, memory from the same questions",
+   "public": {
+    "slug": "engine-v2-all",
+    "name": "PGR: graph, search and memory",
+    "family": "engine-v2",
+    "order": 13
+   },
+   "detail": "The one-call command with the graph, the search and the memory, on a copy of the repository whose memory was filled beforehand by a session that answered the same three questions.",
+   "uses": [
+    "pgr_ask_memory"
+   ]
+  },
+  {
+   "id": "RGSO",
+   "group": "rust",
+   "name": "pgr, all three, memory from an exploring session",
+   "public": {
+    "slug": "engine-v2-all-explored",
+    "name": "PGR: all three, memory from an earlier exploring session",
+    "family": "engine-v2",
+    "order": 14
+   },
+   "detail": "The one-call command with the graph, the search and the memory, on a copy of the repository whose memory was filled beforehand by a session that explored the repository without seeing any question.",
+   "uses": [
+    "pgr_ask_memory"
+   ]
+  },
+  {
+   "id": "A0h",
+   "group": "heldout",
+   "name": "No index, held-out questions",
+   "base": "A0",
+   "detail": "The same method as A0 on three questions nobody tuned for.",
+   "uses": [
+    "grep"
+   ]
+  },
+  {
+   "id": "S3h",
+   "group": "heldout",
+   "name": "Shipped: lx ask, embeddings on, held-out questions",
+   "base": "S3",
+   "detail": "The same method as S3 on three questions nobody tuned for.",
+   "uses": [
+    "lx_ask"
+   ],
+   "index": "Rust embeddings"
+  },
+  {
+   "id": "RGh",
+   "group": "heldout",
+   "name": "pgr, code graph only, held-out questions",
+   "base": "RG",
+   "detail": "The same method as RG on three questions nobody tuned for.",
+   "uses": [
+    "pgr_about",
+    "pgr_affected"
+   ]
+  },
+  {
+   "id": "RSh",
+   "group": "heldout",
+   "name": "pgr, search only, held-out questions",
+   "base": "RS",
+   "detail": "The same method as RS on three questions nobody tuned for.",
+   "uses": [
+    "pgr_find"
+   ]
+  },
+  {
+   "id": "RGSh",
+   "group": "heldout",
+   "name": "pgr, graph and search in one call, held-out questions",
+   "base": "RGS",
+   "detail": "The same method as RGS on three questions nobody tuned for.",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "RGSOh",
+   "group": "heldout",
+   "name": "pgr, all three, memory from an exploring session, held-out questions",
+   "base": "RGSO",
+   "detail": "The same method as RGSO on three questions nobody tuned for.",
+   "uses": [
+    "pgr_ask_memory"
+   ]
+  },
+  {
+   "id": "A0r",
+   "group": "rerun",
+   "base": "A0",
+   "name": "No index, run again with round five",
+   "detail": "The same prompt and commands as A0, measured on the day of the fifth round.",
+   "uses": [
+    "grep"
+   ],
+   "control": true
+  },
+  {
+   "id": "S1r",
+   "group": "rerun",
+   "base": "S1",
+   "name": "Shipped: lx ask, default index, run again with round five",
+   "detail": "The same prompt and commands as S1, measured on the day of the fifth round.",
+   "uses": [
+    "lx_ask"
+   ],
+   "index": "no Rust embeddings"
+  },
+  {
+   "id": "S3r",
+   "group": "rerun",
+   "base": "S3",
+   "name": "Shipped: lx ask, embeddings on, run again with round five",
+   "detail": "The same prompt and commands as S3, measured on the day of the fifth round.",
+   "uses": [
+    "lx_ask"
+   ],
+   "index": "Rust embeddings"
   }
  ],
  "tiers": [

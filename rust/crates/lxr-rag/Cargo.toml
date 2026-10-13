@@ -1,0 +1,17 @@
+[package]
+name = "lxr-rag"
+description = "Hybrid code search over definition-sized chunks"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lxr-core.workspace = true
+lxr-text.workspace = true
+serde.workspace = true
+rayon.workspace = true
+memmap2.workspace = true
+regex.workspace = true
+
+[dev-dependencies]
+lxr-extract = { path = "../lxr-extract" }

@@ -1,0 +1,19 @@
+[package]
+name = "lxr-extract"
+description = "Reads source files and reports their definitions, calls and imports"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+lxr-core.workspace = true
+ignore.workspace = true
+rustpython-parser.workspace = true
+oxc_allocator.workspace = true
+oxc_ast.workspace = true
+oxc_ast_visit.workspace = true
+oxc_parser.workspace = true
+oxc_span.workspace = true
+syn.workspace = true
+proc-macro2.workspace = true
+regex.workspace = true

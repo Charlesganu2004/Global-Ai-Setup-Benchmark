@@ -138,6 +138,49 @@ ARMS.HB = [LX_ASK]
 const VIA_BASH = { SB: true, HB: true }
 const posix = path => path.replace(/^([A-Za-z]):/, (all, drive) => '/' + drive.toLowerCase()).replace(/\\/g, '/')
 const REPO_OF = { N1: REPO_PLAIN, N2: REPO_PLAIN, S1: REPO_PLAIN, S2: REPO_PLAIN, H1: REPO_PLAIN, SB: REPO_PLAIN, HB: REPO_PLAIN }
+// Fifth round: the engines rewritten in Rust, one binary (pgr), in every
+// combination of its three parts: G the code graph (definitions, callers, what a
+// change reaches), S the hybrid search, M the memory (notes kept from earlier
+// sessions). An arm with M runs on a copy of the fixture whose memory was filled
+// beforehand: args.repoMem by a session that answered the same three questions,
+// args.repoMemOrient by a session that explored the repository without seeing them.
+const PGR_G = [
+  'pgr about <name>...          one answer per name: its definition as name path:first-last signature, then "doc: <line>" when it has a doc line, then "N callers:" and one caller per line as name path:first-last @line (the line the call is on), then "calls:" and the names it calls. A name that is not defined prints "<name>: not found"',
+  'pgr affected <name> [--depth N]   everything that reaches <name> through calls, nearest first. Prints "N affected by <name> (depth D):" and one line per hit: dK name path:first-last via calls @line, where K is the number of calls between them. The default depth is 2',
+]
+const PGR_S = 'pgr find "<description>"     search by meaning and by words together, prints each hit as the definition it sits in: name path:first-last signature, then its doc line when it has one'
+// How a kept note is printed, by pgr recall and by the closing section of pgr ask.
+const PGR_NOTE = 'one per line as: - text  (age ago) #id. A note ends its brackets with "stale: code changed" when code it names has changed since, and "gone: code removed" when that code no longer exists'
+const PGR_M = 'pgr recall "<question>"      notes kept from earlier work in this repository, most relevant first, ' + PGR_NOTE + '. Prints "no notes" when none match'
+const PGR_ASK = 'pgr ask <kind>:<what>...     several questions in one call, each answer under its own "== kind:what" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load "find:where tokens expire"'
+const PGR_ASK_M = PGR_ASK + ' When notes kept from earlier work bear on the questions, up to four follow under a closing "== memory" line, ' + PGR_NOTE + '.'
+ARMS.RG = PGR_G
+ARMS.RS = [PGR_S]
+ARMS.RM = [PGR_M]
+ARMS.RGS = [PGR_ASK]
+ARMS.RGM = PGR_G.concat([PGR_M])
+ARMS.RSM = [PGR_S, PGR_M]
+ARMS.RGSM = [PGR_ASK_M]
+ARMS.RGSO = [PGR_ASK_M]
+const REPO_MEM = (args && args.repoMem) || 'C:\\path\\to\\lxbench\\repo-mem'
+const REPO_MEM_ORIENT = (args && args.repoMemOrient) || 'C:\\path\\to\\lxbench\\repo-mem-orient'
+for (const arm of ['RM', 'RGM', 'RSM', 'RGSM']) REPO_OF[arm] = REPO_MEM
+REPO_OF.RGSO = REPO_MEM_ORIENT
+
+// Held-out questions. The builders of pgr saw questions q1 to q3 (set A), so a
+// second set B exists that nobody tuned for. An arm id plus "h" runs that arm's
+// method on set B: "RGSh" is "RGS" on set B, "A0h" is "A0" on set B. Policy text,
+// tiers, setups and labels are the same; the label keeps the id with its "h".
+const hasArm = id => Object.prototype.hasOwnProperty.call(ARMS, id)
+// An arm id plus "r" is that arm run again on the day of a later round, on the
+// same set A: "A0r" is "A0" again. It gets its own id so that its runs are not
+// mixed with the earlier ones.
+const baseArm = id => {
+  if (!/[hr]$/.test(id) || hasArm(id)) return id
+  if (!hasArm(id.slice(0, -1))) throw new Error(`arm ${id}: there is no arm ${id.slice(0, -1)} to run again or to run on the held-out questions`)
+  return id.slice(0, -1)
+}
+const setOf = c => (/h$/.test(c.arm) && !hasArm(c.arm) ? 'B' : 'A')
 
 // Ways of running the reviewer at the end of an orchestrated run. The setup
 // name picks one: who reviews, and whether the reviewer may look anything up.
@@ -148,7 +191,8 @@ const REVIEW = {
   'orch-low': { who: TIER.C, tools: true },      // cheapest tier reviews
 }
 
-function policy(arm) {
+function policy(armId) {
+  const arm = baseArm(armId)
   const repo = REPO_OF[arm] || REPO
   const lines = [
     'This is one run of a benchmark that measures how many tokens a code lookup costs.',
@@ -201,53 +245,89 @@ const S = {
   },
 }
 const ALL = { type: 'object', properties: { q1: S.q1, q2: S.q2, q3: S.q3 }, required: ['q1', 'q2', 'q3'] }
+// Set B, the held-out questions: the same three shapes on other functions of the
+// same repository. They are stored under the keys q1 to q3 like set A's, and the
+// answer to the third names its fourth field read_by instead of removed_by.
+const Q_B = {
+  q1: 'Which functions call `write_json_atomic`? Give the bare name of every calling function in the repository.',
+  q2: 'Where is the function `validate_url` defined (file, and the line its `def` is on), what are its parameter names, and which functions call it?',
+  q3: 'Which function decides whether a path should be ignored under the .graphifyignore patterns? Give its name, its file, the line its `def` is on, and the name of the function that reads the .graphifyignore files.',
+}
+const S_B = {
+  q1: S.q1,
+  q2: S.q2,
+  q3: {
+    type: 'object',
+    properties: {
+      function: { type: 'string', description: 'bare function name' },
+      file: { type: 'string', description: 'path relative to the repository' },
+      line: { type: 'integer', description: 'line of the def' },
+      read_by: { type: 'string', description: 'bare name of the function that reads the .graphifyignore files' },
+    },
+    required: ['function', 'file', 'line', 'read_by'],
+  },
+}
+const ALL_B = { type: 'object', properties: { q1: S_B.q1, q2: S_B.q2, q3: S_B.q3 }, required: ['q1', 'q2', 'q3'] }
 const BRIEFS = {
   type: 'object',
   properties: { q1: { type: 'string' }, q2: { type: 'string' }, q3: { type: 'string' } },
   required: ['q1', 'q2', 'q3'],
 }
 const KEYS = ['q1', 'q2', 'q3']
-const listed = KEYS.map(k => `${k.toUpperCase()}. ${Q[k]}`).join('\n')
+const listedOf = questions => KEYS.map(k => `${k.toUpperCase()}. ${questions[k]}`).join('\n')
+// What a cell asks, by question set: the questions, one answer schema per
+// question, the schema of all three, and the numbered list for a prompt.
+const SETS = {
+  A: { Q, S, ALL, listed: listedOf(Q) },
+  B: { Q: Q_B, S: S_B, ALL: ALL_B, listed: listedOf(Q_B) },
+}
 const tag = (c, role) => `${c.arm}|${c.setup}|${c.tier}|${role}|${c.rep || REP}`
 // The planning prompt is the same for every method and tier, so it is measured
 // a few times (cells marked ownPlan) and its briefs are reused everywhere else.
 const SHARED_BRIEFS = args && args.briefs
 
 async function single(c) {
+  const set = SETS[setOf(c)]
   const answer = await agent(
-    `${policy(c.arm)}\n\nAnswer all three questions.\n${listed}`,
-    { label: tag(c, 'all'), phase: 'Single', schema: ALL, ...TIER[c.tier] })
-  return { ...c, answer }
+    `${policy(c.arm)}\n\nAnswer all three questions.\n${set.listed}`,
+    { label: tag(c, 'all'), phase: 'Single', schema: set.ALL, ...TIER[c.tier] })
+  return { ...c, set: setOf(c), answer }
 }
 
 async function fanOut(c) {
+  const set = SETS[setOf(c)]
   const got = await parallel(KEYS.map(k => () => agent(
-    `${policy(c.arm)}\n\nAnswer this question.\n${Q[k]}`,
-    { label: tag(c, k), phase: 'Parallel', schema: S[k], ...TIER[c.tier] })))
-  return { ...c, answer: { q1: got[0], q2: got[1], q3: got[2] } }
+    `${policy(c.arm)}\n\nAnswer this question.\n${set.Q[k]}`,
+    { label: tag(c, k), phase: 'Parallel', schema: set.S[k], ...TIER[c.tier] })))
+  return { ...c, set: setOf(c), answer: { q1: got[0], q2: got[1], q3: got[2] } }
 }
 
 async function orchestrated(c) {
-  const plan = (SHARED_BRIEFS && !c.ownPlan) ? SHARED_BRIEFS : await agent(
-    `You are the orchestrator of one benchmark run. Three independent lookup questions about the repository at ${REPO} are listed below. Do not answer them, and call no tool except the structured output. Write one brief per question for a subagent that starts with no other context: the question, what a complete answer contains, and when to stop. Keep each brief under 80 words. The harness appends the tool policy to every brief, so leave tools out.\n\n${listed}`,
+  const set = SETS[setOf(c)]
+  // The shared briefs were written for set A's questions; a cell on any other set plans for itself.
+  const plan = (SHARED_BRIEFS && !c.ownPlan && setOf(c) === 'A') ? SHARED_BRIEFS : await agent(
+    `You are the orchestrator of one benchmark run. Three independent lookup questions about the repository at ${REPO} are listed below. Do not answer them, and call no tool except the structured output. Write one brief per question for a subagent that starts with no other context: the question, what a complete answer contains, and when to stop. Keep each brief under 80 words. The harness appends the tool policy to every brief, so leave tools out.\n\n${set.listed}`,
     { label: tag(c, 'plan'), phase: 'Orchestrated', schema: BRIEFS, ...APEX })
-  if (!plan) return { ...c, answer: null, failed: 'plan' }
+  if (!plan) return { ...c, set: setOf(c), answer: null, failed: 'plan' }
   const workers = await parallel(KEYS.map(k => () => agent(
     // The reused briefs name the main fixture; an arm on the other copy is pointed at its own.
-    `${policy(c.arm)}\n\nBrief from the orchestrator:\n${plan[k].split(REPO).join(REPO_OF[c.arm] || REPO)}`,
-    { label: tag(c, 'w-' + k), phase: 'Orchestrated', schema: S[k], ...TIER[c.tier] })))
+    `${policy(c.arm)}\n\nBrief from the orchestrator:\n${plan[k].split(REPO).join(REPO_OF[baseArm(c.arm)] || REPO)}`,
+    { label: tag(c, 'w-' + k), phase: 'Orchestrated', schema: set.S[k], ...TIER[c.tier] })))
   const reported = { q1: workers[0], q2: workers[1], q3: workers[2] }
   const review = REVIEW[c.setup]
   const answer = await agent(
     review.tools
-      ? `${policy(c.arm)}\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question; their answers are below as JSON, with null for a subagent that returned nothing. Check each answer under the tool policy with as few calls as it takes, correct anything wrong or missing, and return the final answers for all three questions.\n\n${listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`
-      : `This is one run of a benchmark that measures how many tokens a code lookup costs.\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question about a repository; their answers are below as JSON, with null for a subagent that returned nothing. Call no tool except the structured output: you cannot look anything up. Check each answer against its question for what can be seen from the answer alone (a missing field, an answer to a different question, a list that plainly cannot be complete), correct only what you can correct that way, and return the final answers for all three questions.\n\n${listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`,
-    { label: tag(c, 'verify'), phase: 'Orchestrated', schema: ALL, ...review.who })
-  return { ...c, workers: reported, answer }
+      ? `${policy(c.arm)}\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question; their answers are below as JSON, with null for a subagent that returned nothing. Check each answer under the tool policy with as few calls as it takes, correct anything wrong or missing, and return the final answers for all three questions.\n\n${set.listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`
+      : `This is one run of a benchmark that measures how many tokens a code lookup costs.\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question about a repository; their answers are below as JSON, with null for a subagent that returned nothing. Call no tool except the structured output: you cannot look anything up. Check each answer against its question for what can be seen from the answer alone (a missing field, an answer to a different question, a list that plainly cannot be complete), correct only what you can correct that way, and return the final answers for all three questions.\n\n${set.listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`,
+    { label: tag(c, 'verify'), phase: 'Orchestrated', schema: set.ALL, ...review.who })
+  return { ...c, set: setOf(c), workers: reported, answer }
 }
 
 const RUN = { single, parallel: fanOut }
 for (const name of Object.keys(REVIEW)) RUN[name] = orchestrated
+// A held-out id with no base arm fails here, before any agent starts.
+for (const c of CELLS) baseArm(c.arm)
 log(`${CELLS.length} cells, repeat ${REP}`)
+if (CELLS.some(c => setOf(c) === 'B')) log(`${CELLS.filter(c => setOf(c) === 'B').length} of them on the held-out question set B`)
 const done = await parallel(CELLS.map(c => () => RUN[c.setup](c)))
 return { rep: REP, cells: done }

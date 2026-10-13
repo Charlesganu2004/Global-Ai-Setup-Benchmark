@@ -1,0 +1,63 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/lxr-core",
+    "crates/lxr-extract",
+    "crates/lxr-text",
+    "crates/lxr-graph",
+    "crates/lxr-rag",
+    "crates/lxr-memory",
+    "crates/lxr",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+publish = false
+repository = "https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark"
+
+# Every dependency here is pure Rust: nothing in the workspace needs a C compiler,
+# so `cargo build` works on a machine that has only rustup.
+[workspace.dependencies]
+lxr-core = { path = "crates/lxr-core" }
+lxr-extract = { path = "crates/lxr-extract" }
+lxr-text = { path = "crates/lxr-text" }
+lxr-graph = { path = "crates/lxr-graph" }
+lxr-rag = { path = "crates/lxr-rag" }
+lxr-memory = { path = "crates/lxr-memory" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+postcard = { version = "1", features = ["use-std"] }
+rayon = "1"
+ignore = "0.4"
+memmap2 = "0.9"
+regex = "1"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+lexopt = "0.3"
+time = { version = "0.3", features = ["formatting", "parsing", "macros"] }
+unicode-normalization = "0.1"
+
+rustpython-parser = "0.4"
+oxc_allocator = "0.153"
+oxc_ast = "0.153"
+oxc_ast_visit = "0.153"
+oxc_parser = "0.153"
+oxc_span = "0.153"
+syn = { version = "3", features = ["full", "visit"] }
+proc-macro2 = { version = "1", features = ["span-locations"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+# Panics unwind on purpose: the extractors catch a parser panic on one odd file and
+# fall back to the token-based reader. "abort" would end the whole index build there.
+strip = true
+
+# Tests and the first build of the parsers are much faster with a little optimisation.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 2
