@@ -1,0 +1,53 @@
+# Runs the engine's whole test suite on Linux, macOS and Windows.
+#
+# The suite is the same one run on the development machine (Windows 11) and, by hand, inside
+# Ubuntu on WSL 2. Here it also runs on macOS, which no development machine covers.
+#
+# The embedding model is not in the repository. packaging/stage.py downloads the two files the
+# tests read from their public home at one pinned revision and refuses any file whose SHA-256
+# differs from the pinned values, so the tests that need a model run here too.
+name: tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "rust/**"
+      - ".github/workflows/tests.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Stage the embedding model
+        run: python -I packaging/stage.py --download
+      # Some tests make a git repository in a temporary folder; a runner has no git identity.
+      - name: Give git an identity for the test repositories
+        run: |
+          git config --global user.name "pgr tests"
+          git config --global user.email "tests@example.invalid"
+      - name: Toolchain
+        run: cargo --version && rustc --version
+      - name: Test the workspace
+        working-directory: rust
+        shell: bash
+        env:
+          LXR_MODEL_DIR: ${{ github.workspace }}/packaging/stage/model
+        run: cargo test --workspace --locked
