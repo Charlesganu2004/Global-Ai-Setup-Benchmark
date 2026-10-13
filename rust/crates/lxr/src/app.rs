@@ -5,7 +5,7 @@ use crate::cli::Command;
 use crate::ctx::Ctx;
 use crate::fail::{Fail, Res};
 use crate::index::status;
-use crate::{ask, findcmd, graphcmd, memcmd, model, pack};
+use crate::{ask, findcmd, graphcmd, hub, memcmd, model, pack};
 
 /// The text a command prints on standard output.
 pub fn dispatch(ctx: &mut Ctx, command: &Command) -> Res<String> {
@@ -67,9 +67,11 @@ pub fn dispatch(ctx: &mut Ctx, command: &Command) -> Res<String> {
         Command::Retain(args) => memcmd::retain(ctx, args, &mut out)?,
         Command::Recall(args) => memcmd::recall(ctx, args, &mut out)?,
         Command::Reflect { query } => memcmd::reflect(ctx, query, &mut out)?,
+        Command::Handoff(args) => hub::handoff(ctx, args, &mut out)?,
+        Command::Loadout(args) => hub::loadout(ctx, args, &mut out)?,
         Command::Memory(sub) => memcmd::memory(ctx, sub, &mut out)?,
         Command::Ask { questions } => out = ask::run(ctx, &ask::parse(questions)?)?,
-        Command::Pack { task, budget } => out = pack::run(ctx, task, *budget)?,
+        Command::Pack { task, budget, for_task } => out = pack::run(ctx, task, *budget, for_task.as_deref())?,
         Command::Mcp | Command::Help | Command::Version => {
             return Err(Fail::usage("this command does not run inside another command"));
         }

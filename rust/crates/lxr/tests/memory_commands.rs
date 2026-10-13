@@ -214,12 +214,14 @@ fn memory_usage_errors() {
 }
 
 #[test]
-fn pack_gives_sections_within_a_third_of_the_budget() {
+fn pack_names_the_definitions_and_shares_the_budget_between_its_sections() {
     let env = Env::with_project();
     let task = "change how load_config reads the settings file";
     let bare = env.run(&["pack", task]);
     assert_eq!(bare.code, 0, "{}", bare.err);
-    assert!(bare.out.starts_with("== find\nload_config app/core.py:4-6 (path)\n"), "{}", bare.out);
+    // The task names load_config, so its block comes first and the search does not repeat it.
+    assert!(bare.out.starts_with("== names\nload_config app/core.py:4-6 (path)\n"), "{}", bare.out);
+    assert!(!bare.out.contains("== find\nload_config app/core.py:4-6"), "{}", bare.out);
     assert!(bare.out.contains("== graph\nquery: "), "{}", bare.out);
     assert!(!bare.out.contains("== memory"), "no notes yet: {}", bare.out);
 
@@ -229,23 +231,30 @@ fn pack_gives_sections_within_a_third_of_the_budget() {
 
     for budget in [90usize, 300, 800] {
         let run = env.run(&["pack", task, "--budget", &budget.to_string()]);
-        // A section holds whole groups of lines within its share; only a first group that is
-        // too long alone is cut to the share's size in characters (one token more at most).
-        let share = (budget / 3).max(1);
+        // The names take up to half. The sections after them share what is left in turn, whole
+        // groups of lines within their share; only a first group that is too long alone is cut
+        // to the share's size in characters (one token more at most, once per section).
         let mut sections = 0usize;
         let mut spent = 0usize;
+        let mut total = 0usize;
+        let mut title = "";
         for line in run.out.lines().chain(std::iter::once("== end")) {
             if line.starts_with("== ") {
-                assert!(spent <= share + 2, "section of {spent} tokens at budget {budget}: {}", run.out);
+                if title == "names" {
+                    assert!(spent <= budget / 2, "names of {spent} tokens at budget {budget}: {}", run.out);
+                }
+                total += spent;
                 sections += 1;
                 spent = 0;
+                title = &line[3..];
             } else {
                 spent += (line.len() + 3) / 4 + 1;
             }
         }
-        assert!(sections >= 3, "find, graph, memory and the sentinel: {}", run.out);
+        assert!(total <= budget + 3, "{total} tokens at budget {budget}: {}", run.out);
+        assert!(sections >= 3, "names, graph, memory and the sentinel at least: {}", run.out);
     }
-    expect(&env.run(&["--engines", "memory", "pack", "zzzqqq"]), "none\n");
+    expect(&env.run(&["--engines", "memory", "pack", "zzzqqq"]), "nothing found for this task\n");
 }
 
 #[test]

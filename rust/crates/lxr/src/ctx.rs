@@ -9,6 +9,7 @@ use crate::index::manifest::{Generation, Manifest};
 use crate::index::refresh::{self, Refresh, Target};
 use crate::index::{graph_path, load_graph, open_search, search_path, BANK_LOCK_FILE, MEMORY_DIR};
 use crate::model;
+use crate::names::{self, Kind as Name, DEFAULT_ROLE};
 use crate::oslock::OsLock;
 use lxr_core::{find_root, index_dir, index_home};
 use lxr_graph::{Graph, NodeKind};
@@ -255,6 +256,15 @@ fn joined<T>(handle: Option<JoinHandle<T>>, wanted: bool) -> Option<T> {
     handle?.join().ok()
 }
 
+/// The names a run was started with: the flags `--bank`, `--task` and `--from`, already checked.
+/// What a flag leaves out comes from `PGR_BANK`, `PGR_TASK` and `PGR_ROLE`.
+#[derive(Clone, Debug, Default)]
+pub struct Names {
+    pub bank: Option<String>,
+    pub task: Option<String>,
+    pub role: Option<String>,
+}
+
 /// Everything one run knows.
 pub struct Ctx {
     /// The repository root.
@@ -269,6 +279,9 @@ pub struct Ctx {
     pub graph: GraphSlot,
     pub search: SearchSlot,
     pub embed: EmbedSlot,
+    /// The task and role the command line gave, when it did.
+    flag_task: Option<String>,
+    flag_role: Option<String>,
     bank: Option<Bank>,
     no_refresh: bool,
     fresh: bool,
@@ -278,17 +291,13 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    /// Sets up a run for the repository at `root`.
-    pub fn new(root: PathBuf, engines: Engines) -> Res<Ctx> {
+    /// Sets up a run for the repository at `root`. The bank is the one `names` gives, else
+    /// `PGR_BANK` (a bank name is checked wherever it comes from), else the bank of the repository.
+    pub fn with_names(root: PathBuf, engines: Engines, names: Names) -> Res<Ctx> {
         let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_else(|| root.display().to_string());
         let dir = index_dir(&root);
-        let bank_dir = match std::env::var("PGR_BANK").ok().filter(|v| !v.is_empty()) {
-            Some(bank) => {
-                if bank.contains(['/', '\\', ':']) || bank == "." || bank == ".." {
-                    return Err(Fail::usage(format!("PGR_BANK '{bank}' must be a plain name")));
-                }
-                index_home().join("banks").join(bank)
-            }
+        let bank_dir = match names.bank.or_else(|| names::from_env("PGR_BANK")) {
+            Some(bank) => index_home().join("banks").join(names::check(Name::Bank, &bank)?),
             None => dir.join(MEMORY_DIR),
         };
         let no_refresh = std::env::var("PGR_NO_REFRESH").map(|v| !v.is_empty() && v != "0").unwrap_or(false);
@@ -296,6 +305,8 @@ impl Ctx {
             graph: GraphSlot::new(graph_path(&dir), Generation::default()),
             search: SearchSlot::new(search_path(&dir), Generation::default()),
             embed: EmbedSlot { cell: OnceCell::new() },
+            flag_task: names.task,
+            flag_role: names.role,
             root,
             name,
             dir,
@@ -492,11 +503,29 @@ impl Ctx {
     /// index is made current and the graph and the model load beside the check. With the
     /// graph engine off the notes are not matched against code and no index is needed.
     pub fn need_memory(&mut self) -> Res<()> {
+        self.need_memory_with(true)
+    }
+
+    /// Like `need_memory`, and the model loads only when `embed` says the command will use it.
+    pub fn need_memory_with(&mut self, embed: bool) -> Res<()> {
         self.engines.require(Engine::Memory)?;
         if !self.engines.is_on(Engine::Graph) {
             return Ok(());
         }
-        self.need(Needs { graph: true, search: false, embed: true })
+        self.need(Needs { graph: true, search: false, embed })
+    }
+
+    /// The task a call belongs to: `given` (a tool argument), else `--task`, else `PGR_TASK`.
+    /// A name is checked wherever it comes from. `None` when no task was named.
+    pub fn task(&self, given: Option<&str>) -> Res<Option<String>> {
+        let name = given.map(str::to_string).or_else(|| self.flag_task.clone()).or_else(|| names::from_env("PGR_TASK"));
+        name.map(|n| names::check(Name::Task, &n)).transpose()
+    }
+
+    /// Who is calling: `given` (a tool argument), else `--from`, else `PGR_ROLE`, else `agent`.
+    pub fn role(&self, given: Option<&str>) -> Res<String> {
+        let name = given.map(str::to_string).or_else(|| self.flag_role.clone()).or_else(|| names::from_env("PGR_ROLE"));
+        names::check(Name::Role, name.as_deref().unwrap_or(DEFAULT_ROLE))
     }
 
     /// The graph, once `need_graph` succeeded.
@@ -519,6 +548,28 @@ impl Ctx {
         match self.bank.as_mut() {
             Some(bank) => Ok(bank),
             None => Err(Fail::index("the memory bank is not open")),
+        }
+    }
+
+    /// The memory bank opened for reading only, or `None` when its folder does not exist. Nothing
+    /// is created and nothing is written, not even the caches when the bank is dropped. The bank
+    /// is read from the folder as it is now and is not the one `bank` keeps between requests.
+    pub fn read_bank(&self) -> Res<Option<Bank>> {
+        if !self.bank_dir.is_dir() {
+            return Ok(None);
+        }
+        Bank::open_read_only(&self.bank_dir)
+            .map(Some)
+            .map_err(|e| Fail::index(format!("cannot open the memory bank {}: {e}", self.bank_dir.display())))
+    }
+
+    /// The code as the notes of a bank are judged against it: the graph, or nothing when the
+    /// graph engine is off.
+    pub fn code_view(&self) -> &dyn CodeView {
+        if self.engines.is_on(Engine::Graph) {
+            &self.graph
+        } else {
+            &NoCode
         }
     }
 
@@ -578,7 +629,7 @@ mod tests {
     fn context(tag: &str) -> (Ctx, PathBuf) {
         let base = std::env::temp_dir().join(format!("pgr-ctx-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
-        let mut ctx = Ctx::new(base.join("repo"), Engines::all()).unwrap();
+        let mut ctx = Ctx::with_names(base.join("repo"), Engines::all(), Names::default()).unwrap();
         ctx.bank_dir = base.join("bank");
         (ctx, base)
     }

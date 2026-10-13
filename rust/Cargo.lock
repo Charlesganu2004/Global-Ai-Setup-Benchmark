@@ -435,7 +435,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "lxr"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lexopt",
  "lxr-core",
@@ -451,7 +451,7 @@ dependencies = [
 
 [[package]]
 name = "lxr-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "postcard",
  "serde",
@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "lxr-extract"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ignore",
  "lxr-core",
@@ -477,7 +477,7 @@ dependencies = [
 
 [[package]]
 name = "lxr-graph"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lxr-core",
  "regex",
@@ -486,7 +486,7 @@ dependencies = [
 
 [[package]]
 name = "lxr-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lxr-core",
  "lxr-text",
@@ -498,7 +498,7 @@ dependencies = [
 
 [[package]]
 name = "lxr-rag"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lxr-core",
  "lxr-extract",
@@ -511,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "lxr-text"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "lxr-core",
  "memmap2",

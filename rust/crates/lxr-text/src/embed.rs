@@ -460,6 +460,26 @@ mod tests {
         dir
     }
 
+    /// Taken by a test for as long as it points the index home somewhere else.
+    static INDEX_HOME: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    /// Runs `body` with `LXR_HOME` set to `home`, then puts back what was there before.
+    ///
+    /// The variable belongs to the whole process and tests run on several threads, so the tests
+    /// that set it take turns: two of them setting and clearing it at once made one look for its
+    /// cache in the other's folder (seen on Linux, where the timing differs).
+    fn with_index_home<T>(home: &std::path::Path, body: impl FnOnce() -> T) -> T {
+        let _turn = INDEX_HOME.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let before = std::env::var_os("LXR_HOME");
+        std::env::set_var("LXR_HOME", home);
+        let result = body();
+        match before {
+            Some(value) => std::env::set_var("LXR_HOME", value),
+            None => std::env::remove_var("LXR_HOME"),
+        }
+        result
+    }
+
     /// A safetensors file with one `embeddings` tensor of the given data.
     fn safetensors(dtype: &str, shape: [usize; 2], data: &[u8]) -> Vec<u8> {
         let header = format!(
@@ -713,11 +733,10 @@ mod tests {
         tiny_model(&dir, false);
         let home = dir.join("home");
         let (tokenizer, weights) = model_bytes(&dir);
-        // Nothing else in the test run reads the index home, so setting it is safe here.
-        std::env::set_var("LXR_HOME", &home);
-        let first = Embedder::from_bytes(&tokenizer, weights.clone()).unwrap();
-        let second = Embedder::from_bytes(&tokenizer, weights).unwrap();
-        std::env::remove_var("LXR_HOME");
+        let (first, second) = with_index_home(&home, || {
+            let first = Embedder::from_bytes(&tokenizer, weights.clone()).unwrap();
+            (first, Embedder::from_bytes(&tokenizer, weights).unwrap())
+        });
         assert!(!first.used_cache() && second.used_cache());
         assert_eq!(fs::read_dir(home.join("model-cache")).unwrap().count(), 1);
         fs::remove_dir_all(&dir).unwrap();
@@ -765,11 +784,7 @@ mod tests {
         let dir = temp("home");
         tiny_model(&dir, false);
         let home = dir.join("home");
-        // Nothing else in the test run reads the index home, so setting it is safe here.
-        std::env::set_var("LXR_HOME", &home);
-        let first = Embedder::open(&dir).unwrap();
-        let second = Embedder::open(&dir).unwrap();
-        std::env::remove_var("LXR_HOME");
+        let (first, second) = with_index_home(&home, || (Embedder::open(&dir).unwrap(), Embedder::open(&dir).unwrap()));
         assert!(!first.used_cache() && second.used_cache());
         let files = fs::read_dir(home.join("model-cache")).unwrap().count();
         assert_eq!(files, 1);

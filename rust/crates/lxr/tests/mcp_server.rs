@@ -42,7 +42,7 @@ fn initialize_list_and_one_call() {
 
     let tools = answers[1]["result"]["tools"].as_array().unwrap();
     let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
-    assert_eq!(names, ["ask", "find", "recall", "retain", "pack"]);
+    assert_eq!(names, ["ask", "find", "recall", "retain", "pack", "handoff", "loadout"]);
     for tool in tools {
         assert_eq!(tool["inputSchema"]["type"], "object");
         assert!(tool["description"].as_str().unwrap().len() > 10);

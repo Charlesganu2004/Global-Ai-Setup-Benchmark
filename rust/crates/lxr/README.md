@@ -2,7 +2,8 @@
 
 Private developer notes. `pgr` is the command line of PeterGanuRusty: a code graph, hybrid
 code search and memory for the repository a coding agent works in. One program, started
-once per question. The contract it follows is the CLI contract `pgr-cli.txt` (version 0.1).
+once per question. The contract it follows is the CLI contract `pgr-cli.txt` (version 0.1) and
+its additions in `pgr-hub.txt` (version 0.2: the team hub and brief packs, described below).
 
 ## Build and test
 
@@ -38,7 +39,7 @@ Without the feature nothing changes. The search order at run time is in `src/mod
 
 ## Commands on one screen
 
-    pgr [--root DIR] [--engines graph,search,memory] COMMAND ...
+    pgr [--root DIR] [--engines graph,search,memory] [--bank NAME] [--task NAME] [--from ROLE] COMMAND ...
 
     refresh [--force]            build or update the index, print the status line
     status                       print the status line, never builds
@@ -56,8 +57,10 @@ Without the feature nothing changes. The search order at run time is in `src/mod
     recall WORDS... [-k N] [--budget low|mid|high] [--max-tokens N] [--tag T]... [--since DATE] [--until DATE]
     reflect WORDS...
     memory list [-k N] | forget ID | stats | path
+    handoff TEXT... [--kind world|experience|directive] [--tag T]... [--whole]   (needs --task; TEXT - reads standard input)
+    loadout [WORDS...] [--budget N]   what to load before starting (600 tokens)
     ask KIND:WHAT...             def callers about affected explain find recall path (path is A>B)
-    pack TASK [--budget N]          == find, == graph, == memory, a third of the budget each
+    pack TASK [--budget N]       == names, == find, == graph, == memory (800 tokens)
     mcp                          MCP server on standard input and output
     --version | -V, help | --help | -h
 
@@ -74,10 +77,123 @@ goes to standard error. Dates are `2026-10-12`, `2026-10-12 14:30` or `2026-10-1
 | `PGR_ENGINES` | Same as `--engines`; the flag wins. |
 | `PGR_NO_REFRESH` | `1`: answer from the index as it is; no index at all is exit 1. |
 | `PGR_LOCK_WAIT_MS` | Milliseconds a refresh waits for the lock of another process. Default 30000. |
-| `PGR_BANK` | A plain name: use `LXR_HOME\banks\NAME` as the memory bank of every repository. |
+| `PGR_BANK` | Same as `--bank`; the flag wins. A name of 1 to 64 characters out of `A-Z a-z 0-9 . _ -`, not `.` or `..`: use `LXR_HOME\banks\NAME` as the memory bank of every repository. Any other value, `..\x` or `a\b` included, is a usage error (exit 2). An empty variable counts as not set. |
+| `PGR_TASK` | Same as `--task`; the flag wins. The task a `handoff`, `loadout` or `pack` belongs to. Same rule for the name. |
+| `PGR_ROLE` | Same as `--from`; the flag wins. Who is calling. Default `agent`. Same rule for the name. |
 | `USERPROFILE`, `HOME` | The home folder pgr refuses to index; also where the model is looked for. |
 | `PGR_EMBED_MODEL_DIR` | Build time only, with the feature `embedded-model`: the folder of the model to compile in. |
 | `HF_HUB_CACHE`, `HF_HOME` | Hugging Face cache, searched for the model last. |
+
+## Team hub
+
+Version 0.2 lets several agents, one after another or side by side, work on one task through a
+bank they share, and puts what they know into the brief of the next one before it starts, so that
+it does not spend a turn looking it up. The memory is read in layers, the durable and small ones
+first:
+
+| Layer | What it is |
+| --- | --- |
+| L0 raw | The repository itself. Notes point at definitions (anchors) and are checked against them: a note about code that has changed since is printed as stale, one about code that is gone as gone. A note has an anchor when it names code in a spelling the bank's entity rules know (see below). |
+| L1 notes | What `retain` and `handoff` keep. |
+| L2 task | The notes filed for one task, tagged `task:NAME`. |
+| L3 core | Directives, and notes confirmed by repetition (seen at least 3 times) or by more than one role. |
+
+Three global flags, before or after the command, with the variables `PGR_BANK`, `PGR_TASK` and
+`PGR_ROLE` as defaults (the flag wins). A name is 1 to 64 characters out of `A-Z a-z 0-9 . _ -`,
+and not `.` or `..`; anything else is a usage error, from the flag and from the variable alike,
+so that a bank name can never leave the banks folder. A bank name must also be a folder name of
+its own on every system, so on top of that rule it cannot end in a dot (Windows drops it, so `x.`
+would be the bank `x`) or be the name of a Windows device (`CON`, `PRN`, `AUX`, `NUL`, `COM1` to
+`COM9`, `LPT1` to `LPT9`, with or without an extension). A task or a role is a tag and has the
+rule alone. A bad `PGR_ROLE` or `PGR_TASK` is refused by `handoff`, `loadout` and `pack`, the
+commands that read them.
+
+    --bank NAME    use the bank LXR_HOME\banks\NAME, shared by every repository
+    --task NAME    the task this call belongs to
+    --from ROLE    who is calling (default agent)
+
+Three commands:
+
+- `pgr handoff TEXT...` files what an agent found for a task, for the next agent. It needs
+  `--task`. The text is kept as `retain` keeps it (the same splitting into facts, the same
+  near-duplicate rule, `--whole` for one note), and every note gets the tags `task:NAME` and
+  `from:ROLE` and the context `handoff`. A fact that repeats an older note reinforces that note,
+  and the note gains the two tags: this is how a fact becomes confirmed by a second role. `TEXT`
+  that is the single argument `-` is read from standard input (UTF-8, at most 65,536 bytes). The
+  last line says how many notes were filed and how many of them name code:
+  `handoff NAME: N notes from ROLE, K name code`. A fact that repeats inside one text makes one
+  note, which is counted once (and is seen more than once, as `retain` counts it).
+- `pgr loadout [WORDS...] [--budget N]` prints what an agent loads before it starts, within a
+  budget (600 tokens by default). It only reads: it never changes the bank, and the same input
+  and the same bank give the same bytes, except for the ages. The layers come in this order, and
+  one with nothing to print is left out: `== core` (directives, then confirmed notes, newest first,
+  at most a third of the budget), `== task NAME` (with `--task`: every note of the task that core
+  did not print, fresh ones first, then stale, then gone, and what the other layers leave of the
+  budget), `== related` (with WORDS: at most four notes that `pgr recall WORDS` finds among the
+  others, by words, by meaning and by the names they share, within a third). A summary the bank
+  builds itself from three or more notes about one definition (a note of kind observation) is
+  neither confirmed nor a note of the task, because the notes it covers print on their own. A line
+  is the line of `recall` with the roles before the id. A note that does not fit what is left of
+  its layer is left out and counted, and the notes after it are still tried; a layer the budget cuts
+  ends with `  +K more`, and a layer that has no room for a note, its title and that line is left
+  out, so that the loadout never costs more than its budget (below about 20 tokens that is nothing:
+  `no notes`). A line costs the same at every age, so the ages move no cut. The closing line is `loadout: N notes, F fresh, S stale, G gone, about
+  T tokens`; when S+G is above 0 it is followed by `check stale and gone notes against the code
+  before relying on them`. Nothing to print: `no notes`.
+- `pgr pack "TASK" [--budget N]` is the answer meant to be pasted into a brief: `== names` (the
+  block `pgr about` prints for each code name in the task text that has exactly one definition:
+  a name in backticks, a word with an underscore, a dot, `::` or an inner capital letter, or a
+  word followed directly by `(`; at most four, using up to half of the budget), `== find` (without
+  the hits that already have a block), `== graph`, and `== memory`. The three sections after the
+  names share what is left in turn, and what one does not use passes to the next. With `--task`
+  the memory section holds the core and task layers of `loadout`, without its closing lines.
+
+The MCP server has the same: the tools `handoff` and `loadout`, and `for_task` in `pack`.
+
+A worked example. Two agents look at a cache that is never emptied; the second one confirms what
+the first found, and then the code changes:
+
+    pgr --task cache-bug --from scout handoff "load_config keeps the parsed settings in a module cache and never reloads them."
+    kept n000001
+    handoff cache-bug: 1 notes from scout, 1 name code
+
+    pgr --task cache-bug --from reviewer handoff "load_config keeps the parsed settings in a module cache and never reloads them"
+    reinforced n000001 (seen 2 times)
+    handoff cache-bug: 1 notes from reviewer, 1 name code
+
+    pgr --task cache-bug --from scout handoff "reload_settings is the only way to empty the cache and nothing calls it."
+    kept n000002
+    handoff cache-bug: 1 notes from scout, 1 name code
+
+    pgr --task cache-bug loadout          (after reload_settings was edited)
+    == core
+    - load_config keeps the parsed settings in a module cache and never reloads them.  (4m ago, seen 2 times) [reviewer+scout] #n000001
+    == task cache-bug
+    - reload_settings is the only way to empty the cache and nothing calls it.  (4m ago, stale: code changed) [scout] #n000002
+    loadout: 2 notes, 1 fresh, 1 stale, 0 gone, about 75 tokens
+    check stale and gone notes against the code before relying on them
+
+The first note is in the core layer because two roles filed it; the second is in the task layer
+and is marked stale because the function it names changed after the note was written.
+
+The ideas of layers, of a loadout and of context put into an agent's brief before it starts come
+from TencentCloud/TencentDB-Agent-Memory (MIT). No code of it is used, nothing here calls a model,
+and pgr stays local: choosing, ranking and cutting are plain computation. What pgr adds is that
+a note that names code is checked against the code graph. The notes that are checked are those
+that name code in a spelling the entity rules of the bank know, when exactly one definition has
+that name: a name in backticks, `snake_case`, `camelCase` or a dotted name such as `Store.reload`.
+A plain word such as `main` or `slugify`, a call form such as `slugify()`, and the forms
+`Store::reload` and `app/util.py::slugify` are not anchors, so such a note is never marked stale or
+gone: the closing line counts it as fresh and, once the code has gone, it is still printed among
+the fresh notes with no mark. Put the name in backticks to have it checked.
+
+A bank shared by several repositories (`--bank`) is judged by the repository of the one who reads:
+the anchors of a note hold a file and a name, and the graph that answers is the reader's. Several
+checkouts of one project (clones, worktrees, branches) therefore read a note as fresh, stale or
+gone by the code each of them has, which is the point of sharing the bank. A repository that does
+not hold the code a note names reads the note as gone (the code is not there), however far apart
+the repositories are; the line `check stale and gone notes against the code before relying on
+them` is meant for that too.
 
 ## Index folder
 

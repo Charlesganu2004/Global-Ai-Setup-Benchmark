@@ -94,16 +94,18 @@ fn a_tiny_pack_budget_is_not_overrun() {
     for budget in [3usize, 6, 9] {
         let run = env.run(&["pack", task, "--budget", &budget.to_string()]);
         assert_eq!(run.code, 0, "{}", run.err);
-        let share = (budget / 3).max(1);
         let mut spent = 0usize;
+        let mut total = 0usize;
         for line in run.out.lines().chain(std::iter::once("== end")) {
             if line.starts_with("== ") {
-                // A line that is cut costs its tokens and the line break.
-                assert!(spent <= share + 1, "section of {spent} tokens at budget {budget}: {}", run.out);
+                total += spent;
                 spent = 0;
             } else {
                 spent += (line.len() + 3) / 4 + 1;
             }
         }
+        // A line that is cut costs its tokens and the line break: one token more than its share,
+        // once in each of the three sections after the names.
+        assert!(total <= budget + 3, "{total} tokens at budget {budget}: {}", run.out);
     }
 }

@@ -233,6 +233,9 @@ pub struct Bank {
     /// The last [`Bank::flush`] returned a cache error and nothing has changed since, so the
     /// caller already knows. Dropping the bank does not report it a second time.
     cache_reported: bool,
+    /// Opened by [`Bank::open_read_only`]: nothing is written, not the log, not the caches, not
+    /// when the bank is dropped.
+    read_only: bool,
 }
 
 impl Bank {
@@ -244,9 +247,32 @@ impl Bank {
     /// time one is passed to `retain`, `recall` or `reflect`.
     pub fn open(dir: &Path) -> io::Result<Bank> {
         fs::create_dir_all(dir)?;
+        Bank::load_from(dir, false)
+    }
+
+    fn load_from(dir: &Path, read_only: bool) -> io::Result<Bank> {
         let Loaded { core, derived, dirty, len, modified, ends_clean } = load(dir)?;
         let log = LogFile { path: dir.join(LOG_FILE), file: None, len, modified, ends_clean };
-        Ok(Bank { dir: dir.to_path_buf(), core, derived: Mutex::new(derived), log, dirty, failed: false, cache_reported: false })
+        let derived = Mutex::new(derived);
+        Ok(Bank { dir: dir.to_path_buf(), core, derived, log, dirty, failed: false, cache_reported: false, read_only })
+    }
+
+    /// Opens the bank in `dir` for reading only. The folder is not created when it is missing (the
+    /// bank is then empty), and nothing is ever written to it: [`Bank::retain`] and
+    /// [`Bank::forget`] give a `PermissionDenied` error, [`Bank::flush`] and the drop of the bank
+    /// leave the caches as they are even when they are out of date, and a recall that has to
+    /// embed notes keeps the vectors in memory only. For a caller that must not change the folder
+    /// at all, such as a loadout that an agent runs before it starts.
+    pub fn open_read_only(dir: &Path) -> io::Result<Bank> {
+        Bank::load_from(dir, true)
+    }
+
+    /// The error of a change asked of a bank that was opened for reading only.
+    fn writable(&self) -> io::Result<()> {
+        if self.read_only {
+            return Err(io::Error::new(io::ErrorKind::PermissionDenied, "the bank was opened for reading only"));
+        }
+        Ok(())
     }
 
     /// Catches up with notes that another bank, in this process or another, has written since
@@ -298,6 +324,7 @@ impl Bank {
         code: &dyn CodeView,
         embedder: Option<&Embedder>,
     ) -> io::Result<Vec<Retained>> {
+        self.writable()?;
         let _lock = LogLock::take(&self.dir);
         self.catch_up()?;
         let derived = unlock(&mut self.derived);
@@ -360,6 +387,7 @@ impl Bank {
     /// Forgets a note: a tombstone is appended and the note leaves every index. False when
     /// there is no such note. Like [`Bank::retain`], it reads what another bank appended first.
     pub fn forget(&mut self, id: &str) -> io::Result<bool> {
+        self.writable()?;
         let _lock = LogLock::take(&self.dir);
         self.catch_up()?;
         let derived = unlock(&mut self.derived);
@@ -431,6 +459,9 @@ impl Bank {
     /// The error says which of two things failed. [`FlushError::Log`]: the notes are not known
     /// to be on disk. [`FlushError::Cache`]: the notes are safe and only the speed-up is missing.
     pub fn flush(&mut self) -> Result<(), FlushError> {
+        if self.read_only {
+            return Ok(());
+        }
         if let Some(file) = &self.log.file {
             file.sync_data().map_err(FlushError::Log)?;
         }

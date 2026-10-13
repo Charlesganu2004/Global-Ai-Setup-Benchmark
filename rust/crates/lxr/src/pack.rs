@@ -1,18 +1,27 @@
-//! `pgr pack "TASK"`: one answer for a task, made of the best search hits, a walk of the
-//! graph seeded by the task text and the notes that match it. Each section stays within
-//! a third of the budget and is left out when it is empty.
+//! `pgr pack "TASK"`: one answer for a task, meant to be pasted into an agent's brief so that the
+//! agent does not spend a turn looking things up. Its sections, in this order: the definitions the
+//! task text names, the best search hits, a walk of the graph seeded by the task text, and the
+//! notes that go with the task. A section is left out when it is empty.
+//!
+//! The budget is shared by one rule. The names section may use up to half of it. What is left is
+//! shared equally by the find, graph and memory sections that are on, in that order, and what a
+//! section does not use passes to the sections after it.
 
 use crate::cli::FindArgs;
 use crate::ctx::{Ctx, Engine, Needs};
 use crate::fail::Res;
+use crate::hub::{self, Want};
 use crate::{findcmd, graphcmd, memcmd};
 use lxr_core::est_tokens;
+use lxr_graph::Graph;
 use lxr_rag::Mode;
 
 /// Hits asked of the search before they are cut to the section's share.
 const HITS_ASKED: usize = 8;
 /// Notes asked of the bank before they are cut to the section's share.
 const NOTES_ASKED: usize = 6;
+/// The most definitions the names section describes.
+const MAX_NAMES: usize = 4;
 
 /// Cuts a line to at most `bytes` bytes of UTF-8, at a character boundary.
 fn cut_bytes(line: String, bytes: usize) -> String {
@@ -24,6 +33,16 @@ fn cut_bytes(line: String, bytes: usize) -> String {
         at -= 1;
     }
     line[..at].to_string()
+}
+
+/// What a line costs in the budget: its tokens and its line break.
+fn cost(line: &str) -> usize {
+    est_tokens(line) + 1
+}
+
+/// What the lines of a section cost.
+fn cost_of(lines: &[String]) -> usize {
+    lines.iter().map(|l| cost(l)).sum()
 }
 
 /// Keeps whole groups of lines while they fit in `tokens`. When even the first group is
@@ -61,35 +80,206 @@ fn section(out: &mut String, title: &str, lines: &[String]) {
     }
 }
 
-/// Answers a task description.
-pub fn run(ctx: &mut Ctx, task: &str, budget: usize) -> Res<String> {
-    let share = (budget / 3).max(1);
+/// True for a character a code name is made of, or of a path that leads to one.
+fn name_char(c: char) -> bool {
+    c.is_alphanumeric() || matches!(c, '_' | '.' | ':' | '/')
+}
+
+/// The name without the punctuation at its ends: what is not a letter, a digit or an underscore.
+fn trim_punctuation(raw: &str) -> &str {
+    raw.trim_matches(|c: char| !(c.is_alphanumeric() || c == '_'))
+}
+
+/// True for a word that looks like a name from code: it has an underscore, a dot or `::`, or a
+/// capital letter after its first character (`fooBar`, `FooBar`).
+fn looks_like_code(word: &str) -> bool {
+    word.contains(['_', '.']) || word.contains("::") || word.chars().skip(1).any(char::is_uppercase)
+}
+
+/// The code names in a task text, in the order they first appear, each once. A name is a run of
+/// text between backticks; or a word that looks like code (see `looks_like_code`); or a word
+/// directly followed by `(`. The punctuation at the ends of a name is dropped.
+fn code_names(text: &str) -> Vec<String> {
+    let mut names: Vec<String> = Vec::new();
+    let mut push = |raw: &str| {
+        let name = trim_punctuation(raw);
+        if !name.is_empty() && !names.iter().any(|n| n == name) {
+            names.push(name.to_string());
+        }
+    };
+    let mut at = 0;
+    while at < text.len() {
+        let Some(c) = text[at..].chars().next() else { break };
+        if c == '`' {
+            if let Some(length) = text[at + 1..].find('`') {
+                let run = &text[at + 1..at + 1 + length];
+                // `name(args)` names the function and not its arguments.
+                push(run.split('(').next().unwrap_or(run));
+                at += length + 2;
+                continue;
+            }
+        } else if name_char(c) {
+            let rest = &text[at..];
+            let length = rest.find(|ch: char| !name_char(ch)).unwrap_or(rest.len());
+            let word = &rest[..length];
+            if rest[length..].starts_with('(') || looks_like_code(trim_punctuation(word)) {
+                push(word);
+            }
+            at += length;
+            continue;
+        }
+        at += c.len_utf8();
+    }
+    names
+}
+
+/// The block `pgr about` prints for one definition a task text names.
+struct Block {
+    node: u32,
+    /// Path, first line and last line of the definition: what a search hit is compared by.
+    span: (String, u32, u32),
+    lines: Vec<String>,
+}
+
+/// The blocks of the first definitions the task text names. A name counts when `Graph::find` gives
+/// exactly one definition for it, and a definition counts once however it was spelled.
+fn named_blocks(graph: &Graph, task: &str) -> Vec<Block> {
+    let mut blocks: Vec<Block> = Vec::new();
+    for name in code_names(task) {
+        if blocks.len() == MAX_NAMES {
+            break;
+        }
+        let found = graph.find(&name);
+        let [node] = found[..] else { continue };
+        if blocks.iter().any(|b| b.node == node) {
+            continue;
+        }
+        let mut text = String::new();
+        graphcmd::about(graph, std::slice::from_ref(&name), &mut text);
+        let definition = &graph.nodes[node as usize];
+        blocks.push(Block {
+            node,
+            span: (graph.path_of(node).to_string(), definition.start, definition.end),
+            lines: text.lines().map(str::to_string).collect(),
+        });
+    }
+    blocks
+}
+
+fn more_lines(count: usize) -> String {
+    format!("  +{count} more lines")
+}
+
+/// Cuts the blocks to `tokens`. A block that does not fit whole is cut at a line end and followed
+/// by `  +K more lines`, and it is the last one. Gives the lines and the number of blocks that
+/// have at least one line in them.
+fn fit_blocks(blocks: &[Block], tokens: usize) -> (Vec<String>, usize) {
+    let mut lines: Vec<String> = Vec::new();
+    let mut used = 0usize;
+    let mut shown = 0usize;
+    for block in blocks {
+        let price = cost_of(&block.lines);
+        if used + price <= tokens {
+            used += price;
+            lines.extend(block.lines.iter().cloned());
+            shown += 1;
+            continue;
+        }
+        let total = block.lines.len();
+        let mut kept = 0usize;
+        let mut taken = used;
+        for (i, line) in block.lines.iter().enumerate() {
+            let left = total - i - 1;
+            let reserve = if left > 0 { cost(&more_lines(left)) } else { 0 };
+            if taken + cost(line) + reserve > tokens {
+                break;
+            }
+            taken += cost(line);
+            kept += 1;
+        }
+        if kept > 0 {
+            lines.extend(block.lines[..kept].iter().cloned());
+            lines.push(more_lines(total - kept));
+            shown += 1;
+        }
+        break;
+    }
+    (lines, shown)
+}
+
+/// Answers a task description. `for_task` is the task whose notes go into the answer; with none,
+/// the notes are those the task text recalls.
+pub fn run(ctx: &mut Ctx, task: &str, budget: usize, for_task: Option<&str>) -> Res<String> {
+    let for_task = ctx.task(for_task)?;
+    // The answer is the same for every caller, but a role name is refused wherever it comes from.
+    ctx.role(None)?;
+    let graph_on = ctx.engines.is_on(Engine::Graph);
+    let search_on = ctx.engines.is_on(Engine::Search);
+    if graph_on || search_on {
+        ctx.need(Needs { graph: graph_on, search: search_on, embed: false })?;
+    }
+    let memory_on = ctx.engines.is_on(Engine::Memory)
+        && match for_task {
+            Some(_) => ctx.bank_dir.is_dir(),
+            None => ctx.bank_has_notes(),
+        };
+
     let mut out = String::new();
-    let needs = Needs { graph: ctx.engines.is_on(Engine::Graph), search: ctx.engines.is_on(Engine::Search), embed: false };
-    if needs.graph || needs.search {
-        ctx.need(needs)?;
+    let mut left = budget;
+    let mut shown: Vec<Block> = Vec::new();
+    if graph_on {
+        let named = named_blocks(ctx.graph()?, task);
+        let (lines, count) = fit_blocks(&named, budget / 2);
+        left = left.saturating_sub(cost_of(&lines));
+        section(&mut out, "names", &lines);
+        shown = named;
+        shown.truncate(count);
     }
-    if needs.search {
+
+    // The sections that are on share what is left equally, in order.
+    let mut waiting = [search_on, graph_on, memory_on].into_iter().filter(|on| *on).count();
+    if search_on {
+        let share = left / waiting;
+        waiting -= 1;
         let args = FindArgs { query: task.to_string(), k: HITS_ASKED, mode: Mode::Hybrid };
-        let groups = findcmd::hits(ctx, &args)?.iter().map(findcmd::hit_lines).collect();
-        section(&mut out, "find", &fit_groups(groups, share));
+        let hits = findcmd::hits(ctx, &args)?;
+        let groups = hits
+            .iter()
+            .filter(|hit| !shown.iter().any(|b| b.span.0 == hit.path && b.span.1 == hit.start && b.span.2 == hit.end))
+            .map(findcmd::hit_lines)
+            .collect();
+        let lines = fit_groups(groups, share);
+        left = left.saturating_sub(cost_of(&lines));
+        section(&mut out, "find", &lines);
     }
-    if needs.graph {
+    if graph_on {
+        let share = left / waiting;
+        waiting -= 1;
         let graph = ctx.graph()?;
         let answer = graph.query(task, share);
         if !answer.nodes.is_empty() {
             let groups = graphcmd::query_lines(graph, &answer).into_iter().map(|l| vec![l]).collect();
-            section(&mut out, "graph", &fit_groups(groups, share));
+            let lines = fit_groups(groups, share);
+            left = left.saturating_sub(cost_of(&lines));
+            section(&mut out, "graph", &lines);
         }
     }
-    if ctx.engines.is_on(Engine::Memory) && ctx.bank_has_notes() {
-        let notes = memcmd::relevant_notes(ctx, task, NOTES_ASKED, share)?;
-        let now = ctx.now();
-        let groups = notes.iter().map(|n| vec![memcmd::note_line(n, now)]).collect();
-        section(&mut out, "memory", &fit_groups(groups, share));
+    if memory_on {
+        let share = left / waiting;
+        let lines = match for_task {
+            // The layers of a loadout for the task, without its closing lines.
+            Some(name) => hub::load(ctx, &Want { task: Some(name.as_str()), query: "", budget: share, related: false })?.lines,
+            None => {
+                let notes = memcmd::relevant_notes(ctx, task, NOTES_ASKED, share)?;
+                let now = ctx.now();
+                let groups = notes.iter().map(|n| vec![memcmd::note_line(n, now)]).collect();
+                fit_groups(groups, share)
+            }
+        };
+        section(&mut out, "memory", &lines);
     }
     if out.is_empty() {
-        ln!(out, "none");
+        ln!(out, "nothing found for this task");
     }
     Ok(out)
 }
@@ -124,5 +314,64 @@ mod tests {
         let kept = fit_groups(vec![vec!["x".repeat(500), "y".repeat(10)]], 10);
         assert_eq!(kept.len(), 1);
         assert_eq!(kept[0].len(), 40);
+    }
+
+    #[test]
+    fn backticked_runs_are_names_whatever_they_look_like() {
+        assert_eq!(code_names("change `Store` and `reload` in `app/core.py::load_config`"), ["Store", "reload", "app/core.py::load_config"]);
+        assert_eq!(code_names("call `load_config(path, 3)` and `Store.reload()` now"), ["load_config", "Store.reload"]);
+        assert!(code_names("a lone ` backtick, never closed").is_empty());
+    }
+
+    #[test]
+    fn words_with_an_underscore_a_dot_a_double_colon_or_an_inner_capital_are_names() {
+        assert_eq!(code_names("fix read_text, then Store.get; see app::main and fooBar and FooBar."), ["read_text", "Store.get", "app::main", "fooBar", "FooBar"]);
+        // A word that only starts with a capital, and plain words, are not.
+        assert!(code_names("Fix the Store class and read the file").is_empty());
+    }
+
+    #[test]
+    fn a_word_directly_followed_by_a_bracket_is_a_name_and_one_after_a_space_is_not() {
+        assert_eq!(code_names("make slugify(text) faster, and reload (twice)"), ["slugify"]);
+        assert_eq!(code_names("(see load_config)."), ["load_config"]);
+    }
+
+    #[test]
+    fn punctuation_at_the_ends_is_dropped_and_each_name_comes_once_in_the_order_of_first_appearance() {
+        assert_eq!(code_names("read_text, parse_text. read_text! (parse_text) `read_text`"), ["read_text", "parse_text"]);
+        assert_eq!(code_names("see core.py."), ["core.py"]);
+        assert!(code_names("").is_empty() && code_names("no names here at all").is_empty());
+    }
+
+    fn block(node: u32, lines: usize) -> Block {
+        Block { node, span: ("p.py".to_string(), 1, 2), lines: (0..lines).map(|i| format!("line {i} of block {node}")).collect() }
+    }
+
+    #[test]
+    fn blocks_that_fit_are_kept_whole() {
+        let blocks = [block(1, 3), block(2, 2)];
+        let (lines, shown) = fit_blocks(&blocks, 1000);
+        assert_eq!((lines.len(), shown), (5, 2));
+    }
+
+    #[test]
+    fn a_block_that_does_not_fit_is_cut_at_a_line_end_and_counts_the_lines_left_out() {
+        let blocks = [block(1, 2), block(2, 5), block(3, 2)];
+        let each = cost("line 0 of block 2");
+        let tokens = cost_of(&blocks[0].lines) + 2 * each + cost(&more_lines(3));
+        let (lines, shown) = fit_blocks(&blocks, tokens);
+        assert_eq!(shown, 2);
+        assert_eq!(&lines[..2], &blocks[0].lines[..]);
+        assert_eq!(&lines[2..4], &blocks[1].lines[..2]);
+        assert_eq!(lines[4], "  +3 more lines");
+        assert_eq!(lines.len(), 5, "the block after the cut one is not started");
+        assert!(cost_of(&lines) <= tokens);
+    }
+
+    #[test]
+    fn nothing_is_shown_when_not_even_one_line_of_the_first_block_fits() {
+        let (lines, shown) = fit_blocks(&[block(1, 3)], 2);
+        assert!(lines.is_empty());
+        assert_eq!(shown, 0);
     }
 }

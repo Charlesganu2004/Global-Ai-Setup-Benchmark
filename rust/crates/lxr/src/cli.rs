@@ -3,6 +3,7 @@
 use crate::ctx::{Engine, Engines};
 use crate::dates::parse_date;
 use crate::fail::{Fail, Res};
+use crate::names::{self, Kind as Name};
 use lexopt::{Arg, Parser};
 use lxr_memory::{Budget, Kind};
 use lxr_rag::Mode;
@@ -14,6 +15,7 @@ pub const DEFAULT_FIND_K: usize = 5;
 pub const DEFAULT_HUBS_K: usize = 10;
 pub const DEFAULT_QUERY_BUDGET: usize = 600;
 pub const DEFAULT_PACK_BUDGET: usize = 800;
+pub const DEFAULT_LOADOUT_BUDGET: usize = 600;
 pub const DEFAULT_DEPTH: u32 = 2;
 pub const DEFAULT_RECALL_K: usize = 8;
 pub const DEFAULT_RECALL_TOKENS: usize = 400;
@@ -23,7 +25,7 @@ pub const DEFAULT_LIST_K: usize = 20;
 pub const HELP: &str = "\
 pgr: a code graph, hybrid code search and memory for the repository you work in
 
-usage: pgr [--root DIR] [--engines LIST] COMMAND ...
+usage: pgr [--root DIR] [--engines LIST] [--bank NAME] [--task NAME] [--from ROLE] COMMAND ...
 
 index:
   refresh [--force]        build or update the index, then print the status line
@@ -44,16 +46,19 @@ memory:
   retain TEXT... [--kind world|experience|directive] [--tag T]... [--context C] [--when DATE] [--whole]
   recall WORDS... [-k N] [--budget low|mid|high] [--max-tokens N] [--tag T]... [--since DATE] [--until DATE]
   reflect WORDS...         notes sorted into directives, observations and facts
+  handoff TEXT... [--kind world|experience|directive] [--tag T]... [--whole]  file what you found for the task (needs --task; TEXT - reads standard input)
+  loadout [WORDS...] [--budget N]  what to load before you start: core notes, the task's notes, related notes
   memory list [-k N] | forget ID | stats | path
 combined:
   ask KIND:WHAT...         several questions at once (def callers about affected explain find recall path)
-  pack TASK [--budget N]   one answer for a task: search hits, graph walk and notes
+  pack TASK [--budget N]   one answer for a task: named definitions, search hits, graph walk and notes
   mcp                      Model Context Protocol server on standard input and output
 other:
   --version | -V           print the version
   help | --help | -h       this text
 
 engines: --engines graph,search,memory (or PGR_ENGINES); PGR_NO_REFRESH=1 answers from the index as it is.
+team: --bank NAME (or PGR_BANK) uses one bank shared by every repository; --task NAME (or PGR_TASK) says which task a call belongs to; --from ROLE (or PGR_ROLE, default agent) says who is calling.
 A word that starts with a dash needs -- before it.
 ";
 
@@ -62,6 +67,12 @@ A word that starts with a dash needs -- before it.
 pub struct Global {
     pub root: Option<PathBuf>,
     pub engines: Option<String>,
+    /// `--bank`, already checked as a bank name.
+    pub bank: Option<String>,
+    /// `--task`, already checked as a task name.
+    pub task: Option<String>,
+    /// `--from`, already checked as a role name.
+    pub from: Option<String>,
 }
 
 impl Global {
@@ -94,6 +105,29 @@ pub struct RetainArgs {
     pub context: String,
     pub when: Option<i64>,
     pub whole: bool,
+}
+
+/// Arguments of `handoff`. A task or role of `None` is the one the command line, the
+/// environment or the server was started with.
+#[derive(Clone, Debug)]
+pub struct HandoffArgs {
+    pub text: String,
+    /// The text is read from standard input (the single argument `-`).
+    pub stdin: bool,
+    pub kind: Kind,
+    pub tags: Vec<String>,
+    pub whole: bool,
+    pub task: Option<String>,
+    pub role: Option<String>,
+}
+
+/// Arguments of `loadout`. A task of `None` is the one the command line, the environment or the
+/// server was started with.
+#[derive(Clone, Debug)]
+pub struct LoadoutArgs {
+    pub query: String,
+    pub budget: usize,
+    pub task: Option<String>,
 }
 
 /// Arguments of `recall`.
@@ -151,8 +185,12 @@ pub enum Command {
     Recall(RecallArgs),
     Reflect { query: String },
     Memory(MemoryCmd),
+    Handoff(HandoffArgs),
+    Loadout(LoadoutArgs),
     Ask { questions: Vec<String> },
-    Pack { task: String, budget: usize },
+    /// `for_task` is the task whose notes go into the answer; `None` is the one the command
+    /// line, the environment or the server was started with.
+    Pack { task: String, budget: usize, for_task: Option<String> },
     Mcp,
     Help,
     Version,
@@ -172,7 +210,12 @@ impl Command {
             | Command::Query { .. }
             | Command::Map { .. } => Some(Engine::Graph),
             Command::Find(_) => Some(Engine::Search),
-            Command::Retain(_) | Command::Recall(_) | Command::Reflect { .. } | Command::Memory(_) => Some(Engine::Memory),
+            Command::Retain(_)
+            | Command::Recall(_)
+            | Command::Reflect { .. }
+            | Command::Memory(_)
+            | Command::Handoff(_)
+            | Command::Loadout(_) => Some(Engine::Memory),
             _ => None,
         }
     }
@@ -235,6 +278,18 @@ fn next_item(parser: &mut Parser, global: &mut Global) -> Res<Option<Item>> {
             }
             Some(Arg::Long("engines")) => {
                 global.engines = Some(text(parser, "--engines")?);
+            }
+            Some(Arg::Long("bank")) => {
+                let value = text(parser, "--bank")?;
+                global.bank = Some(names::check(Name::Bank, &value)?);
+            }
+            Some(Arg::Long("task")) => {
+                let value = text(parser, "--task")?;
+                global.task = Some(names::check(Name::Task, &value)?);
+            }
+            Some(Arg::Long("from")) => {
+                let value = text(parser, "--from")?;
+                global.from = Some(names::check(Name::Role, &value)?);
             }
             Some(Arg::Long("help")) | Some(Arg::Short('h')) => return Ok(Some(Item::Help)),
             Some(Arg::Long("version")) | Some(Arg::Short('V')) => return Ok(Some(Item::Version)),
@@ -393,7 +448,7 @@ fn parse_command(name: &str, parser: &mut Parser, global: &mut Global) -> Res<Co
                 }
                 _ if joined.trim().is_empty() => Err(Fail::usage(format!("{name} needs a text"))),
                 "query" => Ok(Command::Query { question: joined, budget }),
-                _ => Ok(Command::Pack { task: joined, budget }),
+                _ => Ok(Command::Pack { task: joined, budget, for_task: None }),
             }
         }
         "find" => {
@@ -428,6 +483,8 @@ fn parse_command(name: &str, parser: &mut Parser, global: &mut Global) -> Res<Co
             Ok(Command::Find(FindArgs { query, k, mode }))
         }
         "retain" => parse_retain(parser, global),
+        "handoff" => parse_handoff(parser, global),
+        "loadout" => parse_loadout(parser, global),
         "recall" => parse_recall(parser, global),
         "reflect" => {
             let words = only_words!();
@@ -470,6 +527,53 @@ fn parse_retain(parser: &mut Parser, global: &mut Global) -> Res<Command> {
         return Err(Fail::usage("retain needs the text to keep"));
     }
     Ok(Command::Retain(args))
+}
+
+fn parse_handoff(parser: &mut Parser, global: &mut Global) -> Res<Command> {
+    let mut words = Vec::new();
+    let mut args =
+        HandoffArgs { text: String::new(), stdin: false, kind: Kind::World, tags: Vec::new(), whole: false, task: None, role: None };
+    while let Some(item) = next_item(parser, global)? {
+        match item {
+            Item::Word(w) => words.push(w),
+            Item::Flag(f) if f == "--kind" => {
+                let value = text(parser, "--kind")?;
+                args.kind = match Kind::from_name(&value) {
+                    Some(k @ (Kind::World | Kind::Experience | Kind::Directive)) => k,
+                    _ => return Err(Fail::usage(format!("--kind must be world, experience or directive, got '{value}'"))),
+                };
+            }
+            Item::Flag(f) if f == "--tag" => args.tags.push(text(parser, "--tag")?),
+            Item::Flag(f) if f == "--whole" => args.whole = true,
+            Item::Help => return Ok(Command::Help),
+            Item::Version => return Ok(Command::Version),
+            Item::Flag(f) => return Err(unknown(&f)),
+        }
+    }
+    if words.len() == 1 && words[0] == "-" {
+        args.stdin = true;
+        return Ok(Command::Handoff(args));
+    }
+    args.text = words.join(" ");
+    if args.text.trim().is_empty() {
+        return Err(Fail::usage("handoff needs the text to keep"));
+    }
+    Ok(Command::Handoff(args))
+}
+
+fn parse_loadout(parser: &mut Parser, global: &mut Global) -> Res<Command> {
+    let mut words = Vec::new();
+    let mut budget = DEFAULT_LOADOUT_BUDGET;
+    while let Some(item) = next_item(parser, global)? {
+        match item {
+            Item::Word(w) => words.push(w),
+            Item::Flag(f) if f == "--budget" => budget = number(parser, "--budget", 1)?,
+            Item::Help => return Ok(Command::Help),
+            Item::Version => return Ok(Command::Version),
+            Item::Flag(f) => return Err(unknown(&f)),
+        }
+    }
+    Ok(Command::Loadout(LoadoutArgs { query: words.join(" ").trim().to_string(), budget, task: None }))
 }
 
 fn parse_recall(parser: &mut Parser, global: &mut Global) -> Res<Command> {
@@ -604,10 +708,58 @@ mod tests {
     }
 
     #[test]
+    fn the_team_flags_work_before_and_after_the_command_and_are_checked() {
+        let cli = parsed(&["--bank", "team", "--task", "t-1", "loadout"]).unwrap();
+        assert_eq!(cli.global.bank.as_deref(), Some("team"));
+        assert_eq!(cli.global.task.as_deref(), Some("t-1"));
+        let cli = parsed(&["handoff", "found it", "--from", "scout"]).unwrap();
+        assert_eq!(cli.global.from.as_deref(), Some("scout"));
+        for args in [
+            vec!["--bank", "..\\x", "status"],
+            vec!["--bank", "a\\b", "status"],
+            vec!["--bank", "", "status"],
+            vec!["--bank", "..", "status"],
+            vec!["status", "--task", "a/b"],
+            vec!["status", "--from", "bad name"],
+            vec!["--task"],
+        ] {
+            let fail = parsed(&args).err().unwrap_or_else(|| panic!("{args:?} should fail"));
+            assert_eq!(fail.code(), 2, "{args:?}");
+        }
+    }
+
+    #[test]
+    fn handoff_and_loadout_take_their_own_flags() {
+        match parsed(&["handoff", "--kind", "experience", "--tag", "a", "--whole", "two", "words"]).unwrap().command {
+            Command::Handoff(h) => {
+                assert_eq!((h.text.as_str(), h.kind, h.tags, h.whole, h.stdin), ("two words", Kind::Experience, vec!["a".to_string()], true, false));
+            }
+            other => panic!("{other:?}"),
+        }
+        match parsed(&["handoff", "-"]).unwrap().command {
+            Command::Handoff(h) => assert!(h.stdin && h.text.is_empty()),
+            other => panic!("{other:?}"),
+        }
+        match parsed(&["loadout", "retry", "logic", "--budget", "90"]).unwrap().command {
+            Command::Loadout(l) => assert_eq!((l.query.as_str(), l.budget), ("retry logic", 90)),
+            other => panic!("{other:?}"),
+        }
+        match parsed(&["loadout"]).unwrap().command {
+            Command::Loadout(l) => assert_eq!((l.query.as_str(), l.budget), ("", DEFAULT_LOADOUT_BUDGET)),
+            other => panic!("{other:?}"),
+        }
+        for args in [vec!["handoff"], vec!["handoff", "--bogus", "x"], vec!["handoff", "x", "--kind", "observation"], vec!["loadout", "--budget", "0"]] {
+            assert_eq!(parsed(&args).err().unwrap_or_else(|| panic!("{args:?} should fail")).code(), 2, "{args:?}");
+        }
+    }
+
+    #[test]
     fn the_engine_of_a_command_is_known() {
         assert_eq!(parsed(&["def", "x"]).unwrap().command.engine(), Some(Engine::Graph));
         assert_eq!(parsed(&["find", "x"]).unwrap().command.engine(), Some(Engine::Search));
         assert_eq!(parsed(&["recall", "x"]).unwrap().command.engine(), Some(Engine::Memory));
+        assert_eq!(parsed(&["handoff", "x"]).unwrap().command.engine(), Some(Engine::Memory));
+        assert_eq!(parsed(&["loadout"]).unwrap().command.engine(), Some(Engine::Memory));
         assert_eq!(parsed(&["status"]).unwrap().command.engine(), None);
     }
 }

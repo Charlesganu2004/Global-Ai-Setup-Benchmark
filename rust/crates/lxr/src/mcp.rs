@@ -2,7 +2,9 @@
 //! object per line. The tools give the same text as the commands they stand for.
 
 use crate::app::dispatch;
-use crate::cli::{Command, FindArgs, RecallArgs, RetainArgs, DEFAULT_FIND_K, DEFAULT_PACK_BUDGET};
+use crate::cli::{
+    Command, FindArgs, HandoffArgs, LoadoutArgs, RecallArgs, RetainArgs, DEFAULT_FIND_K, DEFAULT_LOADOUT_BUDGET, DEFAULT_PACK_BUDGET,
+};
 use crate::ctx::Ctx;
 use crate::fail::Fail;
 use lxr_memory::{Budget, Kind};
@@ -206,11 +208,42 @@ fn tools() -> Value {
         },
         {
             "name": "pack",
-            "description": "One answer for a task: search hits, a graph walk and matching notes, within a token budget.",
+            "description": "One answer for a task: the definitions it names, search hits, a graph walk and notes, within a token budget.",
             "inputSchema": {
                 "type": "object",
-                "properties": { "task": { "type": "string" }, "budget": { "type": "integer", "minimum": 1 } },
+                "properties": {
+                    "task": { "type": "string" },
+                    "budget": { "type": "integer", "minimum": 1 },
+                    "for_task": { "type": "string", "description": "The task whose core and task notes go into the answer." }
+                },
                 "required": ["task"]
+            }
+        },
+        {
+            "name": "handoff",
+            "description": "File what you found for a task, for the next agent: notes tagged with the task and your role.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task": { "type": "string" },
+                    "text": { "type": "string" },
+                    "from": { "type": "string", "description": "Who is calling; default agent." },
+                    "kind": { "type": "string", "enum": ["world", "experience", "directive"] },
+                    "tags": { "type": "array", "items": { "type": "string" } }
+                },
+                "required": ["task", "text"]
+            }
+        },
+        {
+            "name": "loadout",
+            "description": "What to load before starting: core notes, then the task's notes, then notes related to the query, within a token budget.",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "task": { "type": "string" },
+                    "query": { "type": "string" },
+                    "budget": { "type": "integer", "minimum": 1 }
+                }
             }
         }
     ])
@@ -234,6 +267,27 @@ fn count_arg(args: &Map<String, Value>, name: &str) -> Result<Option<usize>, Rpc
             Some(n) if n >= 1 => Ok(Some(n as usize)),
             _ => Err(invalid(format!("'{name}' must be a whole number of at least 1"))),
         },
+    }
+}
+
+/// A string argument that may be left out.
+fn optional_text(args: &Map<String, Value>, name: &str) -> Result<Option<String>, RpcError> {
+    match args.get(name) {
+        None | Some(Value::Null) => Ok(None),
+        Some(Value::String(s)) => Ok(Some(s.clone())),
+        Some(_) => Err(invalid(format!("'{name}' must be a string"))),
+    }
+}
+
+/// The kind of a note to keep: `kind`, else world.
+fn kind_arg(args: &Map<String, Value>) -> Result<Kind, RpcError> {
+    match args.get("kind") {
+        None | Some(Value::Null) => Ok(Kind::World),
+        Some(Value::String(word)) => match Kind::from_name(word) {
+            Some(k @ (Kind::World | Kind::Experience | Kind::Directive)) => Ok(k),
+            _ => Err(invalid("'kind' must be world, experience or directive")),
+        },
+        Some(_) => Err(invalid("'kind' must be a string")),
     }
 }
 
@@ -273,17 +327,9 @@ fn command_for(name: &str, args: &Map<String, Value>) -> Result<Command, RpcErro
             Command::Recall(recall)
         }
         "retain" => {
-            let kind = match args.get("kind") {
-                None | Some(Value::Null) => Kind::World,
-                Some(Value::String(word)) => match Kind::from_name(word) {
-                    Some(k @ (Kind::World | Kind::Experience | Kind::Directive)) => k,
-                    _ => return Err(invalid("'kind' must be world, experience or directive")),
-                },
-                Some(_) => return Err(invalid("'kind' must be a string")),
-            };
             Command::Retain(RetainArgs {
                 text: text_arg(args, "text")?,
-                kind,
+                kind: kind_arg(args)?,
                 tags: list_arg(args, "tags")?.unwrap_or_default(),
                 context: String::new(),
                 when: None,
@@ -293,7 +339,22 @@ fn command_for(name: &str, args: &Map<String, Value>) -> Result<Command, RpcErro
         "pack" => Command::Pack {
             task: text_arg(args, "task")?,
             budget: count_arg(args, "budget")?.unwrap_or(DEFAULT_PACK_BUDGET),
+            for_task: optional_text(args, "for_task")?,
         },
+        "handoff" => Command::Handoff(HandoffArgs {
+            text: text_arg(args, "text")?,
+            stdin: false,
+            kind: kind_arg(args)?,
+            tags: list_arg(args, "tags")?.unwrap_or_default(),
+            whole: false,
+            task: Some(text_arg(args, "task")?),
+            role: optional_text(args, "from")?,
+        }),
+        "loadout" => Command::Loadout(LoadoutArgs {
+            query: optional_text(args, "query")?.unwrap_or_default().trim().to_string(),
+            budget: count_arg(args, "budget")?.unwrap_or(DEFAULT_LOADOUT_BUDGET),
+            task: optional_text(args, "task")?,
+        }),
         other => return Err(invalid(format!("unknown tool '{other}'"))),
     })
 }

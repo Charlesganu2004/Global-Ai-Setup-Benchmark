@@ -1565,3 +1565,89 @@ fn a_flush_error_converts_to_an_io_error_that_keeps_the_cause() {
     assert!(FlushError::Log(cause()).to_string().contains("notes"));
     assert!(FlushError::Cache(cause()).to_string().contains("cache"));
 }
+
+// ---- read-only use and the judgement of a note ----
+
+/// The bytes of every file in a folder, by name.
+fn folder_bytes(dir: &std::path::Path) -> Vec<(String, Vec<u8>)> {
+    let mut files: Vec<(String, Vec<u8>)> = fs::read_dir(dir)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_file())
+        .map(|e| (e.file_name().to_string_lossy().into_owned(), fs::read(e.path()).unwrap()))
+        .collect();
+    files.sort();
+    files
+}
+
+#[test]
+fn a_bank_opened_for_reading_writes_nothing_even_when_its_caches_are_missing() {
+    let dir = TempDir::new("readonly");
+    let b = dir.bank("b");
+    {
+        let mut bank = open(&dir);
+        add(&mut bank, "the scheduler retries failed jobs", NOW);
+        add(&mut bank, "the exporter writes csv files", NOW);
+    }
+    // Without the caches a normal open is out of date and writes them again when it is dropped.
+    assert!(b.join("index.bin").is_file(), "a dropped bank writes its caches");
+    let missing_caches = || {
+        let _ = fs::remove_file(b.join("index.bin"));
+        let _ = fs::remove_file(b.join("vectors.bin"));
+    };
+    missing_caches();
+    // The control: a bank opened in the usual way does write them again when it is dropped.
+    drop(open(&dir));
+    assert!(b.join("index.bin").is_file(), "the test would see a write");
+    missing_caches();
+    let before = folder_bytes(&b);
+    {
+        let bank = Bank::open_read_only(&b).unwrap();
+        assert_eq!(bank.len(), 2);
+        let found = bank.recall("scheduler jobs", &recall_at(NOW), &NoCode, None);
+        assert_eq!(texts(&found), ["the scheduler retries failed jobs"]);
+    }
+    assert_eq!(folder_bytes(&b), before, "nothing was written");
+    assert!(!b.join("index.bin").exists() && !b.join("vectors.bin").exists());
+}
+
+#[test]
+fn a_bank_opened_for_reading_refuses_changes_and_does_not_make_its_folder() {
+    let dir = TempDir::new("readonly-refuse");
+    let b = dir.bank("b");
+    let missing = Bank::open_read_only(&b).unwrap();
+    assert!(missing.is_empty());
+    drop(missing);
+    assert!(!b.exists(), "a folder that is not there stays not there");
+
+    let id = {
+        let mut bank = open(&dir);
+        add(&mut bank, "the scheduler retries failed jobs", NOW)[0].id.clone()
+    };
+    let mut bank = Bank::open_read_only(&b).unwrap();
+    let error = bank.retain("another fact about the exporter", &retain_at(NOW), &NoCode, None).unwrap_err();
+    assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+    assert_eq!(bank.forget(&id).unwrap_err().kind(), std::io::ErrorKind::PermissionDenied);
+    assert!(bank.flush().is_ok());
+    assert_eq!(bank.len(), 1, "the note is still there");
+}
+
+#[test]
+fn judging_a_note_gives_stale_for_a_changed_definition_and_gone_for_a_removed_one() {
+    let dir = TempDir::new("judge");
+    let code = FakeCode::default();
+    code.define("parse_config", "src/config.rs", 42);
+    code.define("load_all", "src/load.rs", 7);
+    let mut bank = open(&dir);
+    let both = bank.retain("parse_config is called by load_all.", &retain_at(NOW), &code, None).unwrap()[0].id.clone();
+    let plain = add(&mut bank, "nothing here names code", NOW)[0].id.clone();
+    let judged = |bank: &Bank, id: &str, code: &dyn CodeView| judge_note(bank.get(id).unwrap(), code);
+
+    assert_eq!(judged(&bank, &both, &code), (false, false));
+    code.define("parse_config", "src/config.rs", 43);
+    assert_eq!(judged(&bank, &both, &code), (true, false));
+    code.remove("load_all");
+    assert_eq!(judged(&bank, &both, &code), (true, true));
+    assert_eq!(judged(&bank, &plain, &code), (false, false), "a note that names no code is never judged");
+    assert_eq!(judged(&bank, &both, &NoCode), (false, false), "a view that knows no code judges nothing");
+}

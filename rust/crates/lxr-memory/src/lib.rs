@@ -371,6 +371,14 @@ pub struct BankStats {
     pub bytes: u64,
 }
 
+/// Asks the code view about each definition a note names: `(stale, gone)`. `stale` when one has
+/// changed since the note was written, `gone` when one no longer exists. A note that names no
+/// code, and a view that knows no code, give `(false, false)`. This is the judgement a recall
+/// passes on every note it returns, for a caller that lists notes without recalling them.
+pub fn judge_note(note: &Note, code: &dyn CodeView) -> (bool, bool) {
+    recall::judge(note, code)
+}
+
 /// The entities the rules find in a text, without the ones a caller passes with it. For
 /// tools that want to see what [`Bank::retain`] would extract.
 pub fn find_entities(text: &str) -> Vec<String> {

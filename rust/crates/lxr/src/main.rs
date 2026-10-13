@@ -1,6 +1,12 @@
 //! pgr: a code graph, hybrid code search and memory for the repository a coding agent
 //! works in. One program, started once per question, so start-up cost comes first:
 //! every part of the index is read only when a command needs it.
+//!
+//! The team hub (`handoff`, `loadout` and the names and memory sections of `pack`, in `hub` and
+//! `pack`) reads the memory in layers, the durable and small ones first. L0 raw: the repository
+//! itself, which notes point at (anchors) and are checked against. L1 notes: what `retain` and
+//! `handoff` keep. L2 task: the notes filed for one task. L3 core: directives, and notes confirmed
+//! by repetition or by more than one role.
 
 /// Appends one formatted line to a `String`. Writing to a string cannot fail.
 macro_rules! ln {
@@ -19,11 +25,13 @@ mod fail;
 mod findcmd;
 mod graphcmd;
 mod guard;
+mod hub;
 mod index;
 mod localtime;
 mod mcp;
 mod memcmd;
 mod model;
+mod names;
 mod oslock;
 mod pack;
 mod rows;
@@ -63,7 +71,8 @@ fn run() -> Result<(), Fail> {
         engines.require(engine)?;
     }
     let root = Ctx::resolve_root(cli.global.root.as_deref())?;
-    let mut ctx = Ctx::new(root, engines)?;
+    let names = ctx::Names { bank: cli.global.bank.clone(), task: cli.global.task.clone(), role: cli.global.from.clone() };
+    let mut ctx = Ctx::with_names(root, engines, names)?;
     if matches!(cli.command, Command::Mcp) {
         mcp::serve(&mut ctx);
         return Ok(());

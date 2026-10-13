@@ -14,24 +14,29 @@ fn flat(text: &str) -> String {
 }
 
 /// When a note was last written, in Unix seconds.
-fn written(note: &Note) -> i64 {
+pub fn written(note: &Note) -> i64 {
     [note.updated_at, note.created_at, note.mentioned_at].into_iter().find(|t| *t > 0).unwrap_or(0)
 }
 
 /// `- TEXT  (AGE ago, seen N times) #ID`, with `, stale: code changed` or
 /// `, gone: code removed` inside the brackets when the code the note names has moved.
 pub fn note_line(recalled: &Recalled, now: i64) -> String {
-    let note = &recalled.note;
+    line_with(&recalled.note, recalled.stale, recalled.gone, now, "")
+}
+
+/// The line of a note: `- TEXT  (AGE ago, seen N times, stale: code changed)`, then `roles` as
+/// they are given (empty, or a space and the roles in square brackets), then ` #ID`.
+pub fn line_with(note: &Note, stale: bool, gone: bool, now: i64, roles: &str) -> String {
     let mut inside = format!("{} ago", age_word(now - written(note)));
     if note.proof_count > 1 {
         inside.push_str(&format!(", seen {} times", note.proof_count));
     }
-    if recalled.gone {
+    if gone {
         inside.push_str(", gone: code removed");
-    } else if recalled.stale {
+    } else if stale {
         inside.push_str(", stale: code changed");
     }
-    format!("- {}  ({inside}) #{}", flat(&note.text), note.id)
+    format!("- {}  ({inside}){roles} #{}", flat(&note.text), note.id)
 }
 
 /// The recall options for a set of flags. Words such as "today" in the question mean the days of
@@ -80,36 +85,61 @@ fn settle(result: Result<(), FlushError>) -> Res<()> {
     }
 }
 
-/// `pgr retain TEXT...`.
-pub fn retain(ctx: &mut Ctx, args: &RetainArgs, out: &mut String) -> Res<()> {
+/// One fact that was kept: the note it became or reinforced, and what that note is now.
+pub struct Kept {
+    pub id: String,
+    pub outcome: RetainOutcome,
+    /// How many times the fact was seen, this time included.
+    pub seen: u32,
+    /// The note names at least one definition of the code.
+    pub anchored: bool,
+}
+
+/// Keeps a text as notes with the given options, in the lock that orders the writes of pgr
+/// processes, and makes the log durable before it gives the notes back.
+pub fn keep(ctx: &mut Ctx, text: &str, opts: &RetainOpts) -> Res<Vec<Kept>> {
     ctx.need_memory()?;
-    let opts = retain_opts(args);
     // The bank is brought up to date inside the lock, so it holds every note written until now.
     let _lock = ctx.lock_bank()?;
-    let kept = ctx.bank_session(|bank, code, embedder| {
+    ctx.bank_session(|bank, code, embedder| {
         let done = bank
-            .retain(&args.text, &opts, code, embedder)
+            .retain(text, opts, code, embedder)
             .map_err(|e| Fail::index(format!("cannot write the memory bank: {e}")))?;
         // The flush makes the log durable: a note is not reported as kept before that.
         settle(bank.flush())?;
         Ok::<_, Fail>(
             done.into_iter()
                 .map(|r| {
-                    let seen = bank.get(&r.id).map(|n| n.proof_count).unwrap_or(1);
-                    (r.id, r.outcome, seen)
+                    let note = bank.get(&r.id);
+                    Kept {
+                        seen: note.map(|n| n.proof_count).unwrap_or(1),
+                        anchored: note.is_some_and(|n| !n.anchors.is_empty()),
+                        id: r.id,
+                        outcome: r.outcome,
+                    }
                 })
                 .collect::<Vec<_>>(),
         )
-    })??;
+    })?
+}
+
+/// One line per kept fact: `kept ID` or `reinforced ID (seen N times)`.
+pub fn kept_lines(kept: &[Kept], out: &mut String) {
     if kept.is_empty() {
         ln!(out, "nothing kept");
     }
-    for (id, outcome, seen) in kept {
-        match outcome {
-            RetainOutcome::Added => ln!(out, "kept {id}"),
-            RetainOutcome::Reinforced => ln!(out, "reinforced {id} (seen {seen} times)"),
+    for fact in kept {
+        match fact.outcome {
+            RetainOutcome::Added => ln!(out, "kept {}", fact.id),
+            RetainOutcome::Reinforced => ln!(out, "reinforced {} (seen {} times)", fact.id, fact.seen),
         }
     }
+}
+
+/// `pgr retain TEXT...`.
+pub fn retain(ctx: &mut Ctx, args: &RetainArgs, out: &mut String) -> Res<()> {
+    let kept = keep(ctx, &args.text, &retain_opts(args))?;
+    kept_lines(&kept, out);
     Ok(())
 }
 
@@ -274,8 +304,13 @@ fn shares_a_word(question: &HashSet<String>, note: &Note) -> bool {
 pub fn relevant_notes(ctx: &mut Ctx, query: &str, limit: usize, max_tokens: usize) -> Res<Vec<Recalled>> {
     let args = companion_opts(limit, max_tokens, query);
     let notes = recall_notes(ctx, &args)?;
+    Ok(only_relevant(query, notes))
+}
+
+/// The notes of a recall for `query` that share a telling word with it.
+pub fn only_relevant(query: &str, notes: Vec<Recalled>) -> Vec<Recalled> {
     let question = telling_words(query);
-    Ok(notes.into_iter().filter(|r| shares_a_word(&question, &r.note)).collect())
+    notes.into_iter().filter(|r| shares_a_word(&question, &r.note)).collect()
 }
 
 #[cfg(test)]
