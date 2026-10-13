@@ -5,9 +5,17 @@
 
 Reads   benchmark/data/results.json   every agent run, written by bench_parse.py
         benchmark/data/index.json     index build times and sizes
+        benchmark/data/engine.json    optional: the "public" rows of engine speed
+        benchmark/data/install.json   optional: the "public" install block
         benchmark/harness/arms.json   what each method is and the commands it was given
-Writes  docs/data/benchmark.js        one object, window.BENCH, for the site's pages
+Writes  report/                       the full report, private: its data files, text and asset hashes
+        docs/data/showcase.js         window.SHOWCASE, the public showcase's data
+        docs/*.html                   the showcase pages' computed text and asset hashes
         benchmark/RESULTS.md          the same numbers as tables
+
+The full report (report/) is not published. The showcase (docs/) is published by GitHub Pages, shows
+measured outcomes only, and every build ends by scanning it for anything that must not be public.
+    python benchmark/harness/build_site.py --guard DIR   run only that scan, on any folder
 
 Every number in the site's prose is computed here from those files, so the
 text cannot drift from the tables.
@@ -23,6 +31,8 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 BENCH = HERE.parent
 REPO = BENCH.parent
+REPORT = REPO / "report"   # the full report: private, not published
+DOCS = REPO / "docs"       # the public showcase: published by GitHub Pages
 
 # Dollars per million tokens: input, output, cache read, cache write (5 minute).
 PRICE = {"C": (0.10, 0.50, 0.01, 0.125), "B": (2.00, 10.00, 0.20, 2.50), "A": (4.00, 20.00, 0.20, 5.00)}
@@ -875,7 +885,7 @@ def rounded(value):
 def write_site_data(data: dict) -> list[tuple[str, int]]:
     """Write the site's data as one small file every page loads and three that only the pages
     showing them load: the single runs, the orchestration tables and the hooks tables."""
-    folder = REPO / "docs" / "data"
+    folder = REPORT / "data"
     folder.mkdir(parents=True, exist_ok=True)
     core = {key: value for key, value in data.items() if key not in ("runs", "orchestration", "hooks")}
     core["points"] = [{k: v for k, v in point.items() if k not in POINT_FIELDS_LEFT_OUT} for point in data["points"]]
@@ -906,17 +916,41 @@ def site_sections() -> list[dict]:
     import re
     out = []
     for key, name in SITE_PAGES:
-        page = (REPO / "docs" / name).read_text(encoding="utf-8")
+        page = (REPORT / name).read_text(encoding="utf-8")
         for match in re.finditer(r'<h2 id="([^"]+)"[^>]*>(.*?)</h2>', page, re.S):
             title = html.unescape(re.sub(r"<[^>]+>", "", match.group(2))).strip()
             out.append({"page": key, "id": match.group(1), "title": title})
     return out
 
 
+def hook_effect(hooks: dict, arms: dict) -> dict | None:
+    """What the hooks changed on the runs with no index: runs and fully correct runs with and without them,
+    the change in tokens, and the spread between repeats of one prompt. The report's answers and the
+    public findings state the same figures."""
+    by_id = {arm["id"]: arm for arm in arms["arms"]}
+    native = [r for r in hooks["pairs"] if by_id[r["off"]]["uses"] == ["grep"]]
+    if not native:
+        return None
+    on, off = sum(r["with"]["n"] for r in native), sum(r["without"]["n"] for r in native)
+    right_on, right_off = (sum(r[side]["perfect_runs"] for r in native) for side in ("with", "without"))
+
+    def mean(side: str, field: str) -> float:   # weighted by the runs made with the hooks, pair by pair
+        return sum(r[side][field] * r["with"]["n"] for r in native) / on
+
+    change = mean("with", "tokens") / mean("without", "tokens") - 1
+    repeated = [r for r in native if r["without"]["n"] > 1]
+    spread = (sum((r["without"]["tokens_high"] - r["without"]["tokens_low"]) / r["without"]["tokens"] * r["with"]["n"]
+                  for r in repeated) / sum(r["with"]["n"] for r in repeated)) if repeated else 0.0
+    return {"runs_with": on, "runs_without": off, "right_with": right_on, "right_without": right_off,
+            "change": change, "spread": spread,
+            "saved": change < -spread,   # fewer tokens by more than repeats of one prompt differ
+            "worse": right_on / on < right_off / off,
+            "hidden": mean("with", "hook_redactions") > 0 and sum(r["with"]["q1_incomplete"]["runs"] for r in native) > 0}
+
+
 def answers_of(methods: list[dict], orchestration: dict, hooks: dict, arms: dict) -> dict:
     """One sentence for each question a visitor arrives with, each computed from the data."""
     name = {arm["id"]: arm["name"] for arm in arms["arms"]}
-    by_id = {arm["id"]: arm for arm in arms["arms"]}
     out = {}
     board = ranked(methods, "single", "C", minimum=3) or ranked(methods, "single", "C")
     base = pick(methods, "A0", "single", "C")
@@ -941,29 +975,18 @@ def answers_of(methods: list[dict], orchestration: dict, hooks: dict, arms: dict
             + f"On the cheapest subagents {t['orch_perfect']} of {t['orch_runs']} "
             f"orchestrated runs ended fully correct, against {t['parallel_perfect']} of {t['parallel_runs']} for three "
             f"subagents with nobody reviewing, and a run cost about {statistics.fmean(ratios):.0f} times one agent.")
-    native = [r for r in hooks["pairs"] if by_id[r["off"]]["uses"] == ["grep"]]
-    if native:
-        on, off = sum(r["with"]["n"] for r in native), sum(r["without"]["n"] for r in native)
-        right_on, right_off = (sum(r[side]["perfect_runs"] for r in native) for side in ("with", "without"))
-
-        def mean(side: str, field: str) -> float:   # weighted by the runs made with the hooks, pair by pair
-            return sum(r[side][field] * r["with"]["n"] for r in native) / on
-
-        change = mean("with", "tokens") / mean("without", "tokens") - 1
-        repeated = [r for r in native if r["without"]["n"] > 1]
-        spread = (sum((r["without"]["tokens_high"] - r["without"]["tokens_low"]) / r["without"]["tokens"] * r["with"]["n"]
-                      for r in repeated) / sum(r["with"]["n"] for r in repeated)) if repeated else 0.0
-        saved = change < -spread   # fewer tokens by more than repeats of one prompt differ
-        worse = right_on / on < right_off / off
-        hidden = mean("with", "hook_redactions") > 0 and sum(r["with"]["q1_incomplete"]["runs"] for r in native) > 0
+    effect = hook_effect(hooks, arms)
+    if effect:
+        on, off = effect["runs_with"], effect["runs_without"]
+        right_on, right_off, change, spread = (effect[key] for key in ("right_with", "right_without", "change", "spread"))
         out["hooks"] = (
-            ("They saved tokens on these lookups. " if saved and not worse else "Not on these lookups. ")
-            + (f"Token use fell by {-change:.0%}" if saved else
+            ("They saved tokens on these lookups. " if effect["saved"] and not effect["worse"] else "Not on these lookups. ")
+            + (f"Token use fell by {-change:.0%}" if effect["saved"] else
                "Token use stayed inside the spread between repeats" if abs(change) <= spread else
                f"Token use rose by {change:.0%}")
             + f", and with no index {right_on} of {on} runs ended fully correct with the hooks against "
             f"{right_off} of {off} without"
-            + (", because a redaction marker hid a line the lookup needed." if worse and hidden else "."))
+            + (", because a redaction marker hid a line the lookup needed." if effect["worse"] and effect["hidden"] else "."))
     return out
 
 
@@ -989,7 +1012,7 @@ def write_static_text(text: dict) -> list[str]:
     }
     changed = []
     for name, slots in plans.items():
-        path = REPO / "docs" / name
+        path = REPORT / name
         raw = path.read_bytes().decode("utf-8")
         page = raw
         for pattern, body in slots:
@@ -1002,13 +1025,13 @@ def write_static_text(text: dict) -> list[str]:
     return changed
 
 
-def stamp_assets() -> int:
+def stamp_assets(docs: pathlib.Path = REPORT, names: tuple | list | None = None) -> int:
     """Give every script and stylesheet link in the pages a `?v=` made from the file it points at.
     A browser keeps scripts for a while; without this, a visitor could get a new page with last
     week's script and a broken layout until the cache ran out."""
     import hashlib
     import re
-    docs, stamped = REPO / "docs", 0
+    stamped = 0
 
     def marked(match):
         target = docs / match.group(2)
@@ -1017,7 +1040,7 @@ def stamp_assets() -> int:
         digest = hashlib.sha1(target.read_bytes().replace(b"\r\n", b"\n")).hexdigest()[:8]
         return f'{match.group(1)}="{match.group(2)}?v={digest}"'
 
-    for _, name in SITE_PAGES:
+    for name in names or [name for _, name in SITE_PAGES]:
         page = docs / name
         raw = page.read_bytes().decode("utf-8")
         new = re.sub(r'\b(src|href)="((?:assets|data)/[\w.-]+\.(?:js|css))(?:\?v=[0-9a-f]*)?"', marked, raw)
@@ -1037,7 +1060,616 @@ def measured_plan(agents: list[dict]) -> str:
             f"{', '.join(money(v) for v in warm)} warm")
 
 
+# ----------------------------------------------------------------------------------------------
+# The public showcase, docs/. Measured outcomes only. Nothing that would let a reader copy the
+# approach: no commands, prompts, settings, tool names or internal method ids reach these files,
+# and the guard at the end of the build stops it if one does.
+# ----------------------------------------------------------------------------------------------
+
+PUBLIC_CLASSES = (("C", "light", "Light"), ("B", "mid", "Mid"), ("A", "top", "Top"))
+PUBLIC_FAMILIES = {"control": "Control", "tool": "Separate tools", "engine-v1": "Our engine, first generation",
+                   "engine-v2": "Our engine, second generation"}
+PUBLIC_PAGES = (("index.html", "Overview"), ("benchmarks.html", "Benchmarks"), ("study.html", "Study"),
+                ("install.html", "Install"))
+PUBLIC_QUESTIONS = (
+    {"id": "callers", "title": "Who calls a function",
+     "text": "Name every function in the repository that calls a given function."},
+    {"id": "definition", "title": "Where a function is defined",
+     "text": "Give the file and the line where a named function is defined, its parameter names and the functions that call it."},
+    {"id": "purpose", "title": "Which function does a job",
+     "text": "Given a described job, name the function that does it, say where it is defined and name its counterpart, the function that reverses it."},
+)
+PUBLIC_CLASS_TEXT = {"light": "The smallest model class, run at low reasoning effort.",
+                     "mid": "A middle model class, run at medium reasoning effort.",
+                     "top": "The largest model class, run at the highest reasoning effort."}
+PUBLIC_SETUPS = ("One agent answering all three questions.",
+                 "Three agents, one question each, with nobody checking their answers.",
+                 "One agent that briefs three workers and checks what they return.")
+PUBLIC_REPOSITORY_LINES = 68000   # about; the measured data records the file count, not the line count
+BEST_MIN_RUNS = 3                 # a cell run fewer times than this cannot be named the best
+
+
+def public_point(p: dict, class_id: str) -> dict:
+    return {"class": class_id, "setup": "single", "runs": p["n"], "tokens": p["tokens"],
+            "tokens_low": p["spread"]["tokens"][0], "tokens_high": p["spread"]["tokens"][1],
+            "turns": p["requests"], "correct": p["quality"], "perfect_runs": p["spread"]["perfect_runs"],
+            "seconds": p["wall_seconds"]}
+
+
+def best_config(configs: list[dict]) -> str | None:
+    """The slug of the configuration with the highest share of fully correct runs on the light class, one
+    agent, at least BEST_MIN_RUNS runs; among equals the one that used fewer tokens."""
+    from fractions import Fraction
+    found = [(Fraction(pt["perfect_runs"], pt["runs"]), -pt["tokens"], config["slug"])
+             for config in configs for pt in config["points"] if pt["class"] == "light" and pt["runs"] >= BEST_MIN_RUNS]
+    return max(found)[2] if found else None
+
+
+def of(count: int, total: int) -> str:
+    return f"{count} of {total}"
+
+
+def public_findings(configs: list[dict], published: dict, cells: list[dict], orchestration: dict, hooks: dict,
+                    arms: dict, hook_test: set) -> dict:
+    """The findings in plain sentences with their numbers. `published` maps a slug to its single-agent points."""
+    by_slug = {c["slug"]: c for c in configs}
+    light = {slug: next((pt for pt in c["points"] if pt["class"] == "light"), None) for slug, c in by_slug.items()}
+    best = next((c for c in configs if c["best"]), None)
+    control = next((c for c in configs if c["family"] == "control"), None)
+    headline = []
+    if best and control and light[best["slug"]] and light[control["slug"]]:
+        b, c = light[best["slug"]], light[control["slug"]]
+        headline.append(
+            f"On the light class, one agent using \"{best['name']}\" needed {tokens(b['tokens'])} tokens and "
+            f"{b['turns']:.1f} turns for the three lookups, against {tokens(c['tokens'])} tokens and {c['turns']:.1f} "
+            f"turns with no index: {1 - b['tokens'] / c['tokens']:.0%} fewer tokens.")
+        headline.append(
+            f"{of(b['perfect_runs'], b['runs'])} runs were fully correct with \"{best['name']}\" and "
+            f"{of(c['perfect_runs'], c['runs'])} with no index. A run is fully correct when all three answers are.")
+    # Two turns is the floor for this task: one to ask and one to answer.
+    on_light = {slug: tiers["C"] for slug, tiers in published.items() if "C" in tiers}
+    quick = [(by_slug[slug]["name"], p) for slug, p in on_light.items()
+             if p["spread"]["requests"][1] <= 2 and p["quality"] >= 0.999 and p["n"] >= 2]
+    if quick:
+        names = ", ".join(f'"{name}"' for name, _ in sorted(quick, key=lambda item: item[1]["tokens"]))
+        headline.append(
+            f"Two turns is the floor for this task: one to ask and one to answer. On the light class "
+            f"{len(quick)} of {len(on_light)} published configurations took exactly two turns and answered everything "
+            f"correctly in every run: {names}.")
+    repeated = [p for p in (light[slug] for slug in light) if p and p["runs"] >= 2]
+    if len(repeated) >= 2:
+        lean, heavy = min(repeated, key=lambda p: p["turns"]), max(repeated, key=lambda p: p["turns"])
+        headline.append(
+            f"Tokens follow turns. On the light class the leanest published configuration took {lean['turns']:.1f} "
+            f"turns and {tokens(lean['tokens'])} tokens, the heaviest {heavy['turns']:.1f} turns and "
+            f"{tokens(heavy['tokens'])} tokens.")
+    if control:
+        by_class = {pt["class"]: pt for pt in control["points"]}
+        if len(by_class) == len(PUBLIC_CLASSES):
+            used = [by_class[cid]["tokens"] for _, cid, _ in PUBLIC_CLASSES]
+            headline.append(
+                "With no index, one agent used " + ", ".join(
+                    f"{tokens(by_class[cid]['tokens'])} tokens on the {cid} class" for _, cid, _ in PUBLIC_CLASSES)
+                + "; the answers were " + ", ".join(share(by_class[cid]["correct"]) for _, cid, _ in PUBLIC_CLASSES)
+                + " correct." + (" A larger model class did not need far fewer tokens for the same lookups."
+                                 if min(used) >= 0.7 * max(used) else ""))
+
+    # Orchestration: a reviewing orchestrator on top of three light workers, against one light agent alone.
+    def complete(setup: str, among: set | None = None) -> list[dict]:
+        return [c for c in cells if c["complete"] and c["setup"] == setup and c["tier"] == "C"
+                and c["arm"] not in hook_test and (among is None or c["arm"] in among)]
+
+    orchestrated = complete("orch")
+    alone = complete("single", {c["arm"] for c in orchestrated})
+    ratios = [r["cost_over_single"] for r in orchestration["setups"] if r["tier"] == "C" and r["cost_over_single"]]
+    findings = {"headline": headline}
+    if orchestrated and alone and ratios:
+        right_orch = sum(c["quality"] >= 0.999 for c in orchestrated)
+        right_alone = sum(c["quality"] >= 0.999 for c in alone)
+        times = statistics.fmean(ratios)
+        findings["orchestration"] = {
+            "title": "Orchestration",
+            "text": (f"With a reviewing orchestrator on top of three light workers, {of(right_orch, len(orchestrated))} runs "
+                     f"ended fully correct, against {of(right_alone, len(alone))} for one light agent alone; a run cost "
+                     f"about {times:.0f} times as much."),
+            "orchestrated": {"perfect_runs": right_orch, "runs": len(orchestrated)},
+            "alone": {"perfect_runs": right_alone, "runs": len(alone)}, "cost_multiple": times}
+    effect = hook_effect(hooks, arms)
+    if effect:
+        first = ("Tool hooks that compress and redact reads lowered token use on these lookups"
+                 if effect["saved"] else "Tool hooks that compress and redact reads did not lower token use on these lookups")
+        second = ("without an index fewer runs ended fully correct" if effect["worse"]
+                  else "without an index the share of fully correct runs did not fall")
+        findings["hooks"] = {
+            "title": "Tool hooks",
+            "text": (f"{first}, and {second} ({of(effect['right_with'], effect['runs_with'])} runs with the hooks on, "
+                     f"{of(effect['right_without'], effect['runs_without'])} with them off)."),
+            "with_hooks": {"perfect_runs": effect["right_with"], "runs": effect["runs_with"]},
+            "without_hooks": {"perfect_runs": effect["right_without"], "runs": effect["runs_without"]},
+            "token_change": effect["change"], "spread": effect["spread"]}
+    return findings
+
+
+def install_of() -> dict:
+    """The public install block: benchmark/data/install.json "public" when it exists, otherwise a private preview."""
+    path = BENCH / "data" / "install.json"
+    install = (json.loads(path.read_text(encoding="utf-8")).get("public") if path.exists() else None) \
+        or {"status": "private-preview"}
+    if install.get("status") not in ("private-preview", "public"):
+        raise SystemExit("install.json: public.status must be 'private-preview' or 'public'")
+    if install["status"] == "public" and not isinstance(install.get("command"), str):
+        raise SystemExit("install.json: a public install needs a 'command' string")
+    return install
+
+
+def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: dict, orchestration: dict,
+              hooks: dict, arms: dict) -> dict:
+    """What the public site may show, computed from the same parsed results as the full report.
+    Only the single-agent setup feeds the configurations; tier ids C, B, A become light, mid, top here."""
+    import re
+    class_of = {tier: cid for tier, cid, _ in PUBLIC_CLASSES}
+    hook_test = {arm["id"] for arm in arms["arms"] if arm.get("group") == "hooks"}
+    configs, published = [], {}
+    for arm in sorted((a for a in arms["arms"] if "public" in a), key=lambda a: a["public"]["order"]):
+        spec = arm["public"]
+        if spec["family"] not in PUBLIC_FAMILIES:
+            raise SystemExit(f"arms.json: {arm['id']} has public family {spec['family']!r}, expected one of {sorted(PUBLIC_FAMILIES)}")
+        found = {tier: pick(points, arm["id"], "single", tier) for tier, _, _ in PUBLIC_CLASSES}
+        rows = [public_point(p, class_of[tier]) for tier, p in found.items() if p]
+        if rows:
+            configs.append({"slug": spec["slug"], "name": spec["name"], "family": spec["family"], "best": False, "points": rows})
+            published[spec["slug"]] = {tier: p for tier, p in found.items() if p}
+    best = best_config(configs)
+    for config in configs:
+        config["best"] = config["slug"] == best
+    match = re.search(r"(\d+) Python files", index["dataset"])
+    if not match:
+        raise SystemExit("index.json: the dataset text no longer says how many Python files the repository has")
+    complete = [c for c in cells if c["complete"]]
+    per_cell = [p["n"] for p in points if p["arm"] not in hook_test]
+    public = {
+        "built": datetime.date.today().isoformat(),
+        "study": {
+            "repository": {"language": "Python", "files": int(match.group(1)), "lines": PUBLIC_REPOSITORY_LINES},
+            "questions": [dict(q) for q in PUBLIC_QUESTIONS],
+            "setups": list(PUBLIC_SETUPS),
+            "agents": len(agents), "runs": len(complete),
+            "configurations_tested": len({p["arm"] for p in points if p["arm"] not in hook_test}),
+            "configurations_published": len(configs),
+            "runs_per_cell": {"min": min(per_cell), "max": max(per_cell)},
+            "classes": [{"id": cid, "text": PUBLIC_CLASS_TEXT[cid]} for _, cid, _ in PUBLIC_CLASSES]},
+        "classes": [{"id": cid, "name": name} for _, cid, name in PUBLIC_CLASSES],
+        "families": [{"id": fid, "name": name} for fid, name in PUBLIC_FAMILIES.items()
+                     if any(c["family"] == fid for c in configs)],
+        "configs": configs,
+        "findings": public_findings(configs, published, cells, orchestration, hooks, arms, hook_test)}
+    engine_file = BENCH / "data" / "engine.json"
+    if engine_file.exists():
+        rows = json.loads(engine_file.read_text(encoding="utf-8")).get("public") or []
+        for row in rows:
+            missing = {"name", "build_seconds", "query_ms", "index_mb"} - set(row)
+            if missing:
+                raise SystemExit(f"engine.json: a public row lacks {sorted(missing)}")
+        if rows:
+            public["engine"] = [{key: row[key] for key in ("name", "build_seconds", "query_ms", "index_mb")} for row in rows]
+    public["install"] = install_of()
+    return public
+
+
+def write_showcase_data(public: dict) -> int:
+    folder = DOCS / "data"
+    folder.mkdir(parents=True, exist_ok=True)
+    # "</" would end a script block early if it ever appeared inside the data.
+    body = json.dumps(rounded(public), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    path = folder / "showcase.js"
+    path.write_text("// Generated. Do not edit by hand.\nwindow.SHOWCASE = " + body + ";\n", encoding="utf-8")
+    return path.stat().st_size
+
+
+# --- the text of the pages: what a reader sees with JavaScript switched off -------------------
+
+def headline_of(public: dict) -> dict | None:
+    """The best configuration and the control on the light class, with their points."""
+    def light(config):
+        return next((pt for pt in config["points"] if pt["class"] == "light"), None) if config else None
+    best = next((c for c in public["configs"] if c["best"]), None)
+    control = next((c for c in public["configs"] if c["family"] == "control"), None)
+    return {"best": best, "control": control, "b": light(best), "c": light(control)} if light(best) else None
+
+
+def esc(text) -> str:
+    import html
+    return html.escape(str(text), quote=True)
+
+
+def range_text(pt: dict) -> str:
+    low, high = tokens(pt["tokens_low"]), tokens(pt["tokens_high"])
+    return "" if low == high else f"{low} to {high}"
+
+
+def rows_html(rows: list[tuple[str, str]]) -> str:
+    items = "".join(f'\n      <li class="row"><span class="label">{esc(label)}</span><span class="value">{value}</span></li>'
+                    for label, value in rows)
+    return f'<ul class="rows">{items}\n    </ul>'
+
+
+def text_rows_html(rows: list[tuple[str, str]]) -> str:
+    items = "".join(f'\n      <li class="row stack"><span class="label">{esc(title)}</span>'
+                    f'<span class="detail">{esc(text)}</span></li>' for title, text in rows)
+    return f'<ul class="rows">{items}\n    </ul>'
+
+
+def lede_slot(page: str, public: dict) -> str:
+    study = public["study"]
+    if page == "index.html":
+        return (f"We ran {study['agents']} agents on one Python repository and measured what each way of finding code "
+                "costs in tokens and turns, and how often the answers were right.")
+    if page == "benchmarks.html":
+        return ("Tokens, turns and correct answers for each published configuration, measured on the same "
+                "three lookups. Pick a model class to compare.")
+    if page == "study.html":
+        return "How the measurements were made, what they cover and what they leave out."
+    return ("The package is in private preview." if public["install"]["status"] == "private-preview"
+            else "The package is public. One command installs it.")
+
+
+def figures_slot(public: dict) -> str:
+    found = headline_of(public)
+    if not found:
+        return '<p class="note">No configuration has been run enough times on the light class to be compared yet.</p>'
+    b, c = found["b"], found["c"]
+    cards = [
+        (tokens(b["tokens"]), "Tokens per task", f"No index: {tokens(c['tokens'])}, {1 - b['tokens'] / c['tokens']:.0%} fewer" if c else ""),
+        (f"{b['turns']:.1f}", "Turns per task", f"No index: {c['turns']:.1f}" if c else ""),
+        (of(b["perfect_runs"], b["runs"]), "Fully correct runs", f"No index: {of(c['perfect_runs'], c['runs'])}" if c else ""),
+        (share(b["correct"]), "Answers correct", f"No index: {share(c['correct'])}" if c else "")]
+    items = "".join(
+        f'\n      <div class="figure card"><dt class="figure-label">{esc(label)}</dt>'
+        f'<dd class="figure-value">{esc(value)}</dd>' + (f'<dd class="figure-note">{esc(note)}</dd>' if note else "") + "</div>"
+        for value, label, note in cards)
+    group = (f"Best configuration" + (" against no index" if c else "") + ", light model class, one agent answering three lookups")
+    return f'<p class="group-title">{esc(group)}</p>\n    <dl class="figures">{items}\n    </dl>'
+
+
+def best_rule() -> str:
+    return (f"The best configuration is chosen on the light class, one agent, among those run at least {BEST_MIN_RUNS} times: "
+            "the highest share of fully correct runs, then the fewest tokens.")
+
+
+def best_slot(public: dict) -> str:
+    found = headline_of(public)
+    if not found:
+        return ('<p class="note">The best configuration is named once one has been run at least '
+                f'{BEST_MIN_RUNS} times on the light class.</p>')
+    best, pt = found["best"], found["b"]
+    rows = [("Tokens per task", esc(tokens(pt["tokens"])) + (f' <span class="sub">{esc(range_text(pt))}</span>' if range_text(pt) else "")),
+            ("Turns per task", esc(f"{pt['turns']:.1f}")),
+            ("Fully correct runs", esc(of(pt["perfect_runs"], pt["runs"]))),
+            ("Answers correct", esc(share(pt["correct"]))),
+            ("Runs", esc(pt["runs"]))]
+    return (f'<div class="card best-card">\n    <div class="best-head"><h3 class="best-name">{esc(best["name"])}</h3>'
+            f'<span class="tag">Best</span></div>\n    {rows_html(rows)}\n  </div>\n'
+            f'  <p class="footnote">{esc(best_rule())}</p>')
+
+
+def board_row(config: dict, pt: dict) -> str:
+    sub = f'<span class="sub">{esc(range_text(pt))}</span>' if range_text(pt) else ""
+    tag = ' <span class="tag">Best</span>' if config["best"] else ""
+    return (f'\n        <tr><th scope="row" class="cfg"><span class="cfg-name">{esc(config["name"])}</span>{tag}</th>'
+            f'<td data-label="Runs">{pt["runs"]}</td><td data-label="Tokens"><span class="v">{esc(tokens(pt["tokens"]))}{sub}</span></td>'
+            f'<td data-label="Turns">{pt["turns"]:.1f}</td><td data-label="Answers correct">{esc(share(pt["correct"]))}</td>'
+            f'<td data-label="Fully correct runs">{esc(of(pt["perfect_runs"], pt["runs"]))}</td></tr>')
+
+
+def ordered(public: dict, class_id: str) -> list[tuple[dict, dict]]:
+    """Configurations with a point on the class: the best first, then fewest tokens."""
+    rows = [(c, pt) for c in public["configs"] for pt in c["points"] if pt["class"] == class_id]
+    return sorted(rows, key=lambda row: (not row[0]["best"], row[1]["tokens"]))
+
+
+def empty_html(name: str) -> str:
+    return f'<p class="note empty">No runs were measured on the {esc(name.lower())} class for these configurations.</p>'
+
+
+def boards_slot(public: dict) -> str:
+    out = []
+    for cls in public["classes"]:
+        rows = ordered(public, cls["id"])
+        body = empty_html(cls["name"]) if not rows else (
+            '<div class="card">\n      <table class="board">\n        '
+            f'<caption class="sr-only">{esc(cls["name"])} class: runs, tokens, turns and correct answers by configuration</caption>\n        '
+            '<thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th>'
+            '<th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>\n'
+            '        <tbody>' + "".join(board_row(c, pt) for c, pt in rows) + '\n        </tbody>\n      </table>\n    </div>')
+        out.append(f'<div class="panel{" on" if not out else ""}" data-class="{esc(cls["id"])}" role="group" aria-label="{esc(cls["name"])} class leaderboard">\n'
+                   f'    <h3 class="panel-title">{esc(cls["name"])} class</h3>\n'
+                   '    <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>\n'
+                   f'    {body}\n  </div>')
+    return "\n  ".join(out) + f'\n  <p class="footnote">{esc(best_rule())}</p>'
+
+
+def charts_slot(public: dict) -> str:
+    out = []
+    families = {c["slug"]: c["family"] for c in public["configs"]}
+    for cls in public["classes"]:
+        rows = ordered(public, cls["id"])
+        if not rows:
+            inner = empty_html(cls["name"])
+        else:
+            lines = "".join(
+                f'\n          <tr><th scope="row" class="cfg"><span class="cfg-name">{esc(c["name"])}</span></th>'
+                f'<td data-label="Tokens">{esc(tokens(pt["tokens"]))}</td><td data-label="Answers correct">{esc(share(pt["correct"]))}</td>'
+                f'<td data-label="Wall time">{esc(round(pt["seconds"]))} s</td></tr>' for c, pt in rows)
+            key = "".join(f'<li><b>{i}</b><span>{esc(c["name"])}</span></li>' for i, (c, _) in enumerate(rows, 1))
+            legend = ('<ul class="legend" aria-label="Series"></ul>\n      '
+                      if len({families[c["slug"]] for c, _ in rows}) > 1 else "")
+            inner = ('<div class="card chart-card">\n      ' + legend + '<div class="chart" data-chart="' + esc(cls["id"]) + '">'
+                     '<p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>\n      '
+                     f'<ol class="chart-key" aria-label="Key to the numbers on the chart">{key}</ol>\n      '
+                     '<details class="table-view"><summary>Table view</summary>\n        <table class="board board-small">\n          '
+                     f'<caption class="sr-only">{esc(cls["name"])} class: tokens, answers correct and wall time by configuration</caption>\n          '
+                     '<thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th>'
+                     '<th scope="col">Wall time</th></tr></thead>\n          <tbody>' + lines +
+                     '\n          </tbody>\n        </table>\n      </details>\n    </div>')
+        out.append(f'<div class="panel{" on" if not out else ""}" data-class="{esc(cls["id"])}" role="group" aria-label="{esc(cls["name"])} class chart">\n'
+                   f'    <h3 class="panel-title">{esc(cls["name"])} class</h3>\n    {inner}\n  </div>')
+    return "\n  ".join(out)
+
+
+def seg_slot(public: dict) -> str:
+    buttons = "".join(
+        f'\n      <button type="button" role="radio" aria-checked="{"true" if i == 0 else "false"}" '
+        f'tabindex="{0 if i == 0 else -1}" data-class="{esc(cls["id"])}">{esc(cls["name"])}</button>'
+        for i, cls in enumerate(public["classes"]))
+    return (f'<div class="seg-bar"><div class="seg" role="radiogroup" aria-label="Model class" style="--count:{len(public["classes"])}">'
+            f'<span class="seg-thumb" aria-hidden="true"></span>{buttons}\n    </div></div>\n'
+            '  <p class="sr-only" id="seg-status" aria-live="polite"></p>')
+
+
+def engine_slot(public: dict) -> str:
+    rows = public.get("engine")
+    if not rows:
+        return ""
+    lines = "".join(
+        f'\n          <tr><th scope="row" class="cfg"><span class="cfg-name">{esc(r["name"])}</span></th>'
+        f'<td data-label="Build time">{esc(format(r["build_seconds"], "g"))} s</td>'
+        f'<td data-label="Query time">{esc(format(r["query_ms"], "g"))} ms</td>'
+        f'<td data-label="Index size">{esc(format(r["index_mb"], "g"))} MB</td></tr>' for r in rows)
+    return ('<section class="section" aria-labelledby="engine">\n  <h2 id="engine" class="section-title">Engine speed</h2>\n  '
+            '<p class="group-title">Time to build the index, time to answer a query and size on disk.</p>\n  '
+            '<div class="card">\n    <table class="board board-small">\n      <caption class="sr-only">Engine speed by configuration</caption>\n      '
+            '<thead><tr><th scope="col">Configuration</th><th scope="col">Build time</th><th scope="col">Query time</th>'
+            '<th scope="col">Index size</th></tr></thead>\n      <tbody>' + lines + '\n      </tbody>\n    </table>\n  </div>\n</section>\n')
+
+
+def findings_slot(public: dict) -> str:
+    found, cards = public["findings"], []
+    for key, rows in (("orchestration", lambda f: [
+            ("Fully correct, orchestrated", of(f["orchestrated"]["perfect_runs"], f["orchestrated"]["runs"])),
+            ("Fully correct, one light agent", of(f["alone"]["perfect_runs"], f["alone"]["runs"])),
+            ("Cost of one run", f"about {f['cost_multiple']:.0f} times")]),
+                      ("hooks", lambda f: [
+            ("Fully correct, hooks on", of(f["with_hooks"]["perfect_runs"], f["with_hooks"]["runs"])),
+            ("Fully correct, hooks off", of(f["without_hooks"]["perfect_runs"], f["without_hooks"]["runs"])),
+            ("Change in token use", f"{f['token_change']:+.0%}")])):
+        if key in found:
+            cards.append(f'<div class="card finding">\n    <h3 class="finding-title">{esc(found[key]["title"])}</h3>\n'
+                         f'    <p class="finding-text">{esc(found[key]["text"])}</p>\n    {rows_html([(a, esc(b)) for a, b in rows(found[key])])}\n  </div>')
+    return "\n  ".join(cards)
+
+
+def headline_slot(public: dict) -> str:
+    return "".join(f"\n      <li>{esc(line)}</li>" for line in public["findings"]["headline"]) + "\n    "
+
+
+def study_slots(public: dict) -> dict:
+    study = public["study"]
+    repo = study["repository"]
+    scale = [("Repository", f"{repo['language']}, {repo['files']} files, about {repo['lines']:,} lines"),
+             ("Questions", f"{len(study['questions'])}, each asked in every run"),
+             ("Agents", f"{study['agents']:,}"), ("Runs", f"{study['runs']:,}"),
+             ("Configurations tested", f"{study['configurations_tested']}, of which {study['configurations_published']} are published here"),
+             ("Runs per configuration and class", f"{study['runs_per_cell']['min']} to {study['runs_per_cell']['max']}")]
+    names = {c["id"]: c["name"] for c in public["classes"]}
+    limits = [
+        ("One repository", f"Every result comes from one Python repository of {repo['files']} files. Other repositories may behave differently."),
+        ("One language", "Python only. Nothing here says how the configurations do on other languages."),
+        ("Three questions", "Three lookup questions of modest difficulty. Harder questions may separate the configurations more, or less."),
+        ("Small run counts",
+         f"Each configuration and class was run between {study['runs_per_cell']['min']} and {study['runs_per_cell']['max']} times. "
+         "A cell with one run is an example, not an average, and a difference of one turn is inside the noise."),
+        ("Machine load", "Wall time depends on what else the test machine was doing. Token counts do not."),
+        ("Cost figures", "Where a run is said to cost a multiple of another, the cost is list prices applied to the measured tokens.")]
+    return {
+        "questions": text_rows_html([(q["title"], q["text"]) for q in study["questions"]]),
+        "setups": text_rows_html([(f"Setup {i + 1}", text) for i, text in enumerate(study["setups"])]),
+        "scale": rows_html([(label, esc(value)) for label, value in scale]),
+        "classes": text_rows_html([(names[c["id"]], c["text"]) for c in study["classes"]]),
+        "limits": text_rows_html(limits)}
+
+
+def install_slot(public: dict) -> str:
+    install = public["install"]
+    gives = rows_html([("Installation", "One command"), ("What is installed", "One binary"),
+                       ("Works with", "Terminal coding agents"), ("Platforms", "Windows, macOS and Linux")])
+    if install["status"] == "public":
+        extra = [("Version", esc(install["version"]))] if isinstance(install.get("version"), str) else []
+        return ('<section class="section" aria-labelledby="command">\n  <h2 id="command" class="section-title">Install command</h2>\n  '
+                '<div class="card install-card">\n    <div class="code-wrap"><pre class="code" id="install-command" tabindex="0">'
+                f'<code>{esc(install["command"])}</code></pre></div>\n    <div class="copy-row"></div>\n    '
+                + (rows_html(extra) + "\n  " if extra else "") + '</div>\n</section>\n'
+                '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing gives you</h2>\n  '
+                f'<div class="card">\n    {gives}\n  </div>\n</section>\n')
+    return ('<section class="section" aria-labelledby="availability">\n  <h2 id="availability" class="section-title">Availability</h2>\n  '
+            '<div class="card">\n    '
+            + rows_html([("Status", '<span class="tag">Private preview</span>'), ("Public registry", "Not yet")]) +
+            '\n  </div>\n  <p class="footnote">The package is in private preview and is not yet on a public registry.</p>\n</section>\n'
+            '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing will give you</h2>\n  '
+            f'<div class="card">\n    {gives}\n  </div>\n</section>\n')
+
+
+NAV_ICONS = {
+    "index.html": '<path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4v-5.5H9V20H5a1 1 0 0 1-1-1z"/>',
+    "benchmarks.html": '<path d="M5 20v-8M12 20V5M19 20v-5"/>',
+    "study.html": '<path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/>',
+    "install.html": '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/>',
+}
+
+
+def nav_slots(name: str, page: str) -> dict:
+    """The sidebar and the tab bar: plain links, the current page marked, and under it the sections
+    of this page read from its own headings, so a renamed section cannot leave the list behind."""
+    import html
+    import re
+    sections = "".join(
+        f'\n          <li><a href="#{m.group(1)}">{html.unescape(re.sub(r"<[^>]+>", "", m.group(2))).strip()}</a></li>'
+        for m in re.finditer(r'<h2 id="([^"]+)"[^>]*>(.*?)</h2>', page, re.S))
+    side, tabs = [], []
+    for file, title in PUBLIC_PAGES:
+        here = ' aria-current="page"' if file == name else ""
+        inner = f'\n        <ul class="side-sections" aria-label="On this page">{sections}\n        </ul>' if here and sections else ""
+        side.append(f'\n      <li><a href="{file}"{here}>{title}</a>{inner}</li>')
+        tabs.append(f'\n    <a href="{file}"{here}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{NAV_ICONS[file]}</svg>'
+                    f'<span>{title}</span></a>')
+    return {"sidebar": '<nav class="sidebar" aria-label="Pages">\n    <p class="brand">Index benchmark</p>\n    <ul class="side-pages">'
+                       + "".join(side) + "\n    </ul>\n  </nav>",
+            "tabbar": '<nav class="tabbar" aria-label="Pages">' + "".join(tabs) + "\n  </nav>"}
+
+
+def showcase_slots(public: dict) -> dict:
+    study = study_slots(public)
+    common = {"built": esc(public["built"])}
+    return {
+        "index.html": dict(common, lede=esc(lede_slot("index.html", public)), figures=figures_slot(public), best=best_slot(public)),
+        "benchmarks.html": dict(common, lede=esc(lede_slot("benchmarks.html", public)), seg=seg_slot(public),
+                                boards=boards_slot(public), charts=charts_slot(public), engine=engine_slot(public),
+                                headline=headline_slot(public), findings=findings_slot(public)),
+        "study.html": dict(common, lede=esc(lede_slot("study.html", public)), **study),
+        "install.html": dict(common, lede=esc(lede_slot("install.html", public)), install=install_slot(public)),
+    }
+
+
+def write_showcase_pages(public: dict) -> list[str]:
+    """Write the numbers and findings into the four pages, so they are there without JavaScript and
+    cannot fall behind the data. Every slot a page holds must be filled, and every slot filled must exist."""
+    import re
+    slot = re.compile(r"<!--slot:([\w-]+)-->(.*?)<!--/slot:\1-->", re.S)
+    changed = []
+    for name, filled in showcase_slots(public).items():
+        path = DOCS / name
+        if not path.is_file():
+            raise SystemExit(f"{path.relative_to(REPO)} is missing")
+        raw = path.read_bytes().decode("utf-8").replace("\r\n", "\n")
+        wanted = {m.group(1) for m in slot.finditer(raw)} - {"sidebar", "tabbar"}
+        if wanted != set(filled):
+            raise SystemExit(f"{name}: slots in the page {sorted(wanted)} do not match the slots built {sorted(filled)}")
+        page = slot.sub(lambda m: f"<!--slot:{m.group(1)}-->{filled[m.group(1)]}<!--/slot:{m.group(1)}-->"
+                        if m.group(1) in filled else m.group(0), raw)
+        navs = nav_slots(name, page)
+        page = slot.sub(lambda m: f"<!--slot:{m.group(1)}-->{navs[m.group(1)]}<!--/slot:{m.group(1)}-->"
+                        if m.group(1) in navs else m.group(0), page)
+        if page != path.read_bytes().decode("utf-8"):
+            path.write_bytes(page.encode("utf-8"))
+            changed.append(name)
+    return changed
+
+
+# --- the guard ------------------------------------------------------------------------------
+
+# Words that must never appear in anything under docs/, in any case: tool names, file names, vendor models.
+FORBIDDEN_WORDS = (
+    "codanna", "semble", "graphify", "token-goat", "tokengoat", "hindsight", "model2vec", "potion", "tree-sitter",
+    "rustpython", "oxc", "ast-grep", "ripgrep", "lx", "lxr", "caveman", "cavecrew", "CLAUDE.md", "AGENTS.md",
+    "session_index", "arms.json", "bench_parse", "build_site", "grep", "haiku", "sonnet", "opus", "claude", "anthropic",
+    "openai", "gemini", "mcp", "bm25", "reciprocal rank", "sqlite", "hnsw", "faiss", "lancedb", "tantivy", "onnx",
+    "PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "settings.json", "settings.local.json",
+    "local-index", "graphify-out", "results.json", "hooks.json", "engine.json", "install.json", "index.json")
+# Shapes that must never appear: command lines and flags, the setup's paths, vendor model versions, tier labels,
+# and any request to another host.
+FORBIDDEN_PATTERNS = (
+    # A flag follows a space or starts a line. A CSS custom property sits inside quotes or var( ), and the
+    # stylesheets are not checked for flags at all.
+    ("a command-line flag", r"(?<![\w'\"(-])--[a-z][a-z0-9-]+", ("html", "js")),
+    ("a flag with a value", r"--[a-z][a-z0-9-]*=", ("html", "js")),
+    ("a shell prompt", r"(?m)^\s*[$>]\s+\w", None),
+    ("a package command", r"\b(?:pip3?|pipx|npm|npx|cargo|brew|winget|choco|curl|wget|sudo)\s+[-\w]", None),
+    ("an interpreter command", r"\bpython3?\s+-", None),
+    ("a git command", r"\bgit\s+(?:clone|checkout|pull|push|commit|add|init)\b", None),
+    ("a path of the setup", r"\.claude\b|\.codex\b|\.codanna\b|(?<![\w.])(?:setup|benchmark|harness|rust)/", None),
+    ("a model version", r"\bgpt-?\d\w*", None),
+    ("a tier label", r"\btier [abc]\b", None),
+    ("a request to another host", r"https?://(?!www\.w3\.org/2000/svg)|(?<![:\w])//[\w-]+\.[a-z]{2,}/|@import", None),
+)
+
+
+def forbidden_checks(arms: dict) -> list[tuple[str, "re.Pattern", tuple | None]]:
+    """Every check the guard makes, compiled: words, shapes, and what arms.json says about the methods."""
+    import re
+    checks = [(f"the word {word!r}", re.compile(r"(?<![A-Za-z0-9])" + re.escape(word) + r"(?![A-Za-z0-9])", re.I), None)
+              for word in FORBIDDEN_WORDS]
+    checks += [(label, re.compile(pattern), kinds) for label, pattern, kinds in FORBIDDEN_PATTERNS]
+    ids = sorted({arm["id"] for arm in arms["arms"]}, key=len, reverse=True)
+    checks.append(("an internal method id", re.compile(r"(?<![\w#.\-])(?:" + "|".join(map(re.escape, ids)) + r")(?![\w\-])"), None))
+    squash = lambda text: re.sub(r"\s+", " ", text).strip()
+    strings = {squash(command) for command in arms["commands"].values()}
+    strings |= {squash(arm[key]) for arm in arms["arms"] for key in ("detail", "reads") if arm.get(key)}
+    for text in sorted(strings, key=len, reverse=True):
+        checks.append((f"text copied from arms.json ({text[:40]!r}...)", re.compile(re.escape(text), re.I), "squash"))
+    uses = {key for arm in arms["arms"] for key in arm.get("uses", [])}
+    checks += [(f"the command key {key!r}", re.compile(r"(?<![A-Za-z0-9])" + re.escape(key) + r"(?![A-Za-z0-9])"), None) for key in sorted(uses)]
+    return checks
+
+
+def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | None = None) -> int:
+    """Scan every file under the public folder, its file names included, for anything that must never be
+    published. Exits with the file, the line and the offending text. The one thing let through is the
+    install command the owner chose to publish in install.json. Returns the number of files scanned."""
+    import html
+    import re
+    root = root or DOCS
+    checks = forbidden_checks(arms)
+    approved = []
+    if install and install.get("status") == "public":
+        command = install["command"]
+        approved = [command, json.dumps(command)[1:-1], html.escape(command), html.escape(command, quote=False)]
+    problems, scanned = [], 0
+    for path in sorted(p for p in root.rglob("*") if p.is_file()):
+        scanned += 1
+        shown = path.relative_to(root).as_posix()
+        kind = path.suffix.lstrip(".").lower()
+        try:
+            text = path.read_bytes().decode("utf-8")
+        except UnicodeDecodeError:
+            text = ""
+        for token in sorted(approved, key=len, reverse=True):
+            text = text.replace(token, " ")
+        # Comment markers are not flags: the two dashes of "<!--" and "-->" are blanked before the check.
+        flat = text.replace("<!--", "    ").replace("-->", "   ")
+        subjects = [(shown, "file name", shown)] + [(shown, f"line {n}", line) for n, line in enumerate(flat.splitlines(), 1)]
+        for where, place, line in subjects:
+            for label, pattern, kinds in checks:
+                if kinds == "squash" or (kinds and kind not in kinds):
+                    continue
+                hit = pattern.search(line)
+                if hit:
+                    problems.append(f"  docs/{where}, {place}: {label}: found {hit.group(0)!r}")
+        # Copied text may run over several lines: the long strings from arms.json are looked for in the whole file.
+        whole = re.sub(r"\s+", " ", flat)
+        for label, pattern, kinds in checks:
+            if kinds == "squash" and pattern.search(whole):
+                problems.append(f"  docs/{shown}, whole file: {label}")
+    if problems:
+        shown_problems = problems[:30] + ([f"  and {len(problems) - 30} more"] if len(problems) > 30 else [])
+        raise SystemExit("GUARD FAILED: the public folder holds something that must not be published.\n"
+                         + "\n".join(shown_problems) + "\nNothing is safe to publish until this is fixed.")
+    return scanned
+
+
 def main() -> int:
+    if len(sys.argv) == 3 and sys.argv[1] == "--guard":
+        scanned = guard_public(load("harness/arms.json"), install_of(), pathlib.Path(sys.argv[2]))
+        print(f"guard passed: {scanned} files in {sys.argv[2]} hold nothing that must stay private")
+        return 0
     results, index, arms = load("data/results.json"), load("data/index.json"), load("harness/arms.json")
     cells, agents = results["cells"], results["agents"]
     points = points_of(cells)
@@ -1104,7 +1736,7 @@ def main() -> int:
     stamped = stamp_assets()
     if stamped:
         print(f"asset links restamped in {stamped} pages")
-    target = REPO / "docs" / "data" / "benchmark.js"
+    target = REPORT / "data" / "benchmark.js"
     (BENCH / "RESULTS.md").write_text(
         markdown(points, index, arms, text) + more_tables(orchestration, hooks, arms, text), encoding="utf-8")
     in_readme = write_readme(readme_block(methods, arms, text))
@@ -1112,6 +1744,16 @@ def main() -> int:
     print(f"wrote {target.relative_to(REPO)} ({target.stat().st_size:,} bytes), benchmark/RESULTS.md"
           f"{' and the README results block' if in_readme else ' (README has no results markers)'}: "
           f"{len(points)} points from {len(cells)} runs, {len(agents)} agents, {len(described)} methods")
+    public = public_of(points, cells, agents, index, orchestration, hooks, arms)
+    size = write_showcase_data(public)
+    filled = write_showcase_pages(public)
+    restamped = stamp_assets(DOCS, [name for name, _ in PUBLIC_PAGES])
+    best = next((c["name"] for c in public["configs"] if c["best"]), "none")
+    print(f"showcase: docs/data/showcase.js {size:,} bytes, text refreshed in {len(filled)} pages, asset links restamped "
+          f"in {restamped}; {len(public['configs'])} configurations, best: {best}")
+    # The last step of every build, so nothing private can be published by accident.
+    scanned = guard_public(arms, public["install"])
+    print(f"guard passed: {scanned} files under docs/ hold nothing that must stay private")
     return 0
 
 

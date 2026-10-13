@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0b0b0d" media="(prefers-color-scheme: dark)">
+<title>Study | Index benchmark</title>
+<meta name="description" content="How the measurements were made, what they cover and what they leave out.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%231b69d9'/%3E%3Cpath d='M9 22v-6m7 6V10m7 12v-9' stroke='white' stroke-width='3' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+<script>document.documentElement.className += " js";</script>
+<link rel="stylesheet" href="assets/app.css?v=47407087">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="bar" id="bar" aria-hidden="true">Study</div>
+<!--slot:sidebar--><nav class="sidebar" aria-label="Pages">
+    <p class="brand">Index benchmark</p>
+    <ul class="side-pages">
+      <li><a href="index.html">Overview</a></li>
+      <li><a href="benchmarks.html">Benchmarks</a></li>
+      <li><a href="study.html" aria-current="page">Study</a>
+        <ul class="side-sections" aria-label="On this page">
+          <li><a href="#asked">What was asked</a></li>
+          <li><a href="#graded">How answers were graded</a></li>
+          <li><a href="#scale">How much was run</a></li>
+          <li><a href="#classes">Model classes</a></li>
+          <li><a href="#limits">Limits</a></li>
+          <li><a href="#unpublished">What is not published</a></li>
+        </ul></li>
+      <li><a href="install.html">Install</a></li>
+    </ul>
+  </nav><!--/slot:sidebar-->
+<main id="main" class="page">
+  <header class="large-title">
+    <h1 id="title">Study</h1>
+    <p class="lede"><!--slot:lede-->How the measurements were made, what they cover and what they leave out.<!--/slot:lede--></p>
+  </header>
+
+  <section class="section" aria-labelledby="asked">
+    <h2 id="asked" class="section-title">What was asked</h2>
+    <p class="group-title">Three code-navigation questions, put to the agent in every run.</p>
+    <div class="card">
+      <!--slot:questions--><ul class="rows">
+      <li class="row stack"><span class="label">Who calls a function</span><span class="detail">Name every function in the repository that calls a given function.</span></li>
+      <li class="row stack"><span class="label">Where a function is defined</span><span class="detail">Give the file and the line where a named function is defined, its parameter names and the functions that call it.</span></li>
+      <li class="row stack"><span class="label">Which function does a job</span><span class="detail">Given a described job, name the function that does it, say where it is defined and name its counterpart, the function that reverses it.</span></li>
+    </ul><!--/slot:questions-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="graded">
+    <h2 id="graded" class="section-title">How answers were graded</h2>
+    <div class="card prose">
+      <p>Every answer was checked by a script against facts read from the repository's syntax tree, so no score depends on a person's judgement.</p>
+      <p>Each answer scores between 0 and 1. The share of answers correct is the average score. A run is fully correct when all three of its answers score full marks.</p>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="scale">
+    <h2 id="scale" class="section-title">How much was run</h2>
+    <div class="card">
+      <!--slot:scale--><ul class="rows">
+      <li class="row"><span class="label">Repository</span><span class="value">Python, 86 files, about 68,000 lines</span></li>
+      <li class="row"><span class="label">Questions</span><span class="value">3, each asked in every run</span></li>
+      <li class="row"><span class="label">Agents</span><span class="value">787</span></li>
+      <li class="row"><span class="label">Runs</span><span class="value">402</span></li>
+      <li class="row"><span class="label">Configurations tested</span><span class="value">36, of which 6 are published here</span></li>
+      <li class="row"><span class="label">Runs per configuration and class</span><span class="value">1 to 6</span></li>
+    </ul><!--/slot:scale-->
+    </div>
+    <p class="group-title spaced">Three ways of organising the agents were tried. Only the first feeds the leaderboard and the chart.</p>
+    <div class="card">
+      <!--slot:setups--><ul class="rows">
+      <li class="row stack"><span class="label">Setup 1</span><span class="detail">One agent answering all three questions.</span></li>
+      <li class="row stack"><span class="label">Setup 2</span><span class="detail">Three agents, one question each, with nobody checking their answers.</span></li>
+      <li class="row stack"><span class="label">Setup 3</span><span class="detail">One agent that briefs three workers and checks what they return.</span></li>
+    </ul><!--/slot:setups-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="classes">
+    <h2 id="classes" class="section-title">Model classes</h2>
+    <p class="group-title">Three classes of model, named only by size. Model names and versions are not given.</p>
+    <div class="card">
+      <!--slot:classes--><ul class="rows">
+      <li class="row stack"><span class="label">Light</span><span class="detail">The smallest model class, run at low reasoning effort.</span></li>
+      <li class="row stack"><span class="label">Mid</span><span class="detail">A middle model class, run at medium reasoning effort.</span></li>
+      <li class="row stack"><span class="label">Top</span><span class="detail">The largest model class, run at the highest reasoning effort.</span></li>
+    </ul><!--/slot:classes-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="limits">
+    <h2 id="limits" class="section-title">Limits</h2>
+    <div class="card">
+      <!--slot:limits--><ul class="rows">
+      <li class="row stack"><span class="label">One repository</span><span class="detail">Every result comes from one Python repository of 86 files. Other repositories may behave differently.</span></li>
+      <li class="row stack"><span class="label">One language</span><span class="detail">Python only. Nothing here says how the configurations do on other languages.</span></li>
+      <li class="row stack"><span class="label">Three questions</span><span class="detail">Three lookup questions of modest difficulty. Harder questions may separate the configurations more, or less.</span></li>
+      <li class="row stack"><span class="label">Small run counts</span><span class="detail">Each configuration and class was run between 1 and 6 times. A cell with one run is an example, not an average, and a difference of one turn is inside the noise.</span></li>
+      <li class="row stack"><span class="label">Machine load</span><span class="detail">Wall time depends on what else the test machine was doing. Token counts do not.</span></li>
+      <li class="row stack"><span class="label">Cost figures</span><span class="detail">Where a run is said to cost a multiple of another, the cost is list prices applied to the measured tokens.</span></li>
+    </ul><!--/slot:limits-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="unpublished">
+    <h2 id="unpublished" class="section-title">What is not published</h2>
+    <div class="card prose">
+      <p>Implementation details are not published.</p>
+      <p>This site reports measured outcomes only: counts of tokens, turns and answers. It does not describe how any configuration works or how the agents were set up.</p>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>Implementation details are not published. This site reports measured outcomes only.</p>
+    <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
+  </footer>
+</main>
+<!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
+    <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4v-5.5H9V20H5a1 1 0 0 1-1-1z"/></svg><span>Overview</span></a>
+    <a href="benchmarks.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg><span>Benchmarks</span></a>
+    <a href="study.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
+    <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
+  </nav><!--/slot:tabbar-->
+<script src="assets/app.js?v=5c91db70"></script>
+</body>
+</html>

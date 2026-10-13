@@ -60,6 +60,12 @@
    "group": "baseline",
    "control": true,
    "name": "No index",
+   "public": {
+    "slug": "no-index",
+    "name": "No index (control)",
+    "family": "control",
+    "order": 1
+   },
    "detail": "The client's own search and read tools. The control every other method is compared with.",
    "uses": [
     "grep"
@@ -69,6 +75,12 @@
    "id": "A1",
    "group": "baseline",
    "name": "graphify + semble",
+   "public": {
+    "slug": "two-tools",
+    "name": "Two separate tools: code graph and semantic search",
+    "family": "tool",
+    "order": 2
+   },
    "detail": "The Python stack before the Rust index: the code graph for symbols, semble for meaning.",
    "uses": [
     "graphify",
@@ -79,6 +91,12 @@
    "id": "A2",
    "group": "baseline",
    "name": "Rust index alone, embeddings on",
+   "public": {
+    "slug": "symbol-index",
+    "name": "Symbol index with embeddings",
+    "family": "tool",
+    "order": 3
+   },
    "detail": "codanna's own commands with its output unfiltered.",
    "uses": [
     "rust_symbol",
@@ -134,6 +152,12 @@
    "id": "A5",
    "group": "baseline",
    "name": "token-goat alone",
+   "public": {
+    "slug": "read-compression",
+    "name": "Read-compression tool",
+    "family": "tool",
+    "order": 4
+   },
    "detail": "token-goat's symbol, callers, semantic and read commands.",
    "uses": [
     "tg_symbol",
@@ -250,6 +274,12 @@
    "id": "S1",
    "group": "shipped",
    "name": "Shipped: lx ask, default index",
+   "public": {
+    "slug": "engine-v1",
+    "name": "Our engine, first generation",
+    "family": "engine-v1",
+    "order": 5
+   },
    "detail": "The final build. Its search merges semble with the Rust index's name and doc search, which needs no embeddings. One-call command, default index.",
    "uses": [
     "lx_ask"
@@ -274,6 +304,12 @@
    "id": "S3",
    "group": "shipped",
    "name": "Shipped: lx ask, embeddings on",
+   "public": {
+    "slug": "engine-v1-embeddings",
+    "name": "Our engine, first generation, with embeddings",
+    "family": "engine-v1",
+    "order": 6
+   },
    "detail": "The final build's one-call command on an index with Rust embeddings: its search merges three engines.",
    "uses": [
     "lx_ask"

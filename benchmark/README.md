@@ -5,7 +5,7 @@ this setup can answer one: no index, each engine alone, the `lx` command in
 each of its builds, and combinations of them.
 
 - [RESULTS.md](RESULTS.md) has every table.
-- The charts are on the project site (the `docs/` folder, served by GitHub Pages).
+- The charts are in the full report (the `report/` folder: private, not published). The public site (the `docs/` folder, served by GitHub Pages) shows measured outcomes only.
 
 ## What is measured
 
@@ -44,7 +44,7 @@ benchmark/
     arms.json                     what each method is and the commands it was given
     truth.py                      ground truth for the questions, from the syntax tree
     bench_parse.py                transcripts to results.json: tokens, cost, tools, grades
-    build_site.py                 results.json to the site's data files, the answers written into its pages, and RESULTS.md
+    build_site.py                 results.json to the full report (report/), the public site (docs/) and RESULTS.md, then a scan that stops the build if docs/ holds anything private
     combo_bench.py                build time, lookup time and answer size per engine
     emb_bench.py                  the same with the Rust index's embeddings on, and search quality
     lean_bench.py                 the combined index with and without the graph
@@ -71,7 +71,7 @@ Claude Code agent with its real start-up context.
 3. Ask Claude Code to run `harness/token-benchmark.workflow.js` as a workflow,
    passing the cells to run, for example
    `{"repo": "PATH", "matrix": [{"arms": ["A0", "S1"], "setup": "single", "tier": "C", "reps": ["r1", "r2", "r3"]}]}`.
-4. Parse the transcripts it leaves behind, then rebuild the site data:
+4. Parse the transcripts it leaves behind, then rebuild the report and the public site:
 
 ```
 python benchmark/harness/bench_parse.py benchmark/data/results.json TRANSCRIPT_DIR...
@@ -112,3 +112,18 @@ holds what they printed.
   of its agents a second time. Where an agent has two transcripts,
   `bench_parse.py` counts the later one and leaves the earlier one out. A run
   whose later transcript never reached an answer is listed as not finished.
+
+## The public site
+
+`docs/` is published and `report/` is not. `build_site.py` writes both, and `docs/` carries
+only what `arms.json` marks with a `public` object (a slug, a generic name, a family and an
+order), the measured numbers for those methods, and findings in plain sentences. Two optional
+files add to it: `benchmark/data/engine.json` (a `public` list of rows with `name`,
+`build_seconds`, `query_ms` and `index_mb`, shown as an engine speed table) and
+`benchmark/data/install.json` (a `public` object with `status` and, once the package is public,
+`command`). Without them the site shows a private-preview install page and no engine table.
+
+The last step of every build scans every file in `docs/` for tool names, commands, flags,
+paths of the setup, internal method ids and text copied from `arms.json`, and exits with the file
+and the word it found. Run it alone on any folder with
+`python benchmark/harness/build_site.py --guard FOLDER`.

@@ -8,7 +8,8 @@ something is (`lx`), get the answer in one turn, and open a file only when they
 have to. The benchmark measures what that saves, in tokens, turns and dollars,
 across every way the setup can answer a lookup.
 
-- **Site, with the charts:** https://charlesganu2004.github.io/Global-Ai-Setup-Benchmark/
+- **Public results site:** https://charlesganu2004.github.io/Global-Ai-Setup-Benchmark/ (benchmarks, study and findings; measured outcomes only)
+- **Full report:** [report/](report/index.html), seven pages with the commands, prompts and internals. Private: it is not published
 - **Every table:** [benchmark/RESULTS.md](benchmark/RESULTS.md)
 - **Install guide:** [setup/README.md](setup/README.md)
 
@@ -29,7 +30,8 @@ benchmark/    the measurements
   RESULTS.md      every table
   data/           every agent run and every index timing, as JSON
   harness/        the workflow that runs the agents, the parser, the grader, the site builder
-docs/         the site (GitHub Pages)
+report/       the full report, private, not published
+docs/         the public results site (GitHub Pages): measured outcomes only
 ```
 
 ## Results in short
@@ -86,7 +88,7 @@ One agent on the cheapest model tier, fewest tokens first (methods run at least 
 <!-- results:end -->
 
 The full tables, the three model tiers, the three agent setups and the limits
-of the test are in [benchmark/RESULTS.md](benchmark/RESULTS.md) and on the site.
+of the test are in [benchmark/RESULTS.md](benchmark/RESULTS.md) and in the full report (`report/`).
 
 ## Install the setup
 
