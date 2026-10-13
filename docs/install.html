@@ -9,13 +9,14 @@
 <meta name="description" content="Availability of the package and what installing gives you.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
 <script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=da33b975">
+<link rel="stylesheet" href="assets/app.css?v=2e9ba78a">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Install</span></div>
-<!--slot:sidebar--><nav class="sidebar" aria-label="Pages">
+<!--slot:sidebar--><header class="sidebar">
     <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+    <nav aria-label="Pages">
     <div class="side-wrap">
       <span class="side-ind" aria-hidden="true" style="--i:3"></span>
       <ul class="side-pages">
@@ -24,46 +25,62 @@
         <li><a href="study.html">Study</a></li>
         <li><a href="install.html" aria-current="page">Install</a>
         <ul class="side-sections" aria-label="On this page">
+          <li><a href="#what-it-is">What it is</a></li>
           <li><a href="#availability">Availability</a></li>
-          <li><a href="#what-you-get">What installing will give you</a></li>
+          <li><a href="#what-you-get">What installing will look like</a></li>
         </ul></li>
       </ul>
     </div>
-  </nav><!--/slot:sidebar-->
+  </nav>
+  </header><!--/slot:sidebar-->
 <main id="main" class="page">
   <header class="large-title">
     <h1 id="title" aria-label="Install"><span class="w" aria-hidden="true" style="--i:0"><span>Install</span></span></h1>
-    <p class="lede"><!--slot:lede-->The package is in private preview.<!--/slot:lede--></p>
+    <p class="lede"><!--slot:lede-->PeterGanuRusty is in private preview: access is by invitation, and there is no public download yet.<!--/slot:lede--></p>
   </header>
 
-  <!--slot:install--><section class="section" aria-labelledby="availability">
+  <!--slot:install--><section class="section" aria-labelledby="what-it-is">
+  <h2 id="what-it-is" class="section-title">What it is</h2>
+  <div class="card prose">
+    <p>PeterGanuRusty is a command-line program that runs on the developer's own machine. An AI coding agent calls it to look things up in the code it is working on, such as where a function is defined and what calls it.</p>
+    <p>Nothing leaves the machine.</p>
+  </div>
+</section>
+<section class="section" aria-labelledby="availability">
   <h2 id="availability" class="section-title">Availability</h2>
   <div class="card">
     <ul class="rows">
       <li class="row"><span class="label">Status</span><span class="value"><span class="tag">Private preview</span></span></li>
+      <li class="row"><span class="label">Access</span><span class="value">By invitation</span></li>
+      <li class="row"><span class="label">Public download</span><span class="value">None yet</span></li>
       <li class="row"><span class="label">Public registry</span><span class="value">Not yet</span></li>
     </ul>
   </div>
-  <p class="footnote">The package is in private preview and is not yet on a public registry.</p>
+  <p class="footnote">The package is in private preview. Access is by invitation, and there is no public download yet.</p>
 </section>
 <section class="section" aria-labelledby="what-you-get">
-  <h2 id="what-you-get" class="section-title">What installing will give you</h2>
+  <h2 id="what-you-get" class="section-title">What installing will look like</h2>
   <div class="card">
     <ul class="rows">
       <li class="row"><span class="label">Installation</span><span class="value">One command</span></li>
-      <li class="row"><span class="label">What is installed</span><span class="value">One binary</span></li>
-      <li class="row"><span class="label">Works with</span><span class="value">Terminal coding agents</span></li>
-      <li class="row"><span class="label">Platforms</span><span class="value">Windows, macOS and Linux</span></li>
+      <li class="row"><span class="label">What is installed</span><span class="value">One program</span></li>
+      <li class="row"><span class="label">What it needs</span><span class="value">Nothing but the program</span></li>
+      <li class="row"><span class="label">Used through</span><span class="value">An AI coding agent that can run a command on your machine</span></li>
+      <li class="row"><span class="label">Systems</span><span class="value">Windows, macOS and Linux</span></li>
+      <li class="row"><span class="label">Tested so far</span><span class="value">Windows 11 only. Every measurement on this site was made there.</span></li>
     </ul>
   </div>
 </section>
+<section class="section" aria-label="More on this site">
+  <p class="close-actions"><a class="btn" href="study.html">How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>
+</section>
 <!--/slot:install-->
 
-  <footer class="foot">
-    <p>Implementation details are not published. This site reports measured outcomes only.</p>
-    <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
-  </footer>
 </main>
+<footer class="foot">
+  <p>Implementation details are not published. This site reports measured outcomes only.</p>
+  <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
+</footer>
 <!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
     <span class="tab-ind" aria-hidden="true" style="--n:4;--i:3"></span>
     <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
@@ -71,8 +88,8 @@
     <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
-<script src="data/showcase.js?v=5e12a467"></script>
-<script src="assets/app.js?v=338633b9"></script>
+<script src="data/showcase.js?v=8fe6540f"></script>
+<script src="assets/app.js?v=fe9ca4e1"></script>
 <script src="assets/install.js?v=f9346843"></script>
 </body>
 </html>

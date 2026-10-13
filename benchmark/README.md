@@ -17,14 +17,16 @@ Python's syntax tree:
 3. Which function registers a git merge driver, and which one removes it.
 
 Round five added a second set of three questions of the same three shapes, the held-out set
-(set B, the questions above are set A). They were written after the Rust engine was built and
-the engine's builders never saw them, because the builders had seen set A. An arm id that ends
+(set B, the questions above are set A). The same team wrote them, later, and the people and agents
+who built the engine did not see them while building it. They are not an independent test: same
+repository, same generator, same three shapes. An arm id that ends
 in `h` is its base arm run on set B (`RGSh` is `RGS`); an id that ends in `r` is its base arm run
 again on the day of round five (`A0r` is `A0`). Every cell and every agent row in `results.json`
 carries `"set": "A"` or `"set": "B"`.
 
 An agent is told which commands it may use (one "method") and answers through a
-structured output, so grading is a script, not a judgment. Each method is run
+structured output, so grading is a script against an answer key that people fixed by hand
+(the question about which function does a job has a hand-written key). Each method is run
 on three model tiers and in three setups: one agent, three subagents started
 together, and an orchestrator that briefs three subagents and checks their work.
 
@@ -112,10 +114,27 @@ holds what they printed.
   about 2k tokens between the earlier session and round five, which is why the
   public leaderboard shows the same-day repeats A0r, S1r and S3r and not A0, S1
   and S3.
-- In round five the control's file reads passed through token-goat's read
-  compression, which hid lines the control needed in some runs. A0, from the
-  earlier session, ran without it. The control's fully correct counts for both
-  are in the Round five section of RESULTS.md.
+- In round five the control's file reads passed through token-goat's hooks. Its
+  secret-redaction hook overwrote the two lines that call the first question's target
+  (the target's own name contains "api_key"), so the control left that caller out in four of
+  its six original-question runs. A0, from the earlier session, ran without the hooks. The
+  control's fully correct counts for both are in the Round five section of RESULTS.md, and
+  the public site does not set them against the product's. It compares the product with the
+  control on tokens and turns only, and compares fully correct counts only with the first
+  generation, which ran in the same session. Rerun the control with the hooks off before
+  using its correctness for anything.
+- Three runs in a cell cannot support a claim of significance (the smallest exact two-sided
+  p-value for three runs against three is 0.10), and the three questions of a set are asked in
+  one prompt, so the runs of a cell are repeats of one task. Every finding on the site says "in
+  these runs" or gives the count.
+- Agents are told different amounts. Each product arm gets a description of its own commands,
+  several sentences long, and the control gets a line of tool names. The descriptions were
+  not controlled for length or detail.
+- The headline saving against no index is not one cell. The site gives the range over the four
+  cells where the highlighted configuration and the control were both measured (light and mid
+  class, original and held-out questions) and labels any single cell it shows.
+- RESULTS.md ends with the section "Known weaknesses of the study": the method review's
+  weaknesses, each with what it could change and the cheapest fix.
 - The memory of RM, RGM, RSM and RGSM was filled beforehand by a session that
   answered the same three questions, which is a best case; RGSO and RGSOh by a
   session that explored the repository without seeing any question.
@@ -141,17 +160,29 @@ order), the measured numbers for those methods, and findings in plain sentences.
 (`group` `heldout`) has no `public` object: its points join the public configuration of the public
 arm that shares its `base`, as question set "held-out", and the points of the public arm itself are
 question set "original". The three repeats carry the public objects of A0, S1 and S3, so the
-leaderboard compares runs made on the same day. The best configuration is the one with the highest
-share of fully correct runs among those run at least three times in each of the four cells (both
-question sets, light and mid class), a tie going to the lower mean tokens over the four cells; when
-no configuration has all four cells the rule falls back to the light class on the original questions.
+leaderboard compares runs made on the same day. The highlighted configuration, called "Most
+reliable" on the site, is the one with the highest share of fully correct runs among those run at
+least three times in each of the four cells (both question sets, light and mid class), a tie going
+to the lower mean tokens over the four cells; when no configuration has all four cells the rule
+falls back to the light class on the original questions. The rule was written after the results
+were known, and the site says so. Under each leaderboard view the build says in a line which
+other configurations used fewer tokens.
 Two optional
 files add to it: `benchmark/data/engine.json` (a `public` list of rows with `name`,
 `build_seconds`, `query_ms` and `index_mb`, shown as an engine speed table) and
-`benchmark/data/install.json` (a `public` object with `status` and, once the package is public,
-`command`). Without them the site shows a private-preview install page and no engine table.
+`benchmark/data/install.json` (a `public` object with `status`, once the package is public
+`command`, and an optional `contact`, an email address or an https link). Without them the site
+shows a private-preview install page and no engine table. With a `contact` the install page
+shows a "Request access" control that uses it; without one it shows no control and no
+placeholder, because the contact is the owner's to give.
 
-The last step of every build scans every file in `docs/` for tool names, commands, flags,
-paths of the setup, internal method ids and text copied from `arms.json`, and exits with the file
-and the word it found. Run it alone on any folder with
-`python benchmark/harness/build_site.py --guard FOLDER`.
+The last step of every build scans every file in `docs/`, its file names and its caption and data
+files included, for tool names, vendor and model names, commands, flags, paths of the setup,
+internal method ids and text copied from `arms.json`. Words are matched in any case, across line
+breaks and after character references, escapes and base64 are decoded; class names, ids and
+identifiers in the scripts and style sheets are split into their parts and checked the same way.
+It also checks that every configuration name and slug in the public data comes from a `public`
+object in `arms.json`. It exits with the file and the text it found. The build then plants one
+violation for each rule in a scratch copy of `docs/` and fails if the guard lets any through. Run
+the guard alone on any folder with `python benchmark/harness/build_site.py --guard FOLDER`, and
+the self-test alone with `--guard-selftest`.

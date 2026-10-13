@@ -25,6 +25,11 @@ body { width: 1920px; height: 1080px; color: var(--ink); font: 500 40px/1.12 var
 .sub { font-size: 52px; line-height: 1.12; color: var(--ink2); letter-spacing: -.012em; font-weight: 500; }
 .sub.s { font-size: 40px; }
 .small { font-size: 34px; line-height: 1.15; color: var(--ink3); letter-spacing: -.005em; }
+.q { font-size: 60px; line-height: 1.12; color: var(--ink2); letter-spacing: -.01em; font-weight: 560; }
+.q.big { font-size: 64px; }
+/* a dark halo, so a qualifier stays readable where particles drift behind it */
+.q, .sub { text-shadow: 0 0 .4em rgba(10, 10, 12, .92), 0 0 .12em rgba(10, 10, 12, .9); }
+.ctr { text-align: center; }
 .ink2 { color: var(--ink2); } .ink3 { color: var(--ink3); } .acc { color: var(--accent); } .hot { color: var(--hot); }
 .mask { overflow: hidden; padding: .1em 0 .2em; margin: -.1em 0 -.2em; }
 .wmask { display: inline-block; overflow: hidden; vertical-align: top; padding: .1em .05em .2em; margin: -.1em -.05em -.2em; }
@@ -34,6 +39,7 @@ body { width: 1920px; height: 1080px; color: var(--ink); font: 500 40px/1.12 var
 .mark path { fill: none; stroke: currentColor; stroke-width: 3.2; stroke-linecap: round; stroke-linejoin: round; }
 .mark circle { fill: currentColor; }
 .tag { display: inline-block; border: 1px solid var(--accent); color: var(--accent); border-radius: 999px; padding: .08em .6em .12em; font-size: 28px; font-weight: 600; letter-spacing: .02em; }
+.tag.off { border-color: var(--ink3); color: var(--ink2); }
 .pill { display: inline-block; border: 1px solid var(--line2); border-radius: 999px; padding: .16em .7em .2em; color: var(--ink2); font-size: 38px; font-weight: 600; letter-spacing: -.01em; }
 .curtain { position: absolute; inset: 0; background: var(--bg); transform: translate3d(-101%, 0, 0); }
 .curtain::before, .curtain::after { content: ""; position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); }

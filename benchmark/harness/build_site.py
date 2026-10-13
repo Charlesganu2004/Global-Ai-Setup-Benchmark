@@ -16,6 +16,8 @@ Writes  report/                       the full report, private: its data files, 
 The full report (report/) is not published. The showcase (docs/) is published by GitHub Pages, shows
 measured outcomes only, and every build ends by scanning it for anything that must not be public.
     python benchmark/harness/build_site.py --guard DIR   run only that scan, on any folder
+    python benchmark/harness/build_site.py --guard-selftest   plant one violation for each rule of the scan in a
+                                                              scratch copy of docs/ and check that each is caught
 
 Every number in the site's prose is computed here from those files, so the
 text cannot drift from the tables.
@@ -25,6 +27,7 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+import re
 import statistics
 import sys
 
@@ -46,7 +49,7 @@ SHARED_PREFIX = 38476   # tokens every agent read from cache: system prompt and 
 TIER_ORDER = "CBA"
 # How the findings shown in the top-level README begin.
 README_FINDINGS = ("An agent starts", "Where the shipped build", "The shipped build on", "Does adding token-goat",
-                   "Do the engines do as well", "The model tier moves", "Orchestration buys",
+                   "Do the engines do as well", "The model tier moves", "In these runs orchestration",
                    "token-goat's hooks, installed")
 
 
@@ -384,11 +387,13 @@ def text_of(points: list[dict], cells: list[dict], agents: list[dict], index: di
         checked = [c for c in cells if c["setup"] == "orch" and c["complete"] and c["tier"] == "C"]
         before = sum(c["fixed"] + c["still_wrong"] == 0 for c in checked)
         findings.append(
-            f"Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two "
-            f"calls were {share(orch_share)} of the run's cost. Without a brief or a reviewer, {len(flawed)} of "
+            f"In these runs orchestration came with more fully correct runs, and it is the expensive part. With Tier C subagents "
+            f"the orchestrator's two calls were {share(orch_share)} of the run's cost. Without a brief or a reviewer, {len(flawed)} of "
             f"{len(par)} three-subagent runs returned a wrong detail; orchestrated on the same tier, "
             f"{sum(c['quality'] >= 0.999 for c in checked)} of {len(checked)} ended fully correct, {before} of them "
-            f"before the review changed anything.")
+            f"before the review changed anything. The orchestrator is of a larger model class than the subagents, so this "
+            f"compares more than orchestration, and every cost is an estimate at list prices, with the cost of planning "
+            f"imputed from the few planning calls that were measured.")
     findings.append(
         f"A cold start costs far more than a warm one. Writing the {tokens(start)} start-up context to the cache "
         f"costs {money(cold['A'])} on Tier A against {money(warm['A'])} to read it back, {cold['A'] / warm['A']:.0f} "
@@ -410,7 +415,7 @@ def text_of(points: list[dict], cells: list[dict], agents: list[dict], index: di
         f"the slowest first build is {slowest['name']} at {slowest['cold']:g} s.")
     measured = len({p["arm"] for p in points})
     return {
-        "lede": f"{len(agents)} agent runs on one repository: three lookup questions and, in round five, three held-out ones, {measured} ways of finding the "
+        "lede": f"{len(agents)} agents measured on one repository: three lookup questions and, in round five, three held-out ones, {measured} ways of finding the "
                 f"answer, three model tiers, three ways of organising the agents. {total / 1e6:.1f} million tokens "
                 f"measured, {reads / total:.0%} of them cache reads.",
         "tiles": [
@@ -479,7 +484,11 @@ def markdown(points: list[dict], index: dict, arms: dict, text: dict) -> str:
     order = [arm["id"] for arm in arms["arms"]]
     out = ["# Benchmark results", "", text["lede"], "",
            "The charts are on the project site. This file is the same data as tables, written by "
-           "`benchmark/harness/build_site.py`.", "", "## Findings", ""]
+           "`benchmark/harness/build_site.py`. Read the section \"Known weaknesses of the study\" at the end before quoting a number. "
+           "A \"Correct\" column is a mean score between 0 and 1 over the answers, with partial credit, not a share of fully correct runs. "
+           "The no-index control of the second session had its reads altered by another tool on the test machine; "
+           "its figures are shown as measured and are not set against the product's for correctness.",
+           "", "## Findings", ""]
     out += [f"- {line}" for line in text["findings"]]
     for setup in arms["setups"]:
         rows = sorted((p for p in points if p["setup"] == setup["id"]),
@@ -514,10 +523,16 @@ def readme_block(points: list[dict], arms: dict, text: dict) -> str:
     out = [text["lede"], "",
            "One agent on the cheapest model tier, fewest tokens first"
            + (" (methods run at least three times):" if board and board[0]["n"] >= 3 else ":"), "",
-           "| # | Method | Runs | Turns | Tokens | Cost, cache warm | Correct |", "|---:|---|---:|---:|---:|---:|---:|"]
+           "| # | Method | Runs | Turns | Tokens | Cost, cache warm | Mean score |", "|---:|---|---:|---:|---:|---:|---:|"]
     for place, p in enumerate(board, 1):
         out.append(f"| {place} | {p['arm']} {name[p['arm']]} | {p['n']} | {p['requests']:.1f} | "
                    f"{p['tokens']:,.0f} | {money(p['cost_warm'])} | {share(p['quality'])} |")
+    out += ["", "The mean score is the average score of the answers, with partial credit; it is not a share of fully correct runs."]
+    control = next((a["id"] for a in arms["arms"] if a.get("public", {}).get("family") == "control"), None)
+    if control and any(p["arm"] == control for p in board):
+        out.append(f"{control}: another tool on the test machine, token-goat's secret-redaction hook, altered some of this row's reads, so its "
+                   "mean score is not comparable with the others and its fully correct runs are not set against the product's. "
+                   "See \"Known weaknesses of the study\" in benchmark/RESULTS.md.")
     # The README carries the short list; RESULTS.md and the site carry all of it.
     short = [line for line in text["findings"] if line.startswith(README_FINDINGS)]
     out += [""] + [f"- {line}" for line in short]
@@ -975,10 +990,10 @@ def answers_of(methods: list[dict], orchestration: dict, hooks: dict, arms: dict
         t = lowest[0]
         better = t["orch_perfect"] / t["orch_runs"] > t["parallel_perfect"] / t["parallel_runs"]
         out["orchestrator"] = (
-            ("It buys accuracy at a price. " if better else "Not on accuracy, in these runs. ")
+            ("It came with more fully correct runs, at a price. " if better else "Not on accuracy, in these runs. ")
             + f"On the cheapest subagents {t['orch_perfect']} of {t['orch_runs']} "
             f"orchestrated runs ended fully correct, against {t['parallel_perfect']} of {t['parallel_runs']} for three "
-            f"subagents with nobody reviewing, and a run cost about {statistics.fmean(ratios):.0f} times one agent.")
+            f"subagents with nobody reviewing, and a run cost an estimated {statistics.fmean(ratios):.0f} times one agent at list prices.")
     effect = hook_effect(hooks, arms)
     if effect:
         on, off = effect["runs_with"], effect["runs_without"]
@@ -1100,13 +1115,22 @@ PUBLIC_SETS = (
     {"key": "A", "id": "original", "name": "Original",
      "text": "The three lookups every round has used."},
     {"key": "B", "id": "held-out", "name": "Held-out",
-     "text": "Three more lookups of the same shapes, written after the engine was built and never seen by the "
-             "people or agents who built it."},
+     "text": "A second set of three questions of the same three shapes, written later by the same team. The people and "
+             "agents who built the engine did not see them while building it."},
 )
 SET_OF = {s["key"]: s["id"] for s in PUBLIC_SETS}
 TIER_OF_CLASS = {cid: tier for tier, cid, _ in PUBLIC_CLASSES}
 # The four cells the best configuration is chosen on: the light and mid classes, on both question sets.
 BEST_CELLS = tuple((cid, s["id"]) for s in PUBLIC_SETS for _, cid, _ in PUBLIC_CLASSES[:2])
+# What the site calls the highlighted configuration. The rule that picks it was written after the results were known,
+# so the site does not call it "best"; the label says what the rule measures.
+BEST_LABEL = "Most reliable"
+TIE_TOKENS = 1000                    # configurations this close in tokens are said to tie
+EARLIER_LABEL = "Earlier session"
+CONTROL_NOTE = "Its reads were altered by another tool on the test machine."
+CONTROL_LINK_TEXT = "Why this matters"
+CONTROL_LINK = "study.html#control"
+INSTALL_CONTACT = re.compile(r"^(?:[^@\s<>\"']+@[^@\s<>\"']+\.[A-Za-z]{2,}|https://[^\s<>\"']+)$")
 
 
 def public_point(p: dict, class_id: str) -> dict:
@@ -1171,82 +1195,180 @@ def cell_counts(config: dict | None, cells: tuple = BEST_CELLS) -> tuple[int, in
     return (sum(pt["perfect_runs"] for pt in found), sum(pt["runs"] for pt in found), len(found)) if found else None
 
 
+def saving_range(versus: dict) -> str:
+    """The lowest and the highest saving in tokens against no index, as a page words it: "28% to 54%"."""
+    low, high = f"{versus['low']:.0%}", f"{versus['high']:.0%}"
+    return low if low == high else f"{low} to {high}"
+
+
+def versus_control(configs: list[dict]) -> dict | None:
+    """The highlighted configuration against no index in each of the four cells where both were measured: tokens and
+    turns of each, and the saving in tokens; then the lowest and the highest saving. Tokens and turns only. The
+    fully correct counts of the control are not set against the product's: another tool on the test machine altered
+    some of the control's reads, which lowered its correctness."""
+    best = next((c for c in configs if c["best"]), None)
+    control = next((c for c in configs if c["family"] == "control"), None)
+    cells = []
+    for cid, sid in BEST_CELLS:
+        b, c = cell_of(best, cid, sid), cell_of(control, cid, sid)
+        if b and c:
+            cells.append({"class": cid, "set": sid, "tokens": b["tokens"], "control_tokens": c["tokens"],
+                          "turns": b["turns"], "control_turns": c["turns"], "saving": 1 - b["tokens"] / c["tokens"]})
+    if not cells:
+        return None
+    savings = [cell["saving"] for cell in cells]
+    return {"cells": cells, "low": min(savings), "high": max(savings)}
+
+
+def ordered_rows(configs: list[dict], class_id: str, set_id: str) -> list[tuple[dict, dict]]:
+    """Configurations with a point on the class and the question set: the highlighted one first, then fewest tokens.
+    A configuration not measured on the set is not in the list."""
+    rows = [(c, pt) for c in configs for pt in c["points"] if pt["class"] == class_id and pt["set"] == set_id]
+    return sorted(rows, key=lambda row: (not row[0]["best"], row[1]["tokens"]))
+
+
+def view_note(rows: list[tuple[dict, dict]]) -> str:
+    """The line under one leaderboard view. Where another configuration used fewer tokens than the highlighted one, it
+    says so, with the exact tokens, and says how many configurations are within TIE_TOKENS of the lowest. Where the
+    highlighted configuration was not measured, it says that no row is marked."""
+    if not rows:
+        return ""
+    label = BEST_LABEL.lower()
+    marked = next(((c, pt) for c, pt in rows if c["best"]), None)
+    if not marked:
+        return f'The {label} configuration was not measured on this class with these questions, so no row is marked.'
+    mine = marked[1]["tokens"]
+    fewer = sorted(((c, pt) for c, pt in rows if pt["tokens"] < mine), key=lambda row: row[1]["tokens"])
+    if not fewer:
+        return f"No other configuration used fewer tokens than the {label} one here."
+    count = len(fewer)
+    shown = "; ".join(f'"{c["name"]}", {pt["tokens"]:,.0f}' for c, pt in fewer[:3]) + (f"; and {count - 3} more" if count > 3 else "")
+    text = (f"{number_word(count, True)} other {'configuration' if count == 1 else 'configurations'} used fewer tokens than the "
+            f"{label} one ({mine:,.0f}): {shown}.")
+    lowest = fewer[0][1]["tokens"]
+    tied = [row for row in rows if row[1]["tokens"] - lowest <= TIE_TOKENS]
+    if len(tied) >= 2:
+        text += (f" {number_word(len(tied), True)} configurations are within a thousand tokens of the lowest ({lowest:,.0f})"
+                 + (f", the {label} one among them" if any(c["best"] for c, _ in tied) else "") + ".")
+    return text
+
+
 def public_findings(configs: list[dict], cells: list[dict], orchestration: dict, hooks: dict, arms: dict,
                     hook_test: set, owner: dict, engine: list[dict]) -> dict:
     """The findings in plain sentences with their numbers. `owner` maps the id of an arm to the slug of the public
-    configuration its runs belong to. A sentence is written only when the numbers it quotes exist."""
+    configuration its runs belong to. A sentence is written only when the numbers it quotes exist. Every sentence
+    that counts runs says "in these runs" or gives the count; none claims a difference the runs cannot support, and
+    no fully correct count of the control is set against the product's."""
     by_slug = {c["slug"]: c for c in configs}
     best = next((c for c in configs if c["best"]), None)
     control = next((c for c in configs if c["family"] == "control"), None)
     first = first_generation(configs)
     by_arm = {arm_id: by_slug[slug] for arm_id, slug in owner.items()}
     light = {slug: cell_of(c, "light", "original") for slug, c in by_slug.items()}
+    versus = versus_control(configs)
     headline = []
     if best and control and light[best["slug"]] and light[control["slug"]]:
         b, c = light[best["slug"]], light[control["slug"]]
-        headline.append(
-            f"On the light class and the original questions, one agent using \"{best['name']}\" needed {tokens(b['tokens'])} "
-            f"tokens and {b['turns']:.1f} turns for the three lookups, against {tokens(c['tokens'])} tokens and {c['turns']:.1f} "
-            f"turns with no index: {1 - b['tokens'] / c['tokens']:.0%} fewer tokens.")
-        headline.append(
-            f"{of(b['perfect_runs'], b['runs'])} runs were fully correct with \"{best['name']}\" and "
-            f"{of(c['perfect_runs'], c['runs'])} with no index. A run is fully correct when all three answers are.")
+        text = (f"On the light class and the original questions, in these runs, one agent using \"{best['name']}\" needed "
+                f"{tokens(b['tokens'])} tokens and {b['turns']:.1f} turns for the three lookups, against {tokens(c['tokens'])} "
+                f"tokens and {c['turns']:.1f} turns with no index: {1 - b['tokens'] / c['tokens']:.0%} fewer tokens in this one cell.")
+        if versus and len(versus["cells"]) > 1:
+            text += (f" Across the {number_word(len(versus['cells']))} cells where both were measured, the light and mid classes on "
+                     f"the original and the held-out questions, the saving against no index was {saving_range(versus)} in tokens.")
+        headline.append(text)
+    if best and first and best is not first and light[best["slug"]] and light[first["slug"]]:
+        b, f = light[best["slug"]], light[first["slug"]]
+        text = (f"In these runs \"{best['name']}\" was fully correct in {of(b['perfect_runs'], b['runs'])} runs on the light class "
+                f"and the original questions, and \"{first['name']}\" in {of(f['perfect_runs'], f['runs'])}.")
+        cb, cf = cell_counts(best), cell_counts(first)
+        if cb and cf and cb[2] == cf[2] == len(BEST_CELLS):
+            text += f" Over the {number_word(cb[2])} cells where both were measured, {of(*cb[:2])} against {of(*cf[:2])}."
+        text += (" A run is fully correct when all three answers are. Fully correct counts are not set against no index: another "
+                 "tool on the test machine altered some of the no-index agent's reads, which lowered its correctness.")
+        headline.append(text)
     # The floor: two turns, one to ask and one to answer. Said of the two configurations only when both reach it.
     if best and first and best is not first:
-        both = {config["slug"]: [cell_of(config, cid, "original") for cid in ("light", "mid")] for config in (best, first)}
+        def classes_of(config: dict, sid: str) -> list:
+            return [cell_of(config, cid, sid) for cid in ("light", "mid")]
+        both = {config["slug"]: classes_of(config, "original") for config in (best, first)}
         if all(pt and pt["turns"] <= 2.05 for pts in both.values() for pt in pts):
             def spent(config: dict) -> str:
                 pts = both[config["slug"]]
                 return f"{tokens(pts[0]['tokens'])} tokens on the light class and {tokens(pts[1]['tokens'])} on the mid class"
-            headline.append(
-                "Two turns is the floor for this task: one to ask and one to answer. On the original questions "
-                f"\"{best['name']}\" answered in 2 turns on both classes, with {spent(best)}; \"{first['name']}\" also "
-                f"took 2 turns on both, with {spent(first)}.")
-    repeated = [p for p in light.values() if p and p["runs"] >= 2]
+            text = ("Two turns is the floor for this task: one to ask and one to answer. On the original questions "
+                    f"\"{best['name']}\" answered in 2 turns on both classes, with {spent(best)}; \"{first['name']}\" also "
+                    f"took 2 turns on both, with {spent(first)}.")
+            if all(abs(a["tokens"] / z["tokens"] - 1) <= 0.01 for a, z in zip(both[best["slug"]], both[first["slug"]])):
+                text += (" On these lookups the first generation matched it in tokens and turns"
+                         + ("; the measured difference between the two generations is speed, under Engine speed." if engine else "."))
+            held = {config["slug"]: classes_of(config, "held-out") for config in (best, first)}
+            if all(pt for pts in held.values() for pt in pts):
+                def turns_of(pts: list) -> str:
+                    return f"{pts[0]['turns']:.1f} turns on the light class and {pts[1]['turns']:.1f} on the mid class"
+                text += (f" On the held-out questions \"{best['name']}\" took {turns_of(held[best['slug']])}, "
+                         f"and \"{first['name']}\" {turns_of(held[first['slug']])}.")
+            headline.append(text)
+    repeated = [(c, p) for c in configs for p in [light[c["slug"]]] if p and p["runs"] >= 2]
     if len(repeated) >= 2:
-        lean = min(repeated, key=lambda p: (p["turns"], p["tokens"]))
-        heavy = max(repeated, key=lambda p: (p["turns"], p["tokens"]))
+        lean = min(repeated, key=lambda row: (row[1]["turns"], row[1]["tokens"]))
+        heavy = max(repeated, key=lambda row: (row[1]["turns"], row[1]["tokens"]))
         headline.append(
-            f"Tokens follow turns. On the light class and the original questions the leanest published configuration took "
-            f"{lean['turns']:.1f} turns and {tokens(lean['tokens'])} tokens, the heaviest {heavy['turns']:.1f} turns and "
-            f"{tokens(heavy['tokens'])} tokens.")
+            "Tokens follow turns, because most of a run's tokens are the agent's start-up context, read again on every turn. On "
+            f"the light class and the original questions the leanest published configuration, \"{lean[0]['name']}\", took "
+            f"{lean[1]['turns']:.1f} turns and {tokens(lean[1]['tokens'])} tokens, and the heaviest, \"{heavy[0]['name']}\", "
+            f"{heavy[1]['turns']:.1f} turns and {tokens(heavy[1]['tokens'])} tokens.")
     if control:
         by_class = {pt["class"]: pt for pt in control["points"] if pt["set"] == "original"}
-        shown = [(name, cid) for _, cid, name in PUBLIC_CLASSES if cid in by_class]
+        shown = [cid for _, cid, _ in PUBLIC_CLASSES if cid in by_class]
         if len(shown) >= 2:
-            used = [by_class[cid]["tokens"] for _, cid in shown]
+            used = [by_class[cid]["tokens"] for cid in shown]
+
             def listed(items: list[str]) -> str:
                 return items[0] if len(items) == 1 else ", ".join(items[:-1]) + " and " + items[-1]
             headline.append(
-                "With no index, one agent used " + listed([f"{tokens(by_class[cid]['tokens'])} tokens on the {cid} class" for _, cid in shown])
-                + " on the original questions; the answers were " + listed([share(by_class[cid]["correct"]) for _, cid in shown])
-                + " correct." + (" A larger model class did not need far fewer tokens for the same lookups."
-                                 if min(used) >= 0.7 * max(used) else ""))
+                "With no index, in these runs, one agent used "
+                + listed([f"{tokens(by_class[cid]['tokens'])} tokens on the {cid} class ({by_class[cid]['runs']} runs)" for cid in shown])
+                + " on the original questions." + (" The larger model class did not need far fewer tokens for the same lookups."
+                                                   if min(used) >= 0.7 * max(used) else ""))
     findings = {"headline": headline}
 
-    # Held-out: who stayed fully correct on both sets, and the best configuration against the first generation.
+    # Held-out: who stayed fully correct on both sets, and the best configuration against the first generation and
+    # against no index, in tokens and turns.
     both_sets = [c for c in configs if {"original", "held-out"} <= set(c["sets"])]
     if both_sets:
         steady = [c for c in both_sets if all(pt["perfect_runs"] == pt["runs"] for pt in c["points"])]
         text = [(f"Of the {len(both_sets)} configurations measured on both question sets, {quoted([c['name'] for c in steady])} "
-                 f"{'was' if len(steady) == 1 else 'were'} fully correct in every run." if steady
+                 f"{'was' if len(steady) == 1 else 'were'} fully correct in every run, in these runs." if steady
                  else f"None of the {len(both_sets)} configurations measured on both question sets was fully correct in every run.")]
         rows = []
-        held = {config["slug"]: [cell_of(config, cid, "held-out") for cid in ("light", "mid")] for config in (best, first) if config}
-        if best and first and best is not first and all(pt for pts in held.values() for pt in pts):
+        held = {config["slug"]: [cell_of(config, cid, "held-out") for cid in ("light", "mid")]
+                for config in (best, first, control) if config}
+        if best and first and best is not first and all(pt for config in (best, first) for pt in held[config["slug"]]):
             def figures(pts: list[dict]) -> str:
                 return (f"{tokens(pts[0]['tokens'])} tokens and {pts[0]['turns']:.1f} turns on the light class and "
                         f"{tokens(pts[1]['tokens'])} and {pts[1]['turns']:.1f} on the mid class")
             text.append(f"On the held-out questions \"{best['name']}\" needed {figures(held[best['slug']])}; "
                         f"\"{first['name']}\" needed {figures(held[first['slug']])}.")
-            for label, config in (("Best", best), ("First generation", first)):
+            if control and all(held[control["slug"]]):
+                saved = [1 - b["tokens"] / c["tokens"] for b, c in zip(held[best["slug"]], held[control["slug"]])]
+                text.append(f"No index needed {figures(held[control['slug']])}, so on the held-out questions \"{best['name']}\" used "
+                            f"{saved[0]:.0%} fewer tokens on the light class and {saved[1]:.0%} fewer on the mid class.")
+            original = [cell_of(best, cid, "original") for cid in ("light", "mid")]
+            if all(original) and any(h["turns"] > o["turns"] + 0.05 for h, o in zip(held[best["slug"]], original)):
+                text.append(f"These are higher than on the original questions, where \"{best['name']}\" needed "
+                            f"{tokens(original[0]['tokens'])} tokens and {original[0]['turns']:.1f} turns on the light class and "
+                            f"{tokens(original[1]['tokens'])} and {original[1]['turns']:.1f} on the mid class.")
+            for label, config in ((BEST_LABEL, best), ("First generation", first)):
                 for (_, cid, cname), pt in zip(PUBLIC_CLASSES[:2], held[config["slug"]]):
                     rows.append((f"{label}, {cid} class",
                                  f"{tokens(pt['tokens'])} tokens, {pt['turns']:.1f} turns, {of(pt['perfect_runs'], pt['runs'])} fully correct"))
+            if control and all(held[control["slug"]]):
+                for (_, cid, cname), pt in zip(PUBLIC_CLASSES[:2], held[control["slug"]]):
+                    rows.append((f"No index, {cid} class", f"{tokens(pt['tokens'])} tokens, {pt['turns']:.1f} turns, {pt['runs']} runs"))
         findings["held_out"] = {"title": "Held-out questions", "text": " ".join(text), "rows": rows,
                                 "steady": [c["name"] for c in steady], "measured_on_both": len(both_sets)}
 
-    # Parts: what search alone and graph alone do, on the callers question and in turns.
+    # Parts: what search alone and graph alone do, on the callers question and in the four cells.
     search, graph, joint = by_arm.get("RS"), by_arm.get("RG"), by_arm.get("RGS")
 
     def callers_full(config: dict, cid: str) -> tuple[int, int]:
@@ -1266,14 +1388,19 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
             rows += [("Search alone, fully correct runs", of(*counts[search["slug"]][:2])),
                      ("Graph alone, fully correct runs", of(*counts[graph["slug"]][:2]))]
         if joint:
-            turns = [(sid, cell_of(graph, "light", sid), cell_of(joint, "light", sid)) for sid in ("original", "held-out")]
-            turns = [(sid, g, j) for sid, g, j in turns if g and j]
-            if turns and all(g["turns"] > j["turns"] for _, g, j in turns):
-                text.append("Graph alone took more turns on the light class: " + " and ".join(
-                    f"{g['turns']:.1f} on the {sid} questions" for sid, g, j in turns) + ", against " + " and ".join(
-                    f"{j['turns']:.1f}" for _, g, j in turns) + " for graph and search together.")
-                rows += [(f"Graph alone, turns on the light class, {sid}", f"{g['turns']:.1f}") for sid, g, j in turns]
-                rows += [(f"Graph and search, turns on the light class, {sid}", f"{j['turns']:.1f}") for sid, g, j in turns]
+            pairs = [(cid, sid, cell_of(graph, cid, sid), cell_of(joint, cid, sid)) for cid, sid in BEST_CELLS]
+            if all(g and j for _, _, g, j in pairs):
+                g_turns, j_turns = (statistics.fmean(p[n]["turns"] for p in pairs) for n in (2, 3))
+                g_tokens, j_tokens = (statistics.fmean(p[n]["tokens"] for p in pairs) for n in (2, 3))
+                fewer = sum(g["tokens"] < j["tokens"] for _, _, g, j in pairs)
+                level = sum(g["tokens"] >= j["tokens"] and g["tokens"] <= 1.02 * j["tokens"] for _, _, g, j in pairs)
+                text.append(
+                    f"Over the {number_word(len(pairs))} cells, graph alone averaged {g_turns:.1f} turns and {tokens(g_tokens)} tokens, and "
+                    f"graph and search together {j_turns:.1f} turns and {tokens(j_tokens)}. Cell by cell, graph alone used fewer tokens in "
+                    f"{of(fewer, len(pairs))} cells and within 2% of graph and search in {of(level, len(pairs))} more.")
+                for cid, sid, g, j in pairs:
+                    rows.append((f"Graph alone, {cid} class, {sid}", f"{tokens(g['tokens'])} tokens, {g['turns']:.1f} turns"))
+                    rows.append((f"Graph and search, {cid} class, {sid}", f"{tokens(j['tokens'])} tokens, {j['turns']:.1f} turns"))
         findings["parts"] = {"title": "Parts", "text": " ".join(text), "rows": rows}
 
     # Memory: memory that already held the answers, and memory from an exploring session, cell by cell.
@@ -1288,7 +1415,8 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
                 text.append(
                     f"Memory that already held the answers, filled by a session that answered the same questions, matched the "
                     f"two-turn floor and did not beat it: {quoted([c['name'] for c in answered])} took 2 turns on both classes "
-                    f"and used {kilo(min(gaps))} to {kilo(max(gaps))} more tokens than graph and search without memory.")
+                    f"and used {kilo(min(gaps))} to {kilo(max(gaps))} more tokens than graph and search without memory. That is a "
+                    "best case, since the memory held the answers.")
     explored = by_arm.get("RGSO")
     if explored and joint:
         pairs = [(cell_of(explored, cid, sid), cell_of(joint, cid, sid)) for cid, sid in BEST_CELLS]
@@ -1300,7 +1428,8 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
                 "Memory filled by an earlier session that explored the repository without seeing any question, compared cell by "
                 f"cell with graph and search without memory, used fewer tokens in {of(fewer, len(pairs))} cells and more in "
                 f"{of(more, len(pairs))}" + (f" and the same in {of(same, len(pairs))}" if same else "")
-                + f"; it was fully correct in {of(*mine[:2])} runs, against {of(*theirs[:2])} without memory.")
+                + f"; it was fully correct in {of(*mine[:2])} runs, against {of(*theirs[:2])} without memory. With three runs in a "
+                "cell, differences of this size are inside the spread between repeats.")
             rows += [("Exploring-session memory, fewer tokens than without memory", f"{of(fewer, len(pairs))} cells"),
                      ("Exploring-session memory, more tokens than without memory", f"{of(more, len(pairs))} cells"),
                      ("Exploring-session memory, fully correct runs", of(*mine[:2])),
@@ -1314,58 +1443,80 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
     if len(timed) >= 2:
         fast, slow = min(timed, key=lambda r: r["query_ms"]), max(timed, key=lambda r: r["query_ms"])
         times = slow["query_ms"] / fast["query_ms"]
+        parts = [f"One call that answers all three lookups took {fast['query_ms']:g} ms with \"{fast['name']}\" and "
+                 f"{slow['query_ms']:g} ms with \"{slow['name']}\", {times:.0f} times as long."]
+        if fast.get("lookup_ms") and slow.get("lookup_ms"):
+            parts.append(f"A single lookup took {fast['lookup_ms']:g} ms and {slow['lookup_ms']:g} ms, "
+                         f"{slow['lookup_ms'] / fast['lookup_ms']:.0f} times as long.")
+        build = (f"Building the index took {fast['build_seconds']:g} s against {slow['build_seconds']:g} s, both with embeddings")
+        if slow.get("build_seconds_no_embeddings"):
+            build += f"; \"{slow['name']}\" took {slow['build_seconds_no_embeddings']:g} s without them"
+        parts.append(build + f". The index is {fast['index_mb']:g} MB against {slow['index_mb']:g} MB, and the second figure leaves "
+                     "out a cache that engine shares across repositories.")
+        parts.append("Times are medians of 20 whole-process runs on one machine on one day"
+                     + ("; the build time of the first generation was measured in an earlier session." if "first generation" in slow["name"].lower() else "."))
         findings["speed"] = {
             "title": "Speed",
-            "text": (f"A query took {fast['query_ms']:g} ms with \"{fast['name']}\" and {slow['query_ms']:g} ms with \"{slow['name']}\", "
-                     f"{times:.0f} times as long. Building the index took {fast['build_seconds']:g} s against "
-                     f"{slow['build_seconds']:g} s, and the index is {fast['index_mb']:g} MB against {slow['index_mb']:g} MB. "
-                     "Query times were measured on one machine on the same day"
-                     + ("; the first generation's build time was measured in an earlier session." if "first generation" in slow["name"].lower() else ".")),
-            "rows": [(f"{r['name']}, query time", f"{r['query_ms']:g} ms") for r in (fast, slow)]
+            "text": " ".join(parts),
+            "rows": [(f"{r['name']}, three lookups in one call", f"{r['query_ms']:g} ms") for r in (fast, slow)]
+                    + ([(f"{r['name']}, one lookup", f"{r['lookup_ms']:g} ms") for r in (fast, slow)] if fast.get("lookup_ms") and slow.get("lookup_ms") else [])
                     + [(f"{r['name']}, build time", f"{r['build_seconds']:g} s") for r in (fast, slow)]
                     + [(f"{r['name']}, index size", f"{r['index_mb']:g} MB") for r in (fast, slow)]}
 
-    # The proof on the Overview: fully correct runs across both question sets and both model classes.
-    if best and first and control:
-        counted = {"best": (best, cell_counts(best)), "first_generation": (first, cell_counts(first)),
-                   "control": (control, cell_counts(control))}
+    # The proof on the Overview: fully correct runs across both question sets and both model classes, for the best
+    # configuration against the first generation. The control is left out: its correctness was lowered by another tool.
+    if best and first and best is not first:
+        counted = {"best": (best, cell_counts(best)), "first_generation": (first, cell_counts(first))}
         if all(found and found[2] == len(BEST_CELLS) for _, found in counted.values()):
             sums = {key: {"name": config["name"], "perfect_runs": found[0], "runs": found[1]} for key, (config, found) in counted.items()}
-            findings["proof"] = dict(sums, text=(
-                f"Across both question sets and both model classes, one agent using \"{best['name']}\" was fully correct in "
-                f"{of(sums['best']['perfect_runs'], sums['best']['runs'])} runs, against "
-                f"{of(sums['first_generation']['perfect_runs'], sums['first_generation']['runs'])} with \"{first['name']}\" and "
-                f"{of(sums['control']['perfect_runs'], sums['control']['runs'])} with no index."))
+            text = (f"Across both question sets and both model classes, in these runs, one agent using \"{best['name']}\" was fully "
+                    f"correct in {of(sums['best']['perfect_runs'], sums['best']['runs'])} runs, against "
+                    f"{of(sums['first_generation']['perfect_runs'], sums['first_generation']['runs'])} with \"{first['name']}\".")
+            held_cells = tuple(cell for cell in BEST_CELLS if cell[1] == "held-out")
+            held_counts = {key: cell_counts(config, held_cells) for key, (config, _) in counted.items()}
+            if all(found and found[2] == len(held_cells) for found in held_counts.values()):
+                text += (f" On the held-out questions alone, {of(*held_counts['best'][:2])} against {of(*held_counts['first_generation'][:2])}.")
+            findings["proof"] = dict(sums, text=text)
 
-    # Orchestration: a reviewing orchestrator on top of three light workers, against one light agent alone.
+    # Orchestration: a reviewing agent on top of three light workers, against one light agent alone.
     def complete(setup: str, among: set | None = None) -> list[dict]:
         return [c for c in cells if c["complete"] and c["setup"] == setup and c["tier"] == "C"
                 and c["arm"] not in hook_test and (among is None or c["arm"] in among)]
 
     orchestrated = complete("orch")
     alone = complete("single", {c["arm"] for c in orchestrated})
-    ratios = [r["cost_over_single"] for r in orchestration["setups"] if r["tier"] == "C" and r["cost_over_single"]]
-    if orchestrated and alone and ratios:
+    pairs = [r for r in orchestration["setups"] if r["tier"] == "C" and r["single"] and r["orch"]]
+    if orchestrated and alone and pairs:
         right_orch = sum(c["quality"] >= 0.999 for c in orchestrated)
         right_alone = sum(c["quality"] >= 0.999 for c in alone)
-        times = statistics.fmean(ratios)
+        cost = lambda side: (sum(r[side]["cost_warm"] * r[side]["n"] for r in pairs) / sum(r[side]["n"] for r in pairs))
+        times = cost("orch") / cost("single")
+        sets = sorted({SET_OF.get(c.get("set", "A"), "original") for c in orchestrated})
+        imputed = sum(bool(c.get("plan_imputed")) for c in orchestrated)
+        reviewer = next((t["id"] for t in arms["tiers"] if t["model"].lower().startswith(str(orchestrated[0].get("reviewer")).lower())), None)
+        larger = reviewer is not None and TIER_ORDER.index(reviewer) > TIER_ORDER.index("C")
         findings["orchestration"] = {
             "title": "Orchestration",
-            "text": (f"With a reviewing orchestrator on top of three light workers, {of(right_orch, len(orchestrated))} runs "
-                     f"ended fully correct, against {of(right_alone, len(alone))} for one light agent alone; a run cost "
-                     f"about {times:.0f} times as much."),
+            "text": (f"With a reviewing agent on top of three light workers, {of(right_orch, len(orchestrated))} runs ended fully correct, "
+                     f"against {of(right_alone, len(alone))} for one light agent alone, on the {' and '.join(sets)} questions. "
+                     + ("The reviewing agent is of a larger model class than the workers, so this compares more than orchestration. " if larger else "")
+                     + f"A run cost about {times:.0f} times as much. That is an estimate: a price list applied to the measured tokens, "
+                     f"pooled over {len(pairs)} configurations, and for {of(imputed, len(orchestrated))} orchestrated runs the planning cost "
+                     "is itself estimated from the planning calls that were measured."),
             "orchestrated": {"perfect_runs": right_orch, "runs": len(orchestrated)},
-            "alone": {"perfect_runs": right_alone, "runs": len(alone)}, "cost_multiple": times}
+            "alone": {"perfect_runs": right_alone, "runs": len(alone)}, "cost_multiple": times,
+            "planning_estimated": imputed}
     effect = hook_effect(hooks, arms)
     if effect:
-        first_part = ("Tool hooks that compress and redact reads lowered token use on these lookups"
-                      if effect["saved"] else "Tool hooks that compress and redact reads did not lower token use on these lookups")
-        second = ("without an index fewer runs ended fully correct" if effect["worse"]
-                  else "without an index the share of fully correct runs did not fall")
+        first_part = ("A tool on the test machine that alters what an agent reads lowered token use on these lookups"
+                      if effect["saved"] else "A tool on the test machine that alters what an agent reads did not lower token use on these lookups")
         findings["hooks"] = {
-            "title": "Tool hooks",
-            "text": (f"{first_part}, and {second} ({of(effect['right_with'], effect['runs_with'])} runs with the hooks on, "
-                     f"{of(effect['right_without'], effect['runs_without'])} with them off)."),
+            "title": "A tool that alters reads",
+            "text": (f"{first_part} ({effect['change']:+.0%}, against {effect['spread']:.0%} between repeats of one prompt). Without an "
+                     f"index, {of(effect['right_with'], effect['runs_with'])} runs with it ended fully correct and "
+                     f"{of(effect['right_without'], effect['runs_without'])} without it: too few runs to call that a clear effect. The same "
+                     "tool altered some of the no-index control's reads in the second session, which is why the control's correctness is "
+                     "not set against the others."),
             "with_hooks": {"perfect_runs": effect["right_with"], "runs": effect["runs_with"]},
             "without_hooks": {"perfect_runs": effect["right_without"], "runs": effect["runs_without"]},
             "token_change": effect["change"], "spread": effect["spread"]}
@@ -1405,14 +1556,79 @@ def session_facts(cells: list[dict], agents: list[dict], arms: dict, points: lis
                           "classes": [cid for tier, cid, _ in PUBLIC_CLASSES if tier in tiers]},
              "cells": {"second_session": len(short), "short": sum(n < 3 for n in short),
                        "fewest": min(short) if short else 0}}
+    def means(arm_id: str) -> dict:
+        found = {}
+        for tier, cid, _ in PUBLIC_CLASSES:
+            pt = pick(points, arm_id, "single", tier)
+            if pt:
+                found[cid] = [pt["tokens"], pt["requests"], pt["n"]]
+        return found
+
     if today and first_session:
         facts["control"] = {"today": {"original": perfect(today["id"]), "held-out": perfect(held["id"]) if held else {}},
-                            "earlier": perfect(first_session["id"])}
+                            "earlier": perfect(first_session["id"]),
+                            "tokens": {"today": means(today["id"]), "earlier": means(first_session["id"])}}
+    return facts
+
+
+def study_facts(configs: list[dict], cells: list[dict], points: list[dict], owner: dict, arms: dict, hook_test: set) -> dict:
+    """What the Study page quotes besides its scale rows, all counted from the published configurations and their
+    runs: how many single-agent runs stand behind the leaderboard and in cells of what size, how far repeated runs of
+    one cell differ, what a token count is made of, which question separates the configurations, and how many
+    unpublished configurations reached the same two turns."""
+    import collections
+    best = next((c for c in configs if c["best"]), None)
+    control = next((c for c in configs if c["family"] == "control"), None)
+    graph = next((c for c in configs if c["slug"] == owner.get("RG")), None)
+    published = [pt for c in configs for pt in c["points"]]
+    sizes = collections.Counter(pt["runs"] for pt in published)
+    facts = {"behind": {"runs": sum(pt["runs"] for pt in published), "cells": len(published),
+                        "by_size": {str(n): sizes[n] for n in sorted(sizes)}}}
+    repeated = [pt for pt in published if pt["runs"] >= 2]
+    ratios = sorted(pt["tokens_high"] / pt["tokens_low"] - 1 for pt in repeated)
+    facts["spread"] = {
+        "cells": len(repeated), "median": statistics.median(ratios) if ratios else 0.0, "highest": ratios[-1] if ratios else 0.0,
+        "wide": sum(r >= 0.5 for r in ratios), "mixed": sum(0 < pt["perfect_runs"] < pt["runs"] for pt in published),
+        "turn": statistics.fmean(pt["tokens"] / pt["turns"] for pt in published),
+        "best_cells": [{"class": pt["class"], "set": pt["set"], "runs": pt["runs"], "low": pt["tokens_low"], "high": pt["tokens_high"]}
+                       for cid, sid in BEST_CELLS for pt in [cell_of(best, cid, sid)] if pt]}
+    runs = [c for c in cells if c["complete"] and c["setup"] == "single" and c["arm"] in owner]
+
+    def context(config: dict | None, cid: str, sid: str) -> float | None:
+        found = [c for c in runs if config and owner[c["arm"]] == config["slug"] and c["tier"] == TIER_OF_CLASS[cid]
+                 and SET_OF[c.get("set", "A")] == sid]
+        return statistics.fmean((c["start"] + c["reread"]) / c["tokens"] for c in found) if found else None
+    facts["tokens"] = {
+        "runs": len(runs), "cached": sum(c["cache_read"] + c["cache_write"] for c in runs) / sum(c["tokens"] for c in runs),
+        "start": statistics.fmean(c["start"] for c in runs),
+        "context": {"best": context(best, "light", "original"), "control": context(control, "light", "original")}}
+    imperfect = [c for c in runs if c["quality"] < 0.999]
+    full_purpose = lambda rows: sum((c["scores"]["q3"] or 0) >= 0.999 for c in rows)
+    no_search = [c for c in runs if owner[c["arm"]] in {cfg["slug"] for cfg in (control, graph) if cfg}]
+    # How often the other tool acted in the second session: on the control's runs and on all the other published ones.
+    second = {a["id"] for a in arms["arms"] if a.get("group") in ("rust", "heldout", "rerun")}
+    in_control = lambda c: bool(control) and owner[c["arm"]] == control["slug"]
+    acted = lambda rows: [sum(c["hook_calls"] > 0 for c in rows), len(rows)]
+    facts["tool_acted"] = {"control": acted([c for c in runs if c["arm"] in second and in_control(c)]),
+                           "others": [{"name": config["name"], "acted": acted([c for c in runs if c["arm"] in second and owner[c["arm"]] == config["slug"]])}
+                                      for config in configs if config["family"] != "control"
+                                      if any(c["arm"] in second and owner[c["arm"]] == config["slug"] for c in runs)]}
+    facts["graded"] = {"runs": len(runs), "imperfect": len(imperfect),
+                       "callers": sum((c["scores"]["q1"] or 0) < 0.999 for c in imperfect),
+                       "purpose": [full_purpose(runs), len(runs)], "purpose_no_search": [full_purpose(no_search), len(no_search)]}
+    base_of = lambda a: a.get("base", a["id"])
+    published_ids = set(owner) | {base_of(a) for a in arms["arms"] if a["id"] in owner}
+    tried = [p for p in points if p["setup"] == "single" and p["tier"] == "C" and p["set"] == "A" and p["n"] >= 3
+             and p["arm"] not in published_ids and p["arm"] not in hook_test]
+    facts["unpublished"] = {"measured": len(tried),
+                            "two_turns": sum(p["requests"] <= 2.05 and p["spread"]["perfect_runs"] == p["n"] for p in tried)}
     return facts
 
 
 def install_of() -> dict:
-    """The public install block: benchmark/data/install.json "public" when it exists, otherwise a private preview."""
+    """The public install block: benchmark/data/install.json "public" when it exists, otherwise a private preview.
+    A "contact" field (an address or an https link) adds a "Request access" control to a private preview; without it
+    the page shows no control and no placeholder, because the owner has not given one."""
     path = BENCH / "data" / "install.json"
     install = (json.loads(path.read_text(encoding="utf-8")).get("public") if path.exists() else None) \
         or {"status": "private-preview"}
@@ -1420,7 +1636,37 @@ def install_of() -> dict:
         raise SystemExit("install.json: public.status must be 'private-preview' or 'public'")
     if install["status"] == "public" and not isinstance(install.get("command"), str):
         raise SystemExit("install.json: a public install needs a 'command' string")
+    if "contact" in install and install["contact"] in (None, ""):
+        del install["contact"]
+    if "contact" in install and not (isinstance(install["contact"], str) and INSTALL_CONTACT.match(install["contact"])):
+        raise SystemExit("install.json: public.contact must be an email address or an https link")
     return install
+
+
+def engine_rows() -> list[dict]:
+    """The public engine speed rows: benchmark/data/engine.json "public". A row that names its measurement with
+    "from" (a key of "detail") takes its figures from that measurement: the build time, the time of one call that
+    answers all three lookups, the time of one lookup and the index size. Without the file there are no rows."""
+    path = BENCH / "data" / "engine.json"
+    if not path.exists():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    detail = data.get("detail") or {}
+    rows = []
+    for row in data.get("public") or []:
+        measured = detail.get(row.get("from", ""), {})
+        merged = {"name": row.get("name"),
+                  "build_seconds": measured.get("build_seconds", row.get("build_seconds")),
+                  "query_ms": measured.get("ask_ms", row.get("query_ms")),
+                  "lookup_ms": measured.get("about_ms", row.get("lookup_ms")),
+                  "index_mb": round(measured["index_mb"], 1) if "index_mb" in measured else row.get("index_mb"),
+                  "build_seconds_no_embeddings": measured.get("build_seconds_no_embeddings", row.get("build_seconds_no_embeddings")),
+                  "build_note": row.get("build_note")}
+        missing = [key for key in ("name", "build_seconds", "query_ms", "index_mb") if merged[key] is None]
+        if missing:
+            raise SystemExit(f"engine.json: a public row lacks {missing}")
+        rows.append({key: value for key, value in merged.items() if value is not None})
+    return rows
 
 
 VIDEO_KEYS = ("src", "poster", "captions", "width", "height", "seconds", "title")
@@ -1453,8 +1699,52 @@ def videos_of() -> list[dict]:
             name = str(video[key])
             if not name.startswith("media/") or ".." in name or not (DOCS / name).is_file():
                 raise SystemExit(f"video.json: {where}.{key} must name an existing file under docs/media/, got {name!r}")
-        films.append({"kind": kind, **{key: video[key] for key in VIDEO_KEYS}})
+        film = {"kind": kind, **{key: video[key] for key in VIDEO_KEYS}}
+        # The length the page shows is the length of the file, not a value typed into video.json that can fall behind it.
+        measured = mp4_seconds(DOCS / str(video["src"]))
+        if measured is not None and abs(measured - float(video["seconds"])) > 0.05:
+            print(f"film {video['src']}: video.json says {video['seconds']} s, the file is {measured:.1f} s; the page shows the file's")
+            film["seconds"] = round(measured, 1)
+        films.append(film)
     return sorted(films, key=lambda film: VIDEO_KINDS.index(film["kind"]))
+
+
+def mp4_seconds(path: pathlib.Path) -> float | None:
+    """The duration an MP4 file declares in its movie header, or None when the file holds no readable header. The
+    top-level boxes are walked, so a header at the end of the file is found and bytes inside the media data are not
+    mistaken for one."""
+    import struct
+    try:
+        with path.open("rb") as handle:
+            end = path.stat().st_size
+
+            def boxes(start: int, stop: int):
+                at = start
+                while at + 8 <= stop:
+                    handle.seek(at)
+                    size, kind = struct.unpack(">I4s", handle.read(8))
+                    head = 8
+                    if size == 1:
+                        size, head = struct.unpack(">Q", handle.read(8))[0], 16
+                    elif size == 0:
+                        size = stop - at
+                    if size < head:
+                        return
+                    yield kind, at + head, min(at + size, stop)
+                    at += size
+            for kind, body, stop in boxes(0, end):
+                if kind != b"moov":
+                    continue
+                for inner, start, _ in boxes(body, stop):
+                    if inner == b"mvhd":
+                        handle.seek(start)
+                        version = handle.read(1)[0]
+                        handle.seek(start + (20 if version == 1 else 12))
+                        scale, length = struct.unpack(">IQ", handle.read(12)) if version == 1 else struct.unpack(">II", handle.read(8))
+                        return length / scale if scale else None
+    except (OSError, struct.error):
+        return None
+    return None
 
 
 def video_of() -> dict | None:
@@ -1498,12 +1788,15 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
         if rows:
             rows.sort(key=lambda row: (set_order.index(row["set"]), class_order.index(row["class"])))
             configs.append({"slug": spec["slug"], "name": spec["name"], "family": spec["family"], "best": False,
+                            # "day": measured on the day of the second session; "earlier": kept from the first session
+                            "session": "day" if arm.get("group") in ("rust", "rerun") else "earlier",
                             "sets": [sid for sid in set_order if any(row["set"] == sid for row in rows)], "points": rows})
             if arm.get("group") not in ("rust", "rerun"):
                 not_repeated.append(spec["name"])
     best, rule = best_config(configs)
     for config in configs:
         config["best"] = config["slug"] == best
+    system = re.search(r"\b(Windows \d+|macOS [\w.]+|Ubuntu [\d.]+|Linux)\b", index["dataset"])
     match = re.search(r"(\d+) Python files", index["dataset"])
     if not match:
         raise SystemExit("index.json: the dataset text no longer says how many Python files the repository has")
@@ -1513,15 +1806,7 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
     # A held-out or repeated arm is the same configuration as its base, so it is counted once.
     tested = {base_of(a) for a in arms["arms"] if a["id"] in measured}
     held_points = [pt for c in configs for pt in c["points"] if pt["set"] == "held-out"]
-    engine = []
-    engine_file = BENCH / "data" / "engine.json"
-    if engine_file.exists():
-        engine = json.loads(engine_file.read_text(encoding="utf-8")).get("public") or []
-        for row in engine:
-            missing = {"name", "build_seconds", "query_ms", "index_mb"} - set(row)
-            if missing:
-                raise SystemExit(f"engine.json: a public row lacks {sorted(missing)}")
-        engine = [{key: row[key] for key in ("name", "build_seconds", "query_ms", "index_mb")} for row in engine]
+    engine = engine_rows()
     sessions = session_facts(cells, agents, arms, points)
     sessions["not_repeated"] = not_repeated
     public = {
@@ -1545,8 +1830,17 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
         "families": [{"id": fid, "name": name} for fid, name in PUBLIC_FAMILIES.items()
                      if any(c["family"] == fid for c in configs)],
         "best_rule": rule,
+        "labels": {"best": BEST_LABEL, "rule": best_rule(rule), "control_note": CONTROL_NOTE,
+                   "control_link_text": CONTROL_LINK_TEXT, "control_link": CONTROL_LINK, "earlier": EARLIER_LABEL},
+        "versus": versus_control(configs),
+        # The line under each leaderboard view, computed once and read by the page and by its script.
+        "view_notes": {f"{cid}|{sid}": view_note(ordered_rows(configs, cid, sid))
+                       for sid in set_order for cid in class_order},
         "configs": configs,
         "findings": public_findings(configs, cells, orchestration, hooks, arms, hook_test, owner, engine)}
+    public["study"].update(study_facts(configs, cells, points, owner, arms, hook_test))
+    if system:
+        public["study"]["system"] = system.group(1)
     if engine:
         public["engine"] = engine
     public["install"] = install_of()
@@ -1589,30 +1883,79 @@ def range_text(pt: dict) -> str:
 
 
 def rows_html(rows: list[tuple[str, str]]) -> str:
-    items = "".join(f'\n      <li class="row"><span class="label">{esc(label)}</span><span class="value">{value}</span></li>'
+    items = "".join(f'\n      <li class="row"><span class="label">{esc(label)}</span><span class="value">{glue(value)}</span></li>'
                     for label, value in rows)
     return f'<ul class="rows">{items}\n    </ul>'
 
 
 def text_rows_html(rows: list[tuple[str, str]]) -> str:
     items = "".join(f'\n      <li class="row stack"><span class="label">{esc(title)}</span>'
-                    f'<span class="detail">{esc(text)}</span></li>' for title, text in rows)
+                    f'<span class="detail">{esc(glue(text))}</span></li>' for title, text in rows)
     return f'<ul class="rows">{items}\n    </ul>'
+
+
+def index_words(public: dict) -> tuple[str, list[tuple[str, str]]]:
+    """The words of the Overview's opening, in two parts. The lead says what the product is and is the first thing read on
+    the first screen. The key is what a reader needs to take the numbers: where they come from, what a token and a turn are,
+    what the classes and the question sets are. The key is set out under the opening, as a list."""
+    behind = public["study"]["behind"]
+    common = max(behind["by_size"], key=lambda size: behind["by_size"][size])
+    most = behind["by_size"][common] * 2 > behind["cells"]
+    lead = (f"{BRAND} (PGR) is a command-line program that runs on the developer's own machine. An AI coding agent calls it to "
+            "look things up in the code it is working on, such as where a function is defined and what calls it, and nothing leaves "
+            "the machine.")
+    key = [("Evidence", "The results on this site come from one Python repository: "
+                        f"{behind['runs']} runs of a single agent in {behind['cells']} cells, {number_word(int(common))} runs in "
+                        f"{'most of them' if most else 'the commonest cell size'}."),
+           ("Tokens and turns", "A token count is all the text the model read or wrote over a task, including the conversation it reads "
+                                "again on every turn, and a turn is one round trip to the model."),
+           ("Model classes", "Model classes are named by size, the light class being the smallest."),
+           ("Questions", "The original questions are the three lookups used in every round; the held-out questions are a second set "
+                         "of three.")]
+    if public["install"]["status"] == "private-preview":
+        key.append(("Status", "The package is in private preview."))
+    return lead, key
+
+
+def key_slot(public: dict) -> str:
+    items = "".join(f'\n    <div><dt>{esc(name)}</dt><dd>{esc(text)}</dd></div>' for name, text in index_words(public)[1])
+    return f'<dl class="key" aria-label="How to read these results">{items}\n  </dl>'
+
+
+def watch_slot(public: dict) -> str:
+    """The link at the top of the Overview to the shortest film, with its length from the data."""
+    films = public.get("videos") or ([public["video"]] if public.get("video") else [])
+    if not films:
+        return ""
+    return f'<a class="btn" href="#films">Watch the {round(films[0]["seconds"])} second film</a>'
 
 
 def lede_slot(page: str, public: dict) -> str:
     study = public["study"]
     if page == "index.html":
-        return (f"{BRAND} (PGR) answers where a function is defined and what calls it in one lookup. We ran "
-                f"{study['agents']} agents on one Python repository and measured what each way of finding code "
-                "costs in tokens and turns, and how often the answers were right.")
+        return index_words(public)[0]
     if page == "benchmarks.html":
-        return ("Tokens, turns and correct answers for each published configuration, measured on the same "
-                "three lookups and on a held-out set of three more. Pick a model class and a question set to compare.")
+        return ("Tokens, turns and mean score for each published configuration, measured on the same three lookups and on a second "
+                "set of three questions of the same shapes. Pick a model class and a question set to compare.")
     if page == "study.html":
         return "How the measurements were made, what they cover and what they leave out."
-    return ("The package is in private preview." if public["install"]["status"] == "private-preview"
-            else "The package is public. One command installs it.")
+    return ("PeterGanuRusty is in private preview: access is by invitation, and there is no public download yet."
+            if public["install"]["status"] == "private-preview" else "The package is public. One command installs it.")
+
+
+GLUE = re.compile(r"(?<=\d) (?=(?:ms|s|MB|kB|k|M|%|times|seconds|turns|tokens|runs|run|files|lines|of)\b)|(?<=\d[kM]) (?=to \d)|(?<= to) (?=\d)|(?<=\d) (?=of \d)|(?<= of) (?=\d)")
+
+
+def glue(text: str) -> str:
+    """No-break spaces between a number and its unit, and inside "6 of 6" and "134k to 204k", so a narrow column
+    breaks a line between values and never inside one. Only the text between tags is touched."""
+    parts = re.split(r"(<[^>]*>)", text)
+    return "".join(part if part.startswith("<") else GLUE.sub(" ", part) for part in parts)
+
+
+def lane_html(kind: str, name: str, text: str, value: float) -> str:
+    return (f'<span class="rl-lane {kind}"><span class="rl-name">{esc(name)}</span><span class="rl-num">{esc(text)}</span>'
+            f'<span class="rl-bar"><i style="--v:{max(0.0, min(1.0, value)):.4f}"></i></span></span>')
 
 
 def figures_slot(public: dict) -> str:
@@ -1620,102 +1963,131 @@ def figures_slot(public: dict) -> str:
     if not found:
         return '<p class="note">No configuration has been run enough times on the light class to be compared yet.</p>'
     b, c = found["b"], found["c"]
-    # Each figure carries what it counts from (the no-index value) and to (the best value) as attributes, so a
-    # script can count the number up; the value in the page is always the final one.
-    cards = [
-        (tokens(b["tokens"]), "Tokens per task", f"No index: {tokens(c['tokens'])}, {1 - b['tokens'] / c['tokens']:.0%} fewer" if c else "",
-         f' data-count="tokens" data-from="{c["tokens"]:.0f}" data-to="{b["tokens"]:.0f}"' if c else ""),
-        (f"{b['turns']:.1f}", "Turns per task", f"No index: {c['turns']:.1f}" if c else "",
-         f' data-count="turns" data-from="{c["turns"]:.4f}" data-to="{b["turns"]:.4f}"' if c else ""),
-        (of(b["perfect_runs"], b["runs"]), "Fully correct runs", f"No index: {of(c['perfect_runs'], c['runs'])}" if c else "",
-         f' data-count="of" data-from-text="{esc(of(c["perfect_runs"], c["runs"]))}"' if c else ""),
-        (share(b["correct"]), "Answers correct", f"No index: {share(c['correct'])}" if c else "",
-         f' data-count="share" data-from="{c["correct"]:.4f}" data-to="{b["correct"]:.4f}"' if c else "")]
-    # Beside each number, the same pair drawn to one scale: no index above, the best configuration below.
-    # The drawing repeats the note in the figure, so it is hidden from assistive technology.
-    def pips(count: float, lit: int | None = None) -> str:
-        count = max(1, min(12, round(count)))
-        return "".join("<i></i>" if lit is None or n < lit else '<i class="off"></i>' for n in range(count))
-
-    def ring(value: float) -> str:
-        return ('<svg viewBox="0 0 26 26" focusable="false"><circle class="t" cx="13" cy="13" r="11"/>'
-                f'<circle class="p" cx="13" cy="13" r="11" pathLength="1" style="--v:{value:.4f}"/></svg>')
-
-    def pair(kind: str, ref: str, best: str) -> str:
-        return (f'<dd class="meter {kind}" aria-hidden="true"><span class="m ref">{ref}</span>'
-                f'<span class="m best">{best}</span></dd>')
-
-    meters = ["", "", "", ""]
-    if c:
-        longest = max(b["tokens"], c["tokens"])
-        meters = [pair("bars", f'<i style="--v:{c["tokens"] / longest:.4f}"></i>', f'<i style="--v:{b["tokens"] / longest:.4f}"></i>'),
-                  pair("pips", pips(c["turns"]), pips(b["turns"])),
-                  pair("pips", pips(c["runs"], c["perfect_runs"]), pips(b["runs"], b["perfect_runs"])),
-                  pair("rings", ring(c["correct"]), ring(b["correct"]))]
+    best, control = found["best"], found["control"]
+    first = first_generation(public["configs"])
+    f = cell_of(first, "light", "original") if first and first is not best else None
+    versus = public.get("versus")
+    held = [cell_of(best, "light", "held-out"), cell_of(control, "light", "held-out")]
+    turns_note = f"No index: {c['turns']:.1f}" if c else ""
+    if c and all(held):
+        turns_note += f". Held-out questions: {held[0]['turns']:.1f}, no index {held[1]['turns']:.1f}"
+    # Each measure is a pair of lanes drawn to one scale, the comparison above and the best configuration below. Tokens and
+    # turns are set against no index. Fully correct runs and the mean score are set against the first generation only:
+    # another tool on the test machine altered the control's reads. The number beside each pair counts from the
+    # comparison's value to the best one's when it is first seen.
+    name, other = best["name"], (first["name"] if f else "")
+    rows = [("Tokens per task", tokens(b["tokens"]),
+             f"No index: {tokens(c['tokens'])}, {1 - b['tokens'] / c['tokens']:.0%} fewer in this cell" if c else "",
+             f' data-count="tokens" data-from="{c["tokens"]:.0f}" data-to="{b["tokens"]:.0f}"' if c else "",
+             [("ref", "No index", tokens(c["tokens"]), c["tokens"] / max(b["tokens"], c["tokens"])),
+              ("best", name, tokens(b["tokens"]), b["tokens"] / max(b["tokens"], c["tokens"]))] if c else []),
+            ("Turns per task", f"{b['turns']:.1f}", turns_note,
+             f' data-count="turns" data-from="{c["turns"]:.4f}" data-to="{b["turns"]:.4f}"' if c else "",
+             [("ref", "No index", f"{c['turns']:.1f}", c["turns"] / max(b["turns"], c["turns"])),
+              ("best", name, f"{b['turns']:.1f}", b["turns"] / max(b["turns"], c["turns"]))] if c else []),
+            ("Fully correct runs", of(b["perfect_runs"], b["runs"]), f"{first['name']}: {of(f['perfect_runs'], f['runs'])}" if f else "", "",
+             [("ref", other, of(f["perfect_runs"], f["runs"]), f["perfect_runs"] / f["runs"]),
+              ("best", name, of(b["perfect_runs"], b["runs"]), b["perfect_runs"] / b["runs"])] if f else []),
+            ("Mean score", share(b["correct"]), f"{first['name']}: {share(f['correct'])}" if f else "", "",
+             [("ref", other, share(f["correct"]), f["correct"]), ("best", name, share(b["correct"]), b["correct"])] if f else [])]
     items = "".join(
-        f'\n      <div class="figure spot{" lead" if n == 0 else ""}"><dt class="figure-label">{esc(label)}</dt>'
-        f'<dd class="figure-value"{attrs}>{esc(value)}</dd>' + (f'<dd class="figure-note">{esc(note)}</dd>' if note else "")
-        + meters[n] + "</div>"
-        for n, (value, label, note, attrs) in enumerate(cards))
-    group = ("Best configuration" + (" against no index" if c else "")
-             + ", light model class, original questions, one agent answering three lookups")
-    return f'<p class="group-title">{esc(group)}</p>\n    <dl class="figures card">{items}\n    </dl>' + proof_html(public)
+        f'\n      <div class="rl-row"><dt class="rl-label">{esc(label)}</dt><dd class="rl-value"{attrs}>{esc(value)}</dd>'
+        + (f'<dd class="rl-note">{esc(glue(note))}</dd>' if note else "")
+        + (('<dd class="rl-fig" aria-hidden="true">' + "".join(lane_html(*lane) for lane in lanes) + "</dd>") if lanes else "") + "</div>"
+        for label, value, note, attrs, lanes in rows)
+    group = (f"{BEST_LABEL} configuration, light model class, original questions, one agent answering three lookups"
+             + (". Tokens and turns are set against no index, fully correct runs and mean score against the first generation" if c and f else ""))
+    notes = ""
+    if versus and len(versus["cells"]) > 1:
+        by_cell = "; ".join(f"{cell['class']} class, {cell['set']} questions, {cell['saving']:.0%}" for cell in versus["cells"])
+        notes += (f'\n    <p class="footnote">This is one cell. Across the {number_word(len(versus["cells"]))} cells where "{esc(best["name"])}" and '
+                  f'no index were both measured, the saving in tokens was {saving_range(versus)} ({esc(by_cell)}).</p>')
+    if c:
+        notes += (f'\n    <p class="footnote">Fully correct runs and mean score are not set against no index: another tool on the test machine '
+                  f'altered some of its reads, which lowered its correctness. <a href="{CONTROL_LINK}">Why this matters</a>.</p>')
+    return f'<p class="group-title">{esc(group)}</p>\n    <dl class="rl">{items}\n    </dl>\n    <div class="fine">{notes}\n    </div>'
 
 
 def proof_html(public: dict) -> str:
-    """The held-out result under the headline figures: fully correct runs across both question sets and both model
-    classes, for the best configuration, the first-generation engine and no index."""
+    """The result under the headline figures: fully correct runs across both question sets and both model classes, for
+    the best configuration and the first-generation engine. It counts both sets, so it says so in its heading, and it
+    describes the held-out set as it is."""
     proof = public["findings"].get("proof")
     if not proof:
         return ""
-    return ('\n    <p class="group-title spaced">Fully correct runs on questions the builders never saw</p>\n    '
-            f'<div class="card prose"><p class="proof-text">{esc(proof["text"])}</p></div>\n    '
-            '<p class="footnote">Counted over four cells: the light and mid classes, on the original and the held-out questions.</p>')
+    return ('\n    <p class="group-title spaced">Fully correct runs over both question sets</p>\n    '
+            f'<p class="proof-text">{esc(glue(proof["text"]))}</p>')
+
+
+def proof_note(public: dict) -> str:
+    """The sentence under the count of fully correct runs: which cells it covers, and what the held-out set is."""
+    held = next((s for s in public["sets"] if s["id"] == "held-out"), None)
+    about = f" The held-out questions are {held['text'][0].lower() + held['text'][1:]}" if held else ""
+    return ('<p class="footnote">Counted over four cells: the light and mid classes, on the original and the held-out questions.'
+            f'{esc(about)}</p>') if public["findings"].get("proof") else ""
 
 
 def best_rule(rule: str | None = "cells") -> str:
+    """One plain sentence: how the highlighted configuration is chosen, that the rule was set after the runs, and which
+    configurations could be chosen."""
+    label = f'"{BEST_LABEL}"'
     if rule == "light":
-        return (f"The best configuration is chosen on the light class and the original questions, one agent, among those run at least "
-                f"{BEST_MIN_RUNS} times: the highest share of fully correct runs, then the fewest tokens.")
-    return (f"The best configuration is chosen among those run at least {BEST_MIN_RUNS} times in each of four cells, the original "
-            "and the held-out questions on the light and mid classes: the highest share of its runs that were fully correct, "
-            "and on a tie the lower mean tokens over the four cells.")
+        return (f"{label} marks the configuration with the highest share of fully correct runs on the light class and the original "
+                f"questions, among those run at least {BEST_MIN_RUNS} times there, a tie going to the fewer tokens; no configuration was "
+                "measured on both question sets, and the rule was set after the runs were known.")
+    return (f"{label} marks the one configuration with the highest share of fully correct runs over four cells (the light and mid "
+            "classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at "
+            f"least {BEST_MIN_RUNS} times in each of those four cells, and so measured on both question sets, were eligible, and the "
+            "rule was set after the runs were known.")
 
 
 def best_slot(public: dict) -> str:
+    """The most reliable configuration: its name, the facts about it that the headline figures above do not already
+    carry, the saving in each cell where it was set against no index, the count of fully correct runs over both question
+    sets, and the sentence that says how it was chosen."""
     found = headline_of(public)
     if not found:
-        return ('<p class="note">The best configuration is named once one has been run at least '
+        return ('<p class="note">The most reliable configuration is named once one has been run at least '
                 f'{BEST_MIN_RUNS} times on the light class and the original questions.</p>')
     best, pt = found["best"], found["b"]
-    rows = [("Shown for", "Light class, original questions"),
-            ("Tokens per task", esc(tokens(pt["tokens"])) + (f' <span class="sub">{esc(range_text(pt))}</span>' if range_text(pt) else "")),
-            ("Turns per task", esc(f"{pt['turns']:.1f}")),
-            ("Fully correct runs", esc(of(pt["perfect_runs"], pt["runs"]))),
-            ("Answers correct", esc(share(pt["correct"]))),
-            ("Runs", esc(pt["runs"]))]
+    rows = [("Shown for", "Light class, original questions")]
+    if range_text(pt):
+        rows.append(("Tokens per task", esc(tokens(pt["tokens"])) + f' <span class="sub">{esc(range_text(pt))}</span>'))
+    rows.append(("Runs", esc(pt["runs"])))
     four = cell_counts(best)
     if four and four[2] == len(BEST_CELLS):
         rows.append(("Fully correct, all four cells", esc(of(four[0], four[1]))))
-    return (f'<div class="card best-card spot tilt">\n    <div class="best-head"><h3 class="best-name">{esc(best["name"])}</h3>'
-            f'<span class="tag">Best</span></div>\n    {rows_html(rows)}\n  </div>\n'
-            f'  <p class="footnote">{esc(best_rule(public.get("best_rule")))}</p>')
+    versus = public.get("versus")
+    if found["c"]:
+        rows.append(("Fewer tokens than no index, this cell", esc(f"{1 - pt['tokens'] / found['c']['tokens']:.0%}")))
+    if versus and len(versus["cells"]) > 1:
+        dots = "".join(f'<i style="--v:{cell["saving"]:.4f}"></i>' for cell in versus["cells"])
+        rows.append(("Fewer tokens than no index, across the cells measured",
+                     f'<span class="range-dots" aria-hidden="true">{dots}</span>{esc(saving_range(versus))}'))
+    items = "".join(f'\n      <div><dt>{esc(label)}</dt><dd>{glue(value)}</dd></div>' for label, value in rows)
+    return (f'<p class="rl-who"><span class="rl-who-name">{esc(best["name"])}</span><span class="tag">{esc(BEST_LABEL)}</span></p>\n'
+            f'    <dl class="ledger">{items}\n    </dl>{proof_html(public)}\n'
+            f'    <div class="fine">{proof_note(public)}\n      <p class="footnote">{esc(best_rule(public.get("best_rule")))}</p>\n    </div>')
 
 
 def board_row(config: dict, pt: dict) -> str:
     sub = f'<span class="sub">{esc(range_text(pt))}</span>' if range_text(pt) else ""
-    tag = ' <span class="tag">Best</span>' if config["best"] else ""
-    return (f'\n        <tr><th scope="row" class="cfg"><span class="cfg-name">{esc(config["name"])}</span>{tag}</th>'
+    tag = f' <span class="tag">{esc(BEST_LABEL)}</span>' if config["best"] else ""
+    notes = ""
+    if config["family"] == "control":
+        notes += (f'<span class="sub row-note" style="white-space:normal">{esc(CONTROL_NOTE)} '
+                  f'<a href="{CONTROL_LINK}">{esc(CONTROL_LINK_TEXT)}</a></span>')
+    if config.get("session") == "earlier":
+        notes += f'<span class="sub row-note" style="white-space:normal">{esc(EARLIER_LABEL)}</span>'
+    return (f'\n        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">{esc(config["name"])}</span>{tag}{notes}</span></th>'
             f'<td data-label="Runs">{pt["runs"]}</td><td data-label="Tokens"><span class="v">{esc(tokens(pt["tokens"]))}{sub}</span></td>'
-            f'<td data-label="Turns">{pt["turns"]:.1f}</td><td data-label="Answers correct">{esc(share(pt["correct"]))}</td>'
+            f'<td data-label="Turns">{pt["turns"]:.1f}</td><td data-label="Mean score">{esc(share(pt["correct"]))}</td>'
             f'<td data-label="Fully correct runs">{esc(of(pt["perfect_runs"], pt["runs"]))}</td></tr>')
 
 
 def ordered(public: dict, class_id: str, set_id: str) -> list[tuple[dict, dict]]:
-    """Configurations with a point on the class and the question set: the best first, then fewest tokens. A
-    configuration not measured on the set is not in the list."""
-    rows = [(c, pt) for c in public["configs"] for pt in c["points"] if pt["class"] == class_id and pt["set"] == set_id]
-    return sorted(rows, key=lambda row: (not row[0]["best"], row[1]["tokens"]))
+    """Configurations with a point on the class and the question set: the highlighted one first, then fewest tokens."""
+    return ordered_rows(public["configs"], class_id, set_id)
 
 
 def views(public: dict) -> list[tuple[dict, dict]]:
@@ -1734,26 +2106,29 @@ def empty_html(cls: dict, qset: dict) -> str:
 
 def boards_slot(public: dict) -> str:
     out = []
+    rule = public["labels"]["rule"]
     for qset, cls in views(public):
         rows = ordered(public, cls["id"], qset["id"])
         title = view_title(cls, qset)
         body = empty_html(cls, qset) if not rows else (
             '<div class="card">\n      <table class="board">\n        '
-            f'<caption class="sr-only">{esc(title)}: runs, tokens, turns and correct answers by configuration</caption>\n        '
+            f'<caption class="sr-only">{esc(title)}: runs, tokens, turns and mean score by configuration</caption>\n        '
             '<thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th>'
-            '<th scope="col">Turns</th><th scope="col">Answers correct</th><th scope="col">Fully correct runs</th></tr></thead>\n'
+            '<th scope="col">Turns</th><th scope="col">Mean score</th><th scope="col">Fully correct runs</th></tr></thead>\n'
             '        <tbody>' + "".join(board_row(c, pt) for c, pt in rows) + '\n        </tbody>\n      </table>\n    </div>')
+        note = public["view_notes"].get(f"{cls['id']}|{qset['id']}", "") if rows else ""
         out.append(f'<div class="panel board-panel{" on" if not out else ""}" data-class="{esc(cls["id"])}" data-set="{esc(qset["id"])}" '
                    f'role="group" aria-label="{esc(title)}, leaderboard">\n'
                    f'    <h3 class="panel-title">{esc(title)}</h3>\n'
-                   '    <p class="group-title">One agent answering three lookups. The best configuration first, then fewest tokens.</p>\n'
-                   f'    {body}\n  </div>')
-    return "\n  ".join(out) + f'\n  <p class="footnote">{esc(best_rule(public.get("best_rule")))}</p>'
+                   f'    <p class="group-title">One agent answering three lookups. The {esc(BEST_LABEL.lower())} configuration comes first, '
+                   f'then the rest by fewest tokens. {esc(rule)}</p>\n'
+                   f'    {body}\n' + (f'    <p class="footnote view-note">{esc(note)}</p>\n' if note else "") + '  </div>')
+    return ("\n  ".join(out) + '\n  <p class="footnote">What a token count is, and the limits of these runs, are on the '
+            '<a href="study.html#tokens">Study</a> page.</p>')
 
 
 def charts_slot(public: dict) -> str:
     out = []
-    families = {c["slug"]: c["family"] for c in public["configs"]}
     for qset, cls in views(public):
         rows = ordered(public, cls["id"], qset["id"])
         title = view_title(cls, qset)
@@ -1762,18 +2137,14 @@ def charts_slot(public: dict) -> str:
         else:
             lines = "".join(
                 f'\n          <tr><th scope="row" class="cfg"><span class="cfg-name">{esc(c["name"])}</span></th>'
-                f'<td data-label="Tokens">{esc(tokens(pt["tokens"]))}</td><td data-label="Answers correct">{esc(share(pt["correct"]))}</td>'
+                f'<td data-label="Tokens">{esc(tokens(pt["tokens"]))}</td><td data-label="Mean score">{esc(share(pt["correct"]))}</td>'
                 f'<td data-label="Wall time">{esc(round(pt["seconds"]))} s</td></tr>' for c, pt in rows)
-            key = "".join(f'<li><b>{i}</b><span>{esc(c["name"])}</span></li>' for i, (c, _) in enumerate(rows, 1))
-            legend = ('<ul class="legend" aria-label="Series"></ul>\n      '
-                      if len({families[c["slug"]] for c, _ in rows}) > 1 else "")
-            inner = ('<div class="card chart-card">\n      ' + legend + '<div class="chart" data-chart="' + esc(cls["id"]) +
+            inner = ('<div class="card chart-card">\n      <div class="chart" data-chart="' + esc(cls["id"]) +
                      '" data-set="' + esc(qset["id"]) + '">'
                      '<p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>\n      '
-                     f'<ol class="chart-key" aria-label="Key to the numbers on the chart">{key}</ol>\n      '
                      '<details class="table-view"><summary>Table view</summary>\n        <table class="board board-small">\n          '
-                     f'<caption class="sr-only">{esc(title)}: tokens, answers correct and wall time by configuration</caption>\n          '
-                     '<thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Answers correct</th>'
+                     f'<caption class="sr-only">{esc(title)}: tokens, mean score and wall time by configuration</caption>\n          '
+                     '<thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Mean score</th>'
                      '<th scope="col">Wall time</th></tr></thead>\n          <tbody>' + lines +
                      '\n          </tbody>\n        </table>\n      </details>\n    </div>')
         out.append(f'<div class="panel{" on" if not out else ""}" data-class="{esc(cls["id"])}" data-set="{esc(qset["id"])}" '
@@ -1804,11 +2175,19 @@ def engine_slot(public: dict) -> str:
     rows = public.get("engine")
     if not rows:
         return ""
+    has_lookup = all("lookup_ms" in r for r in rows)
+
+    def build_text(r: dict) -> str:
+        text = f"{format(r['build_seconds'], 'g')} s" + (f", {r['build_note']}" if r.get("build_note") else "")
+        if r.get("build_seconds_no_embeddings"):
+            text += f" ({format(r['build_seconds_no_embeddings'], 'g')} s without)"
+        return text
     lines = "".join(
         f'\n          <tr><th scope="row" class="cfg"><span class="cfg-name">{esc(r["name"])}</span></th>'
-        f'<td data-label="Build time">{esc(format(r["build_seconds"], "g"))} s</td>'
-        f'<td data-label="Query time">{esc(format(r["query_ms"], "g"))} ms</td>'
-        f'<td data-label="Index size">{esc(format(r["index_mb"], "g"))} MB</td></tr>' for r in rows)
+        f'<td data-label="Build time">{esc(build_text(r))}</td>'
+        f'<td data-label="Three lookups, one call">{esc(format(r["query_ms"], "g"))} ms</td>'
+        + (f'<td data-label="One lookup">{esc(format(r["lookup_ms"], "g"))} ms</td>' if has_lookup else "")
+        + f'<td data-label="Index size">{esc(format(r["index_mb"], "g"))} MB</td></tr>' for r in rows)
     # The race: one bar for each row, as long as its time to answer a query, all to one scale. Written finished;
     # a script runs each bar for its measured time, so the one that answers first also stops first.
     timed = sorted((r for r in rows if r["query_ms"] > 0), key=lambda r: r["query_ms"])
@@ -1820,18 +2199,25 @@ def engine_slot(public: dict) -> str:
             f'<p class="race-name">{esc(r["name"])}</p><div class="race-track" aria-hidden="true"><i></i></div>'
             f'<p class="race-val"><b>{esc(format(r["query_ms"], "g"))}</b> ms</p></div>' for r in timed)
         times = slowest["query_ms"] / fastest["query_ms"]
-        callout = (f'{fastest["name"]} answers a query in {format(fastest["query_ms"], "g")} ms and {slowest["name"]} in '
+        callout = (f'{fastest["name"]} answers three lookups in one call in {format(fastest["query_ms"], "g")} ms and {slowest["name"]} in '
                    f'{format(slowest["query_ms"], "g")} ms, {times:.1f} times as long.')
-        race = ('<p class="group-title">Time to answer one query. A bar is as long as its time, and every bar is drawn to one scale.</p>\n  '
+        if fastest.get("lookup_ms") and slowest.get("lookup_ms"):
+            callout += (f' For a single lookup the times are {format(fastest["lookup_ms"], "g")} ms and {format(slowest["lookup_ms"], "g")} ms, '
+                        f'{slowest["lookup_ms"] / fastest["lookup_ms"]:.1f} times as long.')
+        race = ('<p class="group-title">Time for one call that answers all three lookups. A bar is as long as its time, and every bar is '
+                'drawn to one scale.</p>\n  '
                 '<figure class="card race" id="race" aria-labelledby="race-cap">' + bars +
                 f'\n    <figcaption id="race-cap" class="race-callout">{esc(callout)}</figcaption>\n    '
                 '<p class="race-status" hidden>Motion is off. Each bar is shown finished.</p>\n    '
                 '<div class="race-bar"><button type="button" class="btn quiet replay">Replay</button></div>\n  </figure>\n  ')
+    head = ('<th scope="col">Configuration</th><th scope="col">Build time</th><th scope="col">Three lookups, one call</th>'
+            + ('<th scope="col">One lookup</th>' if has_lookup else "") + '<th scope="col">Index size</th>')
     return ('<section class="section" aria-labelledby="engine">\n  <h2 id="engine" class="section-title">Engine speed</h2>\n  ' + race +
-            f'<p class="group-title{" spaced" if race else ""}">Time to build the index, time to answer a query and size on disk.</p>\n  '
+            f'<p class="group-title{" spaced" if race else ""}">Time to build the index, time to answer and size on disk. Times are medians of 20 '
+            'whole-process runs on one machine on one day, except the first generation\'s build time, which was measured in an earlier session. '
+            'The first generation\'s index size leaves out a cache it shares across repositories.</p>\n  '
             '<div class="card">\n    <table class="board board-small">\n      <caption class="sr-only">Engine speed by configuration</caption>\n      '
-            '<thead><tr><th scope="col">Configuration</th><th scope="col">Build time</th><th scope="col">Query time</th>'
-            '<th scope="col">Index size</th></tr></thead>\n      <tbody>' + lines + '\n      </tbody>\n    </table>\n  </div>\n</section>\n')
+            f'<thead><tr>{head}</tr></thead>\n      <tbody>' + lines + '\n      </tbody>\n    </table>\n  </div>\n</section>\n')
 
 
 def findings_slot(public: dict) -> str:
@@ -1846,11 +2232,13 @@ def findings_slot(public: dict) -> str:
     for key, rows in (("orchestration", lambda f: [
             ("Fully correct, orchestrated", of(f["orchestrated"]["perfect_runs"], f["orchestrated"]["runs"])),
             ("Fully correct, one light agent", of(f["alone"]["perfect_runs"], f["alone"]["runs"])),
-            ("Cost of one run", f"about {f['cost_multiple']:.0f} times")]),
+            ("Estimated cost of one run", f"about {f['cost_multiple']:.0f} times"),
+            ("Orchestrated runs with an estimated planning cost", of(f["planning_estimated"], f["orchestrated"]["runs"]))]),
                       ("hooks", lambda f: [
-            ("Fully correct, hooks on", of(f["with_hooks"]["perfect_runs"], f["with_hooks"]["runs"])),
-            ("Fully correct, hooks off", of(f["without_hooks"]["perfect_runs"], f["without_hooks"]["runs"])),
-            ("Change in token use", f"{f['token_change']:+.0%}")])):
+            ("Fully correct, tool on", of(f["with_hooks"]["perfect_runs"], f["with_hooks"]["runs"])),
+            ("Fully correct, tool off", of(f["without_hooks"]["perfect_runs"], f["without_hooks"]["runs"])),
+            ("Change in token use", f"{f['token_change']:+.0%}"),
+            ("Spread between repeats of one prompt", f"{f['spread']:.0%}")])):
         if key in found:
             cards.append(f'<div class="card finding">\n    <h3 class="finding-title">{esc(found[key]["title"])}</h3>\n'
                          f'    <p class="finding-text">{esc(found[key]["text"])}</p>\n    {rows_html([(a, esc(b)) for a, b in rows(found[key])])}\n  </div>')
@@ -1878,109 +2266,243 @@ def study_slots(public: dict) -> dict:
     study = public["study"]
     repo = study["repository"]
     sessions, held, sets = study["sessions"], study["held_out"], public["sets"]
+    behind, spread, tok, graded, unpub = (study[key] for key in ("behind", "spread", "tokens", "graded", "unpublished"))
+    best = next((c for c in public["configs"] if c["best"]), None)
     per_set = len(study["questions"])
-    scale = [("Repository", f"{repo['language']}, {repo['files']} files, about {repo['lines']:,} lines"),
-             ("Questions", f"{per_set} in each of {len(sets)} sets, each asked in every run on its set"),
-             ("Agents", f"{study['agents']:,}"), ("Runs", f"{study['runs']:,}"),
-             ("Configurations tested", f"{study['configurations_tested']}, of which {study['configurations_published']} are published here"),
-             ("Runs per configuration and class", f"{study['runs_per_cell']['min']} to {study['runs_per_cell']['max']}")]
+    sizes = sorted(behind["by_size"], key=int)
+    in_cells = "; ".join(f"{behind['by_size'][n]} cells of {n} {'run' if n == '1' else 'runs'}" for n in sizes)
+    start = sessions["start_up"]
     names = {c["id"]: c["name"] for c in public["classes"]}
+
+    short = [("Repository", f"{repo['language']}, {repo['files']} files, about {repo['lines']:,} lines"),
+             ("Questions", f"{per_set} in each of {len(sets)} sets, each asked in every run on its set"),
+             ("Runs per published cell", f"{sizes[0]} to {sizes[-1]}")]
+    long = [("Runs behind the leaderboard",
+             f"{behind['runs']} single-agent runs in {behind['cells']} cells: {in_cells}."),
+            ("Agents and runs in all",
+             f"{study['agents']:,} agents and {study['runs']:,} runs, which also count configurations that are not published, tests of "
+             "another tool and setups with several agents. They show effort, not the sample behind a result."),
+            ("Configurations",
+             f"{study['configurations_tested']} were tested and {study['configurations_published']} are published here. The authors "
+             f"chose which to publish; no rule did. {number_word(unpub['two_turns'], True)} of the {unpub['measured']} unpublished "
+             "configurations run at least 3 times on the light class and the original questions also took 2 turns with every run fully "
+             f"correct. Those runs are from the first session, when the start-up context was {1 - start['earlier'] / start['later']:.0%} "
+             "smaller, so their tokens are not directly comparable.")]
+    classes = names
+
+    cut = lambda text: text[0].lower() + text[1:]
     limits = [
         ("One repository", f"Every result comes from one Python repository of {repo['files']} files. Other repositories may behave differently."),
         ("One language", "Python only. Nothing here says how the configurations do on other languages."),
-        ("Six questions", f"{number_word(per_set * len(sets), True)} lookup questions of modest difficulty, in {number_word(len(sets))} "
-                          f"sets of {number_word(per_set)}. Harder questions may separate the configurations more, or less."),
-        ("Small run counts",
-         f"Each configuration and class was run between {study['runs_per_cell']['min']} and {study['runs_per_cell']['max']} times. "
-         "A cell with one run is an example, not an average, and a difference of one turn is inside the noise.")]
-    cells = sessions["cells"]
-    if cells["second_session"]:
-        limits.append(("Three runs per cell",
-                       "The second session ran each cell three times"
-                       + (f", and {number_word(cells['short'])} of its {cells['second_session']} cells hold {number_word(cells['fewest'])} complete runs"
-                          if cells["short"] else "")
-                       + ". With three runs, a difference of one fully correct run is inside the noise."))
+        ("Six questions",
+         f"{number_word(per_set * len(sets), True)} lookup questions of modest difficulty, in {number_word(len(sets))} sets of "
+         f"{number_word(per_set)}. Only one question separates the configurations: of the {graded['imperfect']} published single-agent runs "
+         f"that were not fully correct, {graded['callers']} missed part of the answer to \"{study['questions'][0]['title']}\". The "
+         f"\"{study['questions'][2]['title']}\" question was fully answered in {of(*graded['purpose'])} runs, {of(*graded['purpose_no_search'])} "
+         "of them by configurations without search, so these runs cannot show whether searching by meaning helps. Harder questions may "
+         "separate the configurations more, or less."),
+        ("Questions that suit the tool",
+         "Two of the three questions in each set ask for the callers of a function, which a lookup tool answers directly, and none was "
+         "written to need the body of a function to be read. Questions about what a function does may come out differently."),
+        ("A weak baseline",
+         "The no-index agent had only its own basic file search and file reading tools, and no command line. A stronger unaided "
+         "baseline, such as an agent with a shell and a syntax-aware search, was not measured, so the savings shown are against this "
+         "baseline only.")]
+    if spread["best_cells"]:
+        where = "; ".join(f"{cell['class']} class, {cell['set']} questions, {tokens(cell['low'])} to {tokens(cell['high'])}"
+                          for cell in spread["best_cells"])
+    limits.append((
+        "Few runs, one task",
+        f"Each published cell holds {sizes[0]} to {sizes[-1]} runs, and every run answers the same {per_set} questions, so the runs of a cell are "
+        "repeats of one task, not samples of many. Three runs cannot support a claim of significance, and this site makes none. A "
+        f"difference of one run or one turn is inside the run-to-run spread. In the {spread['cells']} published cells with at least two "
+        f"runs, the highest run used {spread['median']:.0%} more tokens than the lowest at the median and {spread['highest']:.0%} more at "
+        f"most, and in {spread['wide']} of them at least half as many again. One turn is about {tokens(spread['turn'])} tokens. In "
+        f"{spread['mixed']} cells some runs were fully correct and some were not."
+        + (f" For \"{best['name']}\", the lowest and highest run in each of its four cells were: {where}." if best and spread["best_cells"] else "")))
     limits += [
+        ("Unequal instructions",
+         "Each configuration's agent was given a description of its own tool. The descriptions differ in length and detail, and this was "
+         "not controlled. See What each agent was told."),
+        ("The same team", "The same team built the engine, wrote both question sets and ran the study."),
+        ("Start-up context",
+         f"An agent starts with about {kilo(tok['start'])} tokens of context from the test machine: its instructions, skills and tools. On "
+         "another machine each turn costs a different number of tokens, and so does the saving."),
         ("Machine load", "Wall time depends on what else the test machine was doing. Token counts do not."),
-        ("Cost figures", "Where a run is said to cost a multiple of another, the cost is list prices applied to the measured tokens.")]
+        ("Cost figures", "Where a run is said to cost a multiple of another, the cost is an estimate: a price list typed into the analysis "
+                         "and applied to the measured tokens, not read from a bill.")]
 
     # The question sets: what the held-out set is and why it exists.
     set_rows = [(f"{sets[0]['name']} questions",
                  "The three questions above. Every round has used them, and the people who built the engine saw them while building it, "
                  "so a result on them could reflect tuning to them.")]
     if held:
+        classes_text = " and ".join(held["classes"])
         set_rows.append((f"{sets[1]['name']} questions",
-                         "Three more lookups of the same three shapes, written after the engine was built and never seen by the people or "
-                         "agents who built it. They exist to check that the engine was not fitted to the first set. "
-                         f"They were run on {number_word(held['configurations'])} configurations, on the {' and '.join(held['classes'])} "
+                         f"{sets[1]['text']} It is not independent: the same team wrote both sets, on the same repository, in the same three "
+                         "shapes, and the job descriptions in the which-function questions follow the wording of the functions' own "
+                         "documentation. It checks whether the engine was fitted to the first three questions, not whether it works on other "
+                         f"kinds of question. They were run on {number_word(held['configurations'])} configurations, on the {classes_text} "
                          f"{'class' if len(held['classes']) == 1 else 'classes'}, with {held['runs_per_cell']['min']} to "
                          f"{held['runs_per_cell']['max']} runs in each cell."))
 
-    # The two sessions, the start-up context, the memory and the control.
-    start = sessions["start_up"]
-    session_rows = []
-    session_rows.append((
+    # The two sessions, the start-up context and the memory.
+    session_rows = [(
         "Two sessions",
         "The results come from two sessions a few days apart. The first measured the earlier configurations. The second measured the "
         "second-generation engine and the held-out questions, and repeated three earlier configurations: no index and two builds of the "
-        "first-generation engine. The leaderboard shows the repeats, so every configuration compared with the engine was measured on "
-        "the same day. The earlier runs of those three are not shown here."
-        + (f" {number_word(len(sessions['not_repeated']), True)} configurations from the first session were not repeated and keep "
-           "their first-session figures: " + "; ".join(sessions["not_repeated"]) + "." if sessions["not_repeated"] else "")))
-    session_rows.append((
-        "Start-up context",
-        f"An agent's start-up context, the text it reads before it sees a question, grew between the sessions. On the "
-        f"{' and '.join(start['classes'])} {'class' if len(start['classes']) == 1 else 'classes'} it averaged {kilo(start['earlier'])} tokens "
-        f"in the earlier runs of the three repeated configurations ({start['earlier_agents']} agents) and {kilo(start['later'])} in their "
-        f"repeats ({start['later_agents']} agents). Every turn reads it again, so the same configuration costs more tokens now than it did "
-        "then. That is why the leaderboard compares runs made on the same day."))
-    session_rows.append((
-        "How the memory was filled",
-        "Some configurations use a memory of earlier sessions. Before the runs, the memory was filled by one of two earlier sessions: one "
-        "that answered the same questions the runs ask, and one that explored the repository without seeing any question. The first kind "
-        "is a best case, because the memory already holds the answers. Neither is a test of the task memory is for: work that spans "
-        "sessions was not measured."))
+        "first-generation engine. The leaderboard shows the repeats, which were measured on the same day as the second generation."
+        + (f" {number_word(len(sessions['not_repeated']), True)} configurations from the first session were not repeated. They keep their "
+           f"first-session figures and are marked \"{EARLIER_LABEL}\" on the leaderboard: " + "; ".join(sessions["not_repeated"]) + ". Their "
+           "tokens are not directly comparable with the rest." if sessions["not_repeated"] else "")),
+        ("Start-up context",
+         f"An agent's start-up context, the text it reads before it sees a question, grew between the sessions. On the "
+         f"{' and '.join(start['classes'])} {'class' if len(start['classes']) == 1 else 'classes'} it averaged {kilo(start['earlier'])} tokens "
+         f"in the earlier runs of the three repeated configurations ({start['earlier_agents']} agents) and {kilo(start['later'])} in their "
+         f"repeats ({start['later_agents']} agents). Every turn reads it again, so the same configuration costs more tokens now than it did "
+         "then. That is why the leaderboard compares runs made on the same day."),
+        ("How the memory was filled",
+         "Some configurations use a memory of earlier sessions. Before the runs, the memory was filled by one of two earlier sessions: one "
+         "that answered the same questions the runs ask, and one that explored the repository without seeing any question. The first kind "
+         "is a best case, because the memory already holds the answers, and the configurations that use it say so in their names. Neither "
+         "is a test of the task memory is for: work that spans sessions was not measured.")]
+
+    # What a token count is.
+    ctx = tok["context"]
+    token_rows = [
+        ("What is counted",
+         "The tokens of a run are the input, the output and the cache reads and writes of the agent, added up over the whole task. "
+         f"{tok['cached']:.0%} of the tokens counted in the {tok['runs']} published single-agent runs were cache reads or writes."),
+        ("Where they come from",
+         f"An agent starts with a context of about {kilo(tok['start'])} tokens: the instructions, skills and tool descriptions of the test "
+         "machine. Every turn reads it again."
+         + (f" On the light class with the original questions that context made up {ctx['best']:.0%} of the tokens of \"{best['name']}\""
+            + (f" and {ctx['control']:.0%} of those of the no-index agent." if ctx["control"] else ".") if best and ctx["best"] else "")),
+        ("What follows",
+         f"Tokens and turns are therefore one measurement counted twice, and most of the saving shown here is the saving of turns: about "
+         f"{tokens(spread['turn'])} tokens for each turn avoided. The output of the lookups themselves is small beside that."),
+        ("Money",
+         "A token read from the cache costs less than one that is not, so a saving in tokens is not a saving in money of the same size. "
+         "This site gives no money figures except the estimate in the orchestration finding.")]
+
+    # How answers were graded.
+    graded_rows = [
+        "Every answer was checked by a script against an answer key, and no score was given by a person judging an answer. The keys for "
+        "the questions about callers and definitions were read from the repository's syntax tree; the key for the which-function question "
+        "was written by hand. The authors reviewed all of them. For the which-function question on the held-out set, the key accepts either "
+        "of two functions, because both do the job.",
+        "Each answer scores between 0 and 1, with partial credit: a list of callers scores by how many are named and how many are wrong. "
+        "The mean score is the average of these scores. A run is fully correct when all three of its answers score full marks, so one missed "
+        "caller is enough to make a run not fully correct."]
+
+    # The control.
     control = sessions.get("control")
+    control_rows = []
     if control and control["today"]["original"] and control["earlier"]:
         today, earlier = control["today"], control["earlier"]
 
-        def per_class(counts: dict, named: bool = True) -> str:
-            shown = [f"{pair_of(counts[cid])}" + (f" {cid}-class runs" if named else "") for cid in names if cid in counts]
+        def per_class(counts: dict) -> str:
+            shown = [f"{pair_of(counts[cid])} {cid}-class runs" for cid in names if cid in counts]
             return shown[0] if len(shown) == 1 else ", ".join(shown[:-1]) + " and " + shown[-1]
-        session_rows.append((
-            "The control",
-            "On the test machine, the control's file reads pass through a read-compression tool, which hid lines the control needed in some "
-            f"runs. In the second session the control was fully correct in {per_class(today['original'])} on the original questions"
-            + (f", and in {per_class(today['held-out'])} on the held-out questions" if today["held-out"] else "")
-            + f". In the first session, which had no such tool, it was fully correct in {per_class(earlier)}."))
+        acted = study.get("tool_acted")
+        control_rows.append((
+            "What happened",
+            "On the test machine, another tool altered some of the lines the no-index agent read. In some runs it hid the very lines that "
+            "show one of the callers the callers question asks for, so those agents left that caller out. That is a fact about the test "
+            "machine, not about having no index."))
+        if acted:
+            touched = [o for o in acted["others"] if o["acted"][0]]
+            untouched = [o for o in acted["others"] if not o["acted"][0]]
+            control_rows.append((
+                "How often",
+                f"In the second session the tool acted on {of(*acted['control'])} no-index runs. Among the other published configurations "
+                "it acted on " + ("; ".join(f"{o['name']} ({of(*o['acted'])} runs)" for o in touched) if touched else "none")
+                + f", and on none of the runs of the other {number_word(len(untouched))}"
+                + (f", among them \"{best['name']}\"" if best and any(o["name"] == best["name"] for o in untouched) else "") + "."))
+        control_rows.append((
+            "The day's counts",
+            f"In the second session the no-index agent was fully correct in {per_class(today['original'])} on the original questions"
+            + (f", and in {per_class(today['held-out'])} on the held-out questions" if today["held-out"] else "") + "."))
+        control_rows.append((
+            "The earlier session's counts",
+            f"In the first session, which had no such tool, it was fully correct in {per_class(earlier)}."))
+        tokens_by_session = control.get("tokens")
+        if tokens_by_session and tokens_by_session["today"].get("light") and tokens_by_session["earlier"].get("light"):
+            t, e = tokens_by_session["today"]["light"], tokens_by_session["earlier"]["light"]
+            control_rows.append((
+                "Tokens in each session",
+                f"On the light class and the original questions the no-index agent used {tokens(e[0])} tokens and {e[1]:.1f} turns in the "
+                f"first session ({e[2]} runs) and {tokens(t[0])} tokens and {t[1]:.1f} turns in the second ({t[2]} runs)."
+                + (" The second session's control used fewer tokens, so it is the less favourable one for the product on tokens."
+                   if t[0] < e[0] else "")))
+        hooks = public["findings"].get("hooks")
+        if hooks:
+            control_rows.append((
+                "Effect on tokens",
+                f"In earlier tests of the same tool, token use changed by {hooks['token_change']:+.0%}, against {hooks['spread']:.0%} between "
+                "repeats of one prompt."))
+        control_rows.append((
+            "What this site does about it",
+            "The no-index figures are shown as measured, with a note on the leaderboard. The product is set against no index on tokens and "
+            "turns only. Fully correct runs and mean score are set only against the first-generation engine, which was measured on the same "
+            "day on the same machine"
+            + (" and which the tool did not act on" if acted and all(not o["acted"][0] for o in acted["others"] if "first generation" in o["name"].lower()) else "")
+            + ". Running the control again with that tool off, in the same session as the others, would remove the problem."))
     return {
         "questions": text_rows_html([(q["title"], q["text"]) for q in study["questions"]]),
         "sets": text_rows_html(set_rows),
+        "graded": "".join(f"\n      <p>{esc(text)}</p>" for text in graded_rows) + "".join(
+            f"\n      <p>{esc(text)}</p>" for text in [
+                f"Only one question separates the configurations in these runs: of the {graded['imperfect']} published single-agent runs "
+                f"that were not fully correct, {graded['callers']} missed part of the answer to \"{study['questions'][0]['title']}\"."])
+        + "\n    ",
         "setups": text_rows_html([(f"Setup {i + 1}", text) for i, text in enumerate(study["setups"])]),
-        "scale": rows_html([(label, esc(value)) for label, value in scale]),
-        "classes": text_rows_html([(names[c["id"]], c["text"]) for c in study["classes"]]),
+        "scale": rows_html([(label, esc(value)) for label, value in short]) + "\n      " + text_rows_html(long),
+        "tokens": text_rows_html(token_rows),
+        "classes": text_rows_html([(classes[c["id"]], c["text"]) for c in study["classes"]]),
         "sessions": text_rows_html(session_rows),
+        "control": text_rows_html(control_rows) if control_rows else "<p class=\"note\">The control was not run in both sessions.</p>",
         "limits": text_rows_html(limits)}
 
 
 def install_slot(public: dict) -> str:
     install = public["install"]
-    gives = rows_html([("Installation", "One command"), ("What is installed", "One binary"),
-                       ("Works with", "Terminal coding agents"), ("Platforms", "Windows, macOS and Linux")])
+    system = public["study"].get("system")
+    gives = rows_html(
+        [("Installation", "One command"), ("What is installed", "One program"), ("What it needs", "Nothing but the program"),
+         ("Used through", "An AI coding agent that can run a command on your machine"),
+         ("Systems", "Windows, macOS and Linux")]
+        + ([("Tested so far", f"{system} only. Every measurement on this site was made there.")] if system else []))
+    what = ('<section class="section" aria-labelledby="what-it-is">\n  <h2 id="what-it-is" class="section-title">What it is</h2>\n  '
+            '<div class="card prose">\n    <p>PeterGanuRusty is a command-line program that runs on the developer\'s own machine. An AI coding '
+            'agent calls it to look things up in the code it is working on, such as where a function is defined and what calls it.</p>\n    '
+            '<p>Nothing leaves the machine.</p>\n  </div>\n</section>\n')
+    ONWARD = ('<section class="section" aria-label="More on this site">\n  <p class="close-actions"><a class="btn quiet" href="study.html">'
+              'How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>\n</section>\n')
     if install["status"] == "public":
         extra = [("Version", esc(install["version"]))] if isinstance(install.get("version"), str) else []
-        return ('<section class="section" aria-labelledby="command">\n  <h2 id="command" class="section-title">Install command</h2>\n  '
+        return (what + '<section class="section" aria-labelledby="command">\n  <h2 id="command" class="section-title">Install command</h2>\n  '
                 '<div class="card install-card">\n    <div class="code-wrap"><pre class="code" id="install-command" tabindex="0">'
                 f'<code>{esc(install["command"])}</code></pre></div>\n    <div class="copy-row"></div>\n    '
                 + (rows_html(extra) + "\n  " if extra else "") + '</div>\n</section>\n'
                 '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing gives you</h2>\n  '
-                f'<div class="card">\n    {gives}\n  </div>\n</section>\n')
-    return ('<section class="section" aria-labelledby="availability">\n  <h2 id="availability" class="section-title">Availability</h2>\n  '
+                f'<div class="card">\n    {gives}\n  </div>\n</section>\n' + ONWARD)
+    # The "Request access" control exists only when install.json gives a contact; without one the page has no control.
+    contact = install.get("contact")
+    access = ""
+    if contact:
+        href = contact if contact.startswith("https://") else "mailto:" + contact
+        access = f'\n  <p class="close-actions"><a class="btn magnet" href="{esc(href)}">Request access</a></p>'
+    onward = ('<section class="section" aria-label="More on this site">\n  <p class="close-actions"><a class="btn" href="study.html">'
+              'How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>\n</section>\n')
+    return (what + '<section class="section" aria-labelledby="availability">\n  <h2 id="availability" class="section-title">Availability</h2>\n  '
             '<div class="card">\n    '
-            + rows_html([("Status", '<span class="tag">Private preview</span>'), ("Public registry", "Not yet")]) +
-            '\n  </div>\n  <p class="footnote">The package is in private preview and is not yet on a public registry.</p>\n</section>\n'
-            '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing will give you</h2>\n  '
-            f'<div class="card">\n    {gives}\n  </div>\n</section>\n')
+            + rows_html([("Status", '<span class="tag">Private preview</span>'), ("Access", "By invitation"),
+                         ("Public download", "None yet"), ("Public registry", "Not yet")]) +
+            '\n  </div>\n  <p class="footnote">The package is in private preview. Access is by invitation, and there is no public download yet.</p>'
+            + access + '\n</section>\n'
+            '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing will look like</h2>\n  '
+            f'<div class="card">\n    {gives}\n  </div>\n</section>\n' + onward)
 
 
 # The mark: a P and the token it hands over, one colour, drawn on a 24 unit grid. The tab bar uses it as the icon of Overview.
@@ -2010,9 +2532,9 @@ def nav_slots(name: str, page: str) -> dict:
         side.append(f'\n        <li><a href="{file}"{here}>{title}</a>{inner}</li>')
         tabs.append(f'\n    <a href="{file}"{here}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{NAV_ICONS[file]}</svg>'
                     f'<span>{title}</span></a>')
-    return {"sidebar": ('<nav class="sidebar" aria-label="Pages">\n    <p class="brand">' + MARK_SVG + f'<span>{BRAND}</span></p>\n'
-                        f'    <div class="side-wrap">\n      <span class="side-ind" aria-hidden="true" style="--i:{at}"></span>\n'
-                        '      <ul class="side-pages">' + "".join(side) + "\n      </ul>\n    </div>\n  </nav>"),
+    return {"sidebar": ('<header class="sidebar">\n    <p class="brand">' + MARK_SVG + f'<span>{BRAND}</span></p>\n'
+                        f'    <nav aria-label="Pages">\n    <div class="side-wrap">\n      <span class="side-ind" aria-hidden="true" style="--i:{at}"></span>\n'
+                        '      <ul class="side-pages">' + "".join(side) + "\n      </ul>\n    </div>\n  </nav>\n  </header>"),
             "tabbar": (f'<nav class="tabbar" aria-label="Pages">\n    <span class="tab-ind" aria-hidden="true" style="--n:{len(PUBLIC_PAGES)};--i:{at}"></span>'
                        + "".join(tabs) + "\n  </nav>")}
 
@@ -2050,13 +2572,17 @@ def hero_slot(public: dict) -> str:
     step = nice_step(longest / 1e3) * 1000
     marks = [(k * step, "0" if k == 0 else tokens(k * step)) for k in range(int(longest * 0.93 // step) + 1)] + [(longest, tokens(longest))]
     scale = "".join(f'<span style="--t:{value / longest * 100:.2f}" data-v="{value:.0f}">{esc(text)}</span>' for value, text in marks)
-    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. Best configuration: {tokens(b['tokens'])} tokens and "
-              f"{b['turns']:.1f} turns." + (f" That is {tokens(saved)} fewer tokens, {saved / c['tokens']:.0%}." if saved > 0 else ""))
+    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. {found['best']['name']}: {tokens(b['tokens'])} tokens and "
+              f"{b['turns']:.1f} turns." + (f" That is {tokens(saved)} fewer tokens, {saved / c['tokens']:.0%}, in this one cell." if saved > 0 else ""))
+    versus = public.get("versus")
+    cell = (f"This is one cell, the light class with the original questions. Across the {number_word(len(versus['cells']))} cells where both "
+            f"were measured the saving was {saving_range(versus)}." if versus and len(versus["cells"]) > 1 else "")
     return ('<figure class="card stream" id="stream" aria-labelledby="stream-title">\n  '
             '<p class="stream-title" id="stream-title">Tokens per task, light model class, original questions, one agent answering three lookups</p>\n  '
             '<div class="lanes">' + lane("ref", "No index", c) + lane("best", found["best"]["name"], b, gap) + '\n  </div>\n  '
             f'<div class="scale" aria-hidden="true">{scale}</div>\n  '
-            '<p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task.</p>\n  '
+            '<p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task.'
+            + (f' {esc(cell)}' if cell else "") + '</p>\n  '
             f'<p class="sr-only">{esc(spoken)}</p>\n</figure>')
 
 
@@ -2074,8 +2600,12 @@ def stage_slot(public: dict) -> str:
                 f'<span class="bt-val"><b>{esc(tokens(pt["tokens"]))}</b> tokens, <b>{pt["turns"]:.1f}</b> turns</span></p>')
 
     saved = c["tokens"] - b["tokens"]
-    delta = f'{tokens(saved)} fewer tokens, {saved / c["tokens"]:.0%}' if saved > 0 else ""
-    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. Best configuration, {found['best']['name']}: "
+    versus = public.get("versus")
+    # The saving is said of this one cell, with the range over the cells where both were measured beside it.
+    delta = (f'{tokens(saved)} fewer tokens, {saved / c["tokens"]:.0%}, on the light class with the original questions'
+             + (f'. Across {number_word(len(versus["cells"]))} cells: {saving_range(versus)}' if versus and len(versus["cells"]) > 1 else "")
+             if saved > 0 else "")
+    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. {found['best']['name']}: "
               f"{tokens(b['tokens'])} tokens and {b['turns']:.1f} turns." + (f" That is {delta}." if delta else ""))
     return ('<div class="hero-read">\n    '
             f'<p class="sr-only">{esc(spoken)}</p>\n    '
@@ -2084,14 +2614,15 @@ def stage_slot(public: dict) -> str:
             f'<p class="hero-num" data-from="{c["tokens"]:.0f}" data-to="{b["tokens"]:.0f}">{esc(tokens(c["tokens"]))}</p>\n        '
             f'<p class="hero-state"><span class="st-ref">No index</span><span class="st-best">{esc(found["best"]["name"])}</span></p>\n        '
             + (f'<p class="hero-delta">{esc(delta)}</p>\n      ' if delta else "      ") + '</div>\n      '
-            '<p class="hero-key">One particle is <b data-per>10</b> tokens. The thickness of a stream is its tokens per task.</p>\n      '
-            f'<svg class="logo hero-mark" viewBox="0 0 24 24" focusable="false">{MARK_PATHS}</svg>\n      '
-            f'<p class="hero-word">{BRAND}</p>\n    </div>\n  </div>')
+            '<p class="hero-key">One particle is <b data-per>10</b> tokens. The thickness of a stream is its tokens per task.</p>\n    '
+            '</div>\n  </div>')
 
 
 def problem_slot(public: dict) -> str:
-    """The first chapter of the Overview: a task as a stack of turns. One block is one turn at the average tokens a
-    turn, so a stack is as tall as its tokens per task, and both stacks are drawn to one scale."""
+    """The chapter of the Overview: a task as a stack of turns. One block is one turn at the average tokens a turn, so a
+    stack is as tall as its tokens per task, and both stacks are drawn to one scale. The number over a stack is its turns:
+    the tokens of the whole task are the headline and are not repeated here. Under the heading are the two paragraphs, why a
+    turn costs what it does and how many turns each configuration took."""
     found = headline_of(public)
     if not found or not found["c"]:
         return ""
@@ -2105,47 +2636,24 @@ def problem_slot(public: dict) -> str:
         slabs = "".join(f'<i class="slab" style="--h:{per * part / longest * 100:.3f}%;--i:{i}"><span>{i + 1}</span></i>'
                         for i, part in enumerate(parts))
         return (f'\n      <div class="stack {kind}" style="--n:{count}">'
-                f'<p class="stack-total"><b data-od="tokens" data-to="{pt["tokens"]:.0f}">{esc(tokens(pt["tokens"]))}</b> tokens</p>'
+                f'<p class="stack-total"><b>{pt["turns"]:.1f}</b> turns</p>'
                 f'<div class="stack-col">{slabs}</div>'
-                f'<p class="stack-name">{esc(name)}<span>{pt["turns"]:.1f} turns, about {esc(tokens(per))} a turn</span></p></div>')
+                f'<p class="stack-name">{esc(name)}<span>about {esc(tokens(per))} a turn</span></p></div>')
 
+    floor = ("Two turns is the floor for a lookup: one to ask and one to answer. " if b["turns"] < 2.05 else "")
+    held = (cell_of(found["best"], "light", "held-out"), cell_of(found["control"], "light", "held-out"))
+    later = (f" On the held-out questions it took {held[0]['turns']:.1f} turns, and no index {held[1]['turns']:.1f}." if all(held) else "")
     return ('<section class="chapter ch-problem pin" aria-labelledby="problem">\n  <div class="pin-stage">\n    '
             '<div class="ch-copy">\n      <h2 id="problem" class="kin" aria-label="Every turn re-reads everything">'
             '<span class="kl" aria-hidden="true"><span>Every turn</span></span> <span class="kl" aria-hidden="true"><span>re-reads</span></span> '
             '<span class="kl" aria-hidden="true"><span>everything</span></span></h2>\n      '
             '<p class="ch-lede">An agent works in turns, and on each turn it reads its whole conversation again. '
-            'Every extra turn pays for the same context one more time.</p>\n    </div>\n    '
+            'Every extra turn pays for the same context one more time.</p>\n      '
+            f'<p class="ch-lede">{floor}{esc(found["best"]["name"])} took {b["turns"]:.1f} turns per task on the light class and the original '
+            f'questions. No index took {c["turns"]:.1f}.{esc(later)}</p>\n    </div>\n    '
             '<figure class="stacks" aria-labelledby="stacks-cap">' + stack("ref", "No index", c) + stack("best", found["best"]["name"], b) +
             '\n      <figcaption id="stacks-cap">One block is one turn, at the average tokens a turn. Both stacks are drawn to one scale. '
             'Light model class, original questions, one agent answering three lookups.</figcaption>\n    </figure>\n  </div>\n</section>')
-
-
-def change_slot(public: dict) -> str:
-    """The second chapter: the path of one task, one node for each turn. The path of the best configuration is drawn
-    beside the path with no index."""
-    found = headline_of(public)
-    if not found or not found["c"]:
-        return ""
-    b, c = found["b"], found["c"]
-
-    def hop(kind: str, name: str, pt: dict) -> str:
-        count = max(2, min(12, round(pt["turns"])))
-        xs = [12 + 176 * i / (count - 1) for i in range(count)]
-        ys = [30.0] * count if count == 2 else [14.0 if i % 2 == 0 else 46.0 for i in range(count)]
-        line = " ".join(f"{x:.1f},{y:.0f}" for x, y in zip(xs, ys))
-        nodes = "".join(f'<circle cx="{x:.1f}" cy="{y:.0f}" r="4" style="--i:{i}"/>' for i, (x, y) in enumerate(zip(xs, ys)))
-        return (f'\n      <div class="hop {kind}"><svg viewBox="0 0 200 60" style="--c:{count}" aria-hidden="true" focusable="false">'
-                f'<polyline points="{line}" pathLength="1"/>{nodes}</svg>'
-                f'<p class="hop-val"><b>{pt["turns"]:.1f}</b> turns<span>{esc(name)}</span></p></div>')
-
-    floor = ("Two turns is the floor for a lookup: one to ask and one to answer. " if b["turns"] < 2.05 else "")
-    return ('<section class="chapter ch-change" aria-labelledby="change">\n  '
-            '<h2 id="change" class="kin wide" aria-label="One question, one answer">'
-            '<span class="kl" aria-hidden="true"><span>One question,</span></span> <span class="kl" aria-hidden="true"><span>one answer</span></span></h2>\n  '
-            '<div class="change-grid">\n    <figure class="hops" aria-labelledby="hops-cap">' + hop("ref", "No index", c) + hop("best", found["best"]["name"], b) +
-            '\n      <figcaption id="hops-cap">One node is one turn of a task, from the question to the answer.</figcaption>\n    </figure>\n    '
-            f'<p class="ch-lede">{floor}The best configuration took {b["turns"]:.1f} turns per task on the light class and the original questions. '
-            f'No index took {c["turns"]:.1f}.</p>\n  </div>\n</section>')
 
 
 VIDEO_TYPES = {"mp4": "video/mp4", "webm": "video/webm"}
@@ -2153,18 +2661,19 @@ VIDEO_KIND_TEXT = {"ad": "Ad", "explainer": "Explainer"}
 
 
 def video_slot(public: dict) -> str:
-    """The footage section: present only when the data holds a film, and then one framed player for each, the ad
-    first. Each is a native player that never starts by itself; a script replaces its controls with the page's own."""
+    """The footage section: present only when the data holds a film. Both films are framed alike and drawn at the same size;
+    with a script one is shown at a time and a control chooses it, without one both are listed. Each is a native player that
+    never starts with sound by itself; a script replaces its controls with the page's own."""
     films = public.get("videos") or ([public["video"]] if public.get("video") else [])
     if not films:
         return ""
 
-    def player(n: int, video: dict) -> str:
+    def player(video: dict) -> str:
         kind = video.get("kind", "explainer")
         mime = VIDEO_TYPES.get(str(video["src"]).rsplit(".", 1)[-1].lower())
         source = f'<source src="{esc(video["src"])}"' + (f' type="{mime}"' if mime else "") + ">"
         width, height = int(video["width"]), int(video["height"])
-        return (f'\n    <figure class="cine{" lead" if n == 0 else ""}" data-kind="{esc(kind)}">\n      '
+        return (f'\n    <figure class="cine" data-kind="{esc(kind)}">\n      '
                 f'<div class="cine-frame" style="aspect-ratio:{width}/{height}">\n        '
                 f'<video controls playsinline preload="none" width="{width}" height="{height}" poster="{esc(video["poster"])}" '
                 f'aria-label="{esc(video["title"])}">\n          '
@@ -2173,10 +2682,17 @@ def video_slot(public: dict) -> str:
                 f'<figcaption class="cine-cap"><span class="cine-title">{esc(video["title"])}</span>'
                 f'<span class="cine-meta">{VIDEO_KIND_TEXT[kind]}, {esc(format(video["seconds"], "g"))} seconds, with captions</span></figcaption>\n    </figure>')
 
+    pick = ""
+    if len(films) > 1:
+        buttons = "".join(
+            f'\n      <button type="button" role="radio" aria-checked="{"true" if n == 0 else "false"}" tabindex="{0 if n == 0 else -1}" '
+            f'data-value="{esc(video.get("kind", "explainer"))}">{VIDEO_KIND_TEXT[video.get("kind", "explainer")]}, '
+            f'{round(video["seconds"])} seconds</button>' for n, video in enumerate(films))
+        pick = (f'\n  <div class="seg reel-pick" role="radiogroup" aria-label="Film" data-seg="film" style="--count:{len(films)}" hidden>'
+                f'<span class="seg-thumb" aria-hidden="true"></span>{buttons}\n  </div>')
     return ('<section class="section cinema" aria-labelledby="films">\n  '
-            f'<h2 id="films" class="section-title">{"Films" if len(films) > 1 else "Film"}</h2>\n  '
-            f'<div class="cine-grid{" multi" if len(films) > 1 else ""}">' + "".join(player(n, video) for n, video in enumerate(films)) +
-            '\n  </div>\n</section>\n')
+            f'<h2 id="films" class="section-title">{"Films" if len(films) > 1 else "Film"}</h2>{pick}\n  '
+            '<div class="cine-grid">' + "".join(player(video) for video in films) + '\n  </div>\n</section>\n')
 
 
 def runners_slot(public: dict) -> str:
@@ -2204,7 +2720,7 @@ def runners_slot(public: dict) -> str:
                      f'{esc(cls["name"].lower())} class with the {esc(qset["name"].lower())} questions.</p>')
         else:
             config, pt = other
-            who = "the best configuration" if config["best"] else config["name"]
+            who = f"the {BEST_LABEL.lower()} configuration" if config["best"] else config["name"]
             fewer = control["turns"] - pt["turns"]
             callout = (f"{fewer:.1f} fewer turns per task with {who}, so its run ends first." if fewer > 0
                        else f"No index took {control['turns']:.1f} turns and {who} {pt['turns']:.1f}.")
@@ -2225,8 +2741,8 @@ def showcase_slots(public: dict) -> dict:
     study = study_slots(public)
     common = {"built": esc(public["built"])}
     return {
-        "index.html": dict(common, lede=esc(lede_slot("index.html", public)), stage=stage_slot(public), hero=hero_slot(public),
-                           problem=problem_slot(public), change=change_slot(public), figures=figures_slot(public),
+        "index.html": dict(common, lede=esc(lede_slot("index.html", public)), watch=watch_slot(public), stage=stage_slot(public),
+                           hero=hero_slot(public), key=key_slot(public), problem=problem_slot(public), figures=figures_slot(public),
                            video=video_slot(public), best=best_slot(public)),
         "benchmarks.html": dict(common, lede=esc(lede_slot("benchmarks.html", public)), seg=seg_slot(public),
                                 boards=boards_slot(public), charts=charts_slot(public), engine=engine_slot(public),
@@ -2268,66 +2784,218 @@ def write_showcase_pages(public: dict) -> list[str]:
 # file (.vtt) is text, so it is scanned like a page.
 MEDIA_BINARY = ("mp4", "webm", "jpg", "jpeg", "avif", "png", "webp")
 
-# Words that must never appear in anything under docs/, in any case: tool names, file names, vendor models.
+# Words that must never appear in anything under docs/, in any case and in any spelling that joins or splits them with
+# a space, a hyphen or an underscore: tool names, file names, vendor models, and the words for how the engine works.
 FORBIDDEN_WORDS = (
     "codanna", "semble", "graphify", "token-goat", "tokengoat", "hindsight", "model2vec", "potion", "tree-sitter",
     "rustpython", "oxc", "ast-grep", "ripgrep", "lx", "lxr", "caveman", "cavecrew", "CLAUDE.md", "AGENTS.md",
     "session_index", "arms.json", "bench_parse", "build_site", "grep", "haiku", "sonnet", "opus", "claude", "anthropic",
-    "openai", "gemini", "mcp", "bm25", "reciprocal rank", "sqlite", "hnsw", "faiss", "lancedb", "tantivy", "onnx",
+    "openai", "gemini", "mcp", "bm 25", "reciprocal rank", "sqlite", "hnsw", "faiss", "lancedb", "tantivy", "onnx",
     "PreToolUse", "PostToolUse", "SessionStart", "UserPromptSubmit", "settings.json", "settings.local.json",
-    "local-index", "graphify-out", "results.json", "hooks.json", "engine.json", "install.json", "index.json")
+    "local-index", "graphify-out", "results.json", "hooks.json", "engine.json", "install.json", "index.json",
+    # other tools and vendors, and model families
+    "codex", "copilot", "windsurf", "aider", "cline", "llama", "qwen", "mistral", "deepseek", "grok", "chatgpt", "gpt",
+    # how the engine works, in words
+    "vector index", "vector search", "vector store", "vector database", "nearest neighbour", "nearest neighbor",
+    "graph traversal", "call graph", "rrf", "tokenizer", "inverted index", "cosine", "rust", "cargo", "ctags", "crate")
 # Shapes that must never appear: command lines and flags, the setup's paths, vendor model versions, tier labels,
-# and any request to another host.
+# and any request to another host. All are matched in any case.
+TEXT_KINDS = ("html", "js", "json", "vtt", "txt", "svg", "xml", "md")   # files a flag can hide in; the stylesheets are not
 FORBIDDEN_PATTERNS = (
     # A flag follows a space or starts a line. A CSS custom property sits inside quotes or var( ), and the
     # stylesheets are not checked for flags at all.
-    ("a command-line flag", r"(?<![\w'\"(-])--[a-z][a-z0-9-]+", ("html", "js")),
-    ("a flag with a value", r"--[a-z][a-z0-9-]*=", ("html", "js")),
+    ("a command-line flag", r"(?<![\w'\"(-])--[a-z][a-z0-9-]+", TEXT_KINDS),
+    ("a flag with a value", r"--[a-z][a-z0-9-]*=", TEXT_KINDS),
     ("a shell prompt", r"(?m)^\s*[$>]\s+\w", None),
     ("a package command", r"\b(?:pip3?|pipx|npm|npx|cargo|brew|winget|choco|curl|wget|sudo)\s+[-\w]", None),
     ("an interpreter command", r"\bpython3?\s+-", None),
     ("a git command", r"\bgit\s+(?:clone|checkout|pull|push|commit|add|init)\b", None),
-    ("a path of the setup", r"\.claude\b|\.codex\b|\.codanna\b|(?<![\w.])(?:setup|benchmark|harness|rust)/", None),
-    ("a model version", r"\bgpt-?\d\w*", None),
-    ("a tier label", r"\btier [abc]\b", None),
+    ("a path of the setup", r"\.claude\b|\.codex\b|\.codanna\b|(?<![\w.])(?:setup|benchmark|harness|rust)[/\\]", None),
+    ("a model version", r"\bgpt-?\d\w*|\bo[134](?:-mini)?\b", None),
+    ("a tier label", r"\btier[\s_-]*[abc]\b", None),
     ("a request to another host", r"https?://(?!www\.w3\.org/2000/svg)|(?<![:\w])//[\w-]+\.[a-z]{2,}/|@import", None),
 )
+# Arm ids that are also ordinary names in markup, styles or scripts. They are not looked for inside identifiers.
+AMBIGUOUS_IDS = {"h1", "h2", "h3", "h4", "h5", "h6", "hb", "sb"}
+# A word that is also an ordinary word in one kind of file: "rust" is a colour in a style sheet.
+WORD_EXEMPT = {"rust": ("css",)}
 
 
-def forbidden_checks(arms: dict) -> list[tuple[str, "re.Pattern", tuple | None]]:
-    """Every check the guard makes, compiled: words, shapes, and what arms.json says about the methods."""
-    import re
-    checks = [(f"the word {word!r}", re.compile(r"(?<![A-Za-z0-9])" + re.escape(word) + r"(?![A-Za-z0-9])", re.I), None)
-              for word in FORBIDDEN_WORDS]
-    checks += [(label, re.compile(pattern), kinds) for label, pattern, kinds in FORBIDDEN_PATTERNS]
+def applies(kinds, kind: str) -> bool:
+    """Whether a check with this `kinds` setting looks at a file of this kind: everywhere (None), only in the listed kinds
+    (a tuple), or everywhere except the listed kinds ("not:css")."""
+    if kinds is None:
+        return True
+    if isinstance(kinds, tuple):
+        return kind in kinds
+    return not (isinstance(kinds, str) and kinds.startswith("not:") and kind in kinds[4:].split(","))
+
+
+def word_regex(word: str) -> "re.Pattern":
+    """A word, found whole and in any case, whether its parts are joined, or split by spaces, hyphens, underscores or a line break."""
+    parts = [re.escape(part) for part in re.split(r"[\s_-]+", word) if part]
+    return re.compile(r"(?<![A-Za-z0-9])" + r"[\s_-]*".join(parts) + r"(?![A-Za-z0-9])", re.I)
+
+
+def command_phrases(arms: dict) -> list[str]:
+    """The first two words of each command in arms.json, "pgr about" for example, so a bare subcommand cannot slip through."""
+    phrases = set()
+    for command in arms["commands"].values():
+        found = re.match(r"([A-Za-z][\w.-]*)\s+([a-z]{2,})\b", command.strip())
+        if found and found.group(1).lower() not in ("grep", "glob", "read", "python", "python3"):
+            phrases.add(f"{found.group(1)} {found.group(2)}")
+    return sorted(phrases)
+
+
+def forbidden_checks(arms: dict) -> list[tuple[str, "re.Pattern", tuple | str | None, str | None]]:
+    """Every check the guard makes, compiled: words and phrases, shapes, and what arms.json says about the methods.
+    Each is (label, pattern, kinds, needle): the needle is a lower-case string that must be in the text for the pattern
+    to be worth running, which keeps the scan fast; for text copied from arms.json it is the whole string."""
+    first = lambda text: re.split(r"[\s_-]+", text)[0].lower()
+    checks = [(f"the word {word!r}", word_regex(word), f"not:{','.join(WORD_EXEMPT[word.lower()])}" if word.lower() in WORD_EXEMPT else None,
+               first(word)) for word in FORBIDDEN_WORDS]
+    checks += [(f"the command {phrase!r}", word_regex(phrase), None, first(phrase)) for phrase in command_phrases(arms)]
+    checks += [(label, re.compile(pattern, re.I), kinds, None) for label, pattern, kinds in FORBIDDEN_PATTERNS]
     ids = sorted({arm["id"] for arm in arms["arms"]}, key=len, reverse=True)
-    checks.append(("an internal method id", re.compile(r"(?<![\w#.\-])(?:" + "|".join(map(re.escape, ids)) + r")(?![\w\-])"), None))
+    # An id is checked as written: lower case "h1" and "rs" are ordinary names, and the ids that clash with them are
+    # matched only in compound identifiers (see identifier_problems).
+    checks.append(("an internal method id", re.compile(r"(?<![\w#.\-])(?:" + "|".join(map(re.escape, ids)) + r")(?![\w\-])"), None, None))
     squash = lambda text: re.sub(r"\s+", " ", text).strip()
     strings = {squash(command) for command in arms["commands"].values()}
     strings |= {squash(arm[key]) for arm in arms["arms"] for key in ("detail", "reads") if arm.get(key)}
     for text in sorted(strings, key=len, reverse=True):
-        checks.append((f"text copied from arms.json ({text[:40]!r}...)", re.compile(re.escape(text), re.I), "squash"))
+        checks.append((f"text copied from arms.json ({text[:40]!r}...)", re.compile(re.escape(text), re.I), "squash", text.lower()))
     uses = {key for arm in arms["arms"] for key in arm.get("uses", [])}
-    checks += [(f"the command key {key!r}", re.compile(r"(?<![A-Za-z0-9])" + re.escape(key) + r"(?![A-Za-z0-9])"), None) for key in sorted(uses)]
+    checks += [(f"the command key {key!r}", re.compile(r"(?<![A-Za-z0-9])" + re.escape(key) + r"(?![A-Za-z0-9])"), None, key.lower())
+               for key in sorted(uses)]
     return checks
 
 
-def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | None = None) -> int:
-    """Scan every file under the public folder, its file names included, for anything that must never be
-    published. Exits with the file, the line and the offending text. The one thing let through is the
-    install command the owner chose to publish in install.json. Returns the number of files scanned."""
+def views_of(text: str) -> list[tuple[str, str]]:
+    """The text as written, and then the text as a reader or a browser would take it: character references, \\u and \\x
+    escapes and percent escapes decoded, quoted strings joined where a script adds them, and every long base64 run
+    that decodes to text. A word hidden by any of these is found in one of the views."""
+    import base64
     import html
-    import re
+    import urllib.parse
+    views = [("as written", text)]
+    decoded = html.unescape(text)
+    decoded = re.sub(r"\\u([0-9a-fA-F]{4})", lambda m: chr(int(m.group(1), 16)), decoded)
+    decoded = re.sub(r"\\x([0-9a-fA-F]{2})", lambda m: chr(int(m.group(1), 16)), decoded)
+    decoded = urllib.parse.unquote(decoded)
+    decoded = re.sub(r"([\"'`])\s*\+\s*\1", "", decoded)
+    if decoded != text:
+        views.append(("after decoding", decoded))
+    for run in sorted(set(re.findall(r"[A-Za-z0-9+/]{24,}={0,2}", decoded)), key=len, reverse=True)[:200]:
+        try:
+            raw = base64.b64decode(run + "=" * (-len(run) % 4), validate=True).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if raw and sum(ch.isprintable() or ch.isspace() for ch in raw) >= 0.95 * len(raw):
+            views.append(("base64 text", raw))
+    return views
+
+
+def identifier_problems(text: str, kind: str, arms: dict) -> list[str]:
+    """The class names, ids, custom properties and identifiers of a script, a style sheet or a page are split into their
+    parts (camel case, hyphens, underscores, digits) and checked for the tool names above and for internal method ids,
+    alone or joined: graphifyHelper, lx-box, token_goat_cache, .rgs-card."""
+    if kind not in ("js", "css", "html"):
+        return []
+    if kind == "html":
+        names = re.findall(r"""\b(?:class|id|for|name|data-[\w-]+)=["']([^"']*)["']""", text) + re.findall(r"\bdata-[\w-]+", text)
+        tokens_ = [token for chunk in names for token in re.findall(r"[A-Za-z_][\w-]*", chunk)]
+    else:
+        tokens_ = re.findall(r"[A-Za-z_][\w-]*", text)
+    words = {re.sub(r"[\s_-]+", "", word.lower()) for word in FORBIDDEN_WORDS if kind not in WORD_EXEMPT.get(word.lower(), ())}
+    ids = {arm["id"].lower() for arm in arms["arms"] if len(arm["id"]) >= 3 and arm["id"].lower() not in AMBIGUOUS_IDS}
+    found = []
+    for token in sorted(set(tokens_)):
+        if len(token) < 2:
+            continue
+        parts = [part.lower() for part in re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|[0-9]+", token)]
+        joined = {"".join(parts[i:j]) for i in range(len(parts)) for j in range(i + 1, len(parts) + 1)}
+        hit = next((word for word in sorted(words) if word in joined and (len(word) > 3 or len(parts) > 1)), None)
+        if hit is None and len(parts) > 1:
+            hit = next((i for i in sorted(ids) if i in joined), None)
+        if hit is None and token.lower() in ids:
+            hit = token.lower()
+        if hit is not None:
+            found.append(f"identifier {token!r} holds {hit!r}")
+    return found
+
+
+def public_names(arms: dict) -> tuple[set, set]:
+    """The configuration names and slugs the public data may carry: those of the "public" objects in arms.json, the
+    names of the families, and the name of the product."""
+    objects = [arm["public"] for arm in arms["arms"] if "public" in arm]
+    return ({o["name"] for o in objects} | set(PUBLIC_FAMILIES.values()) | {BRAND, "PGR", "No index"}, {o["slug"] for o in objects})
+
+
+def name_problems(root: pathlib.Path, arms: dict) -> list[str]:
+    """Every configuration name and slug in the public data and in the pages must come from a "public" object in
+    arms.json. A name or a slug typed into the data or into a page, or left over from an earlier build, is refused."""
+    import html
+    names, slugs = public_names(arms)
+    pairs = {(arm["public"]["slug"], arm["public"]["name"]) for arm in arms["arms"] if "public" in arm}
+    problems = []
+    data = root / "data" / "showcase.js"
+    if data.is_file():
+        raw = data.read_text(encoding="utf-8")
+        start = raw.find("window.SHOWCASE = ")
+        try:
+            shown = json.loads(raw[start + len("window.SHOWCASE = "):].strip().rstrip(";")) if start >= 0 else {}
+        except ValueError:
+            shown = {}
+            problems.append("  docs/data/showcase.js: the data does not parse, so its names cannot be checked")
+        for config in shown.get("configs", []):
+            if (config.get("slug"), config.get("name")) not in pairs:
+                problems.append(f"  docs/data/showcase.js: configuration {config.get('slug')!r} named {config.get('name')!r} is not a public object of arms.json")
+        for family in shown.get("families", []):
+            if family.get("name") not in names:
+                problems.append(f"  docs/data/showcase.js: family named {family.get('name')!r} is not a public name")
+        for row in shown.get("engine", []):
+            if row.get("name") not in names:
+                problems.append(f"  docs/data/showcase.js: engine row named {row.get('name')!r} is not a public name")
+    shown_in_page = re.compile(
+        r'class="(?:cfg-name|best-name|race-name|lane-name|bt-name|st-best)"[^>]*>(.*?)</|<li><b>\d+</b><span>(.*?)</span></li>', re.S)
+    for page in sorted(root.glob("*.html")):
+        for match in shown_in_page.finditer(page.read_text(encoding="utf-8")):
+            name = html.unescape(re.sub(r"<[^>]+>", "", match.group(1) or match.group(2) or "")).strip()
+            if name and name not in names:
+                problems.append(f"  docs/{page.name}: the configuration name {name!r} is not a public name of arms.json")
+    slug_attr = re.compile(r'\b(?:data-slug|data-config)="([^"]*)"')
+    for page in sorted(root.glob("*.html")):
+        for match in slug_attr.finditer(page.read_text(encoding="utf-8")):
+            if match.group(1) not in slugs:
+                problems.append(f"  docs/{page.name}: the slug {match.group(1)!r} is not a public slug of arms.json")
+    return problems
+
+
+def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | None = None, only: set | None = None,
+                 checks: list | None = None) -> int:
+    """Scan every file under the public folder, its file names included, for anything that must never be
+    published: words in any case and any spelling, command lines and flags, identifiers and class names, text copied
+    from arms.json, and configuration names that do not come from arms.json. The text is read as written and as
+    decoded, and a word is looked for across line breaks. Exits with the file, the place and the offending text. The
+    things let through are the install command and the contact the owner chose to publish in install.json. Returns
+    the number of files scanned. `only` limits the scan to those files (relative paths); the self-test uses it."""
+    import html
     root = root or DOCS
-    checks = forbidden_checks(arms)
+    checks = checks or forbidden_checks(arms)
     approved = []
     if install and install.get("status") == "public":
         command = install["command"]
-        approved = [command, json.dumps(command)[1:-1], html.escape(command), html.escape(command, quote=False)]
+        approved += [command, json.dumps(command)[1:-1], html.escape(command), html.escape(command, quote=False)]
+    if install and install.get("contact"):
+        contact = install["contact"]
+        approved += [contact, "mailto:" + contact, html.escape(contact), html.escape("mailto:" + contact)]
     problems, scanned = [], 0
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
-        scanned += 1
         shown = path.relative_to(root).as_posix()
+        if only is not None and shown not in only:
+            continue
+        scanned += 1
         kind = path.suffix.lstrip(".").lower()
         try:
             text = "" if kind in MEDIA_BINARY and shown.startswith("media/") else path.read_bytes().decode("utf-8")
@@ -2337,24 +3005,131 @@ def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | N
             text = text.replace(token, " ")
         # Comment markers are not flags: the two dashes of "<!--" and "-->" are blanked before the check.
         flat = text.replace("<!--", "    ").replace("-->", "   ")
-        subjects = [(shown, "file name", shown)] + [(shown, f"line {n}", line) for n, line in enumerate(flat.splitlines(), 1)]
-        for where, place, line in subjects:
-            for label, pattern, kinds in checks:
-                if kinds == "squash" or (kinds and kind not in kinds):
+        seen = set()
+        for view, body in [("file name", shown)] + [(label, content) for label, content in views_of(flat)]:
+            lowered = body.lower()
+            for label, pattern, kinds, needle in checks:
+                if kinds == "squash" or not applies(kinds, kind) or (needle and needle not in lowered):
                     continue
-                hit = pattern.search(line)
+                hit = pattern.search(body)
                 if hit:
-                    problems.append(f"  docs/{where}, {place}: {label}: found {hit.group(0)!r}")
+                    place = view if view == "file name" else f"line {body.count(chr(10), 0, hit.start()) + 1} ({view})"
+                    key = (label, hit.group(0).lower())
+                    if key not in seen:
+                        seen.add(key)
+                        problems.append(f"  docs/{shown}, {place}: {label}: found {hit.group(0)!r}")
+        for found in identifier_problems(flat, kind, arms):
+            problems.append(f"  docs/{shown}: {found}")
         # Copied text may run over several lines: the long strings from arms.json are looked for in the whole file.
-        whole = re.sub(r"\s+", " ", flat)
-        for label, pattern, kinds in checks:
-            if kinds == "squash" and pattern.search(whole):
+        whole = re.sub(r"\s+", " ", flat).lower()
+        for label, pattern, kinds, needle in checks:
+            if kinds == "squash" and needle in whole:
                 problems.append(f"  docs/{shown}, whole file: {label}")
+    problems += name_problems(root, arms)
     if problems:
         shown_problems = problems[:30] + ([f"  and {len(problems) - 30} more"] if len(problems) > 30 else [])
         raise SystemExit("GUARD FAILED: the public folder holds something that must not be published.\n"
                          + "\n".join(shown_problems) + "\nNothing is safe to publish until this is fixed.")
+    if only is None:
+        unreferenced = unreferenced_media(root)
+        if unreferenced:
+            total = sum((root / name).stat().st_size for name in unreferenced) / 1e6
+            print(f"warning: {len(unreferenced)} files under docs/media/ are not used by any page ({total:.0f} MB) and would still be "
+                  "published: " + ", ".join(unreferenced))
     return scanned
+
+
+def unreferenced_media(root: pathlib.Path) -> list[str]:
+    """Files under media/ that no page, script or data file names. They are published all the same."""
+    media = root / "media"
+    if not media.is_dir():
+        return []
+    text = "".join(path.read_text(encoding="utf-8", errors="ignore") for path in root.rglob("*")
+                   if path.is_file() and path.suffix.lstrip(".").lower() in ("html", "js", "css", "json", "vtt"))
+    return sorted(f"media/{path.name}" for path in media.iterdir() if path.is_file() and f"media/{path.name}" not in text)
+
+
+def guard_selftest(arms: dict, install: dict | None = None) -> int:
+    """Plant one violation for each rule of the guard in a scratch copy of docs/ and check that the guard refuses it
+    with the rule's own message. The copy is removed afterwards; docs/ itself is never touched. Returns the number of
+    plants that were not caught (0 when every rule works)."""
+    import shutil
+    import tempfile
+    names, slugs = public_names(arms)
+    some_id = next(arm["id"] for arm in arms["arms"] if len(arm["id"]) >= 3 and arm["id"].lower() not in AMBIGUOUS_IDS)
+    # The copy of docs/ holds the owner's real contact link and install command, so the plants are checked against the
+    # real install block; the contact below is only a stand-in for a link the owner did not approve.
+    base = install or {"status": "private-preview"}
+    contact = "https://unapproved.example.test/request"
+    plants = [
+        # (rule, file to write or edit, text or edit, text the refusal must contain)
+        ("case-insensitive pattern", "plant.txt", "Run it on Tier A for a day.", "a tier label"),
+        ("case-insensitive word", "plant.txt", "built with CODANNA and TOKEN-GOAT", "the word 'codanna'"),
+        ("a vendor model", "plant.txt", "tested against GPT-5 and Codex", "a model version"),
+        ("a word across lines", "plant.html", "<p>an agent with token-\ngoat installed</p>", "the word 'token-goat'"),
+        ("a caption file", "media/plant.vtt", "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nPowered by graphify.\n", "the word 'graphify'"),
+        ("a flag in a caption file", "media/plant.vtt", "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nRun pgr affected X --depth 3\n", "a command-line flag"),
+        ("a data file", "data/plant.json", '{"note": "uses Semble for search"}', "the word 'semble'"),
+        ("a bare subcommand", "plant.txt", "then call pgr about on the symbol", "the command 'pgr about'"),
+        ("a character reference", "plant.html", "<p>&#103;raphify</p>", "after decoding"),
+        ("an escape in a script", "assets/plant.js", "var s = '\\u0067raphify';", "after decoding"),
+        ("strings joined by a script", "assets/plant.js", "var s = 'gra' + 'phify';", "after decoding"),
+        ("text hidden in base64", "plant.txt", "payload Z3JhcGhpZnkgYW5kIGNvZGFubmE= end", "base64 text"),
+        ("text copied from arms.json over several lines", "plant.txt", "\n".join(
+            re.sub(r"\s+", " ", arms["commands"]["pgr_about"]).strip().split(" ")), "text copied from arms.json"),
+        ("an identifier in a script", "assets/plant.js", "var graphifyHelper = 1;", "identifier 'graphifyHelper'"),
+        ("a class name in a style sheet", "assets/plant.css", ".lx-box { margin: 0; }", "identifier 'lx-box'"),
+        ("an internal id in a class name", "plant.html", f'<div class="card {some_id.lower()}-card">x</div>', f"holds {some_id.lower()!r}"),
+        ("an unapproved link", "plant.html", f'<a href="{contact}">go</a>', "a request to another host"),
+        ("a configuration name not in arms.json", "plant.html", '<th class="cfg"><span class="cfg-name">PGR build 9</span></th>', "is not a public name"),
+        ("a configuration slug not in arms.json", "data/showcase.js", "SLUG", "is not a public object of arms.json"),
+    ]
+    missed = 0
+    checks = forbidden_checks(arms)
+    with tempfile.TemporaryDirectory() as scratch:
+        target = pathlib.Path(scratch) / "docs"
+        shutil.copytree(DOCS, target, ignore=lambda folder, files: [f for f in files if f.endswith((".mp4", ".webm"))])
+        try:
+            guard_public(arms, base, target, checks=checks)
+            print("  ok       the unchanged copy of docs/ passes")
+        except SystemExit as err:
+            lines = str(err).splitlines()
+            print("  MISSED   the unchanged copy of docs/ fails:", lines[1] if len(lines) > 1 else err)
+            missed += 1
+        data = target / "data" / "showcase.js"
+        original = data.read_text(encoding="utf-8")
+        for rule, name, body, expect in plants:
+            planted = target / name
+            if body == "SLUG":
+                shown = json.loads(original.split("window.SHOWCASE = ", 1)[1].strip().rstrip(";"))
+                shown["configs"].append(dict(shown["configs"][0], slug="invented-build", name="Invented build"))
+                data.write_text("window.SHOWCASE = " + json.dumps(shown) + ";\n", encoding="utf-8")
+            else:
+                planted.parent.mkdir(parents=True, exist_ok=True)
+                planted.write_text(body, encoding="utf-8")
+            try:
+                guard_public(arms, base, target, only={name}, checks=checks)
+                print(f"  MISSED   {rule}: the guard passed")
+                missed += 1
+            except SystemExit as err:
+                caught = expect.lower() in str(err).lower() and name.replace("\\", "/") in str(err).replace("\\", "/")
+                print(f"  {'caught ' if caught else 'WRONG  '}  {rule}: {expect!r} in {name}")
+                missed += 0 if caught else 1
+            finally:
+                data.write_text(original, encoding="utf-8")
+                if body != "SLUG":
+                    planted.unlink()
+        # The contact the owner publishes is the one link that is let through.
+        planted = target / "plant.html"
+        planted.write_text(f'<a class="btn" href="{contact}">Request access</a>', encoding="utf-8")
+        try:
+            guard_public(arms, {"status": "private-preview", "contact": contact}, target, only={"plant.html"}, checks=checks)
+            print("  ok       the approved contact link passes")
+        except SystemExit as err:
+            print("  MISSED   the approved contact link was refused:", err)
+            missed += 1
+    print(f"guard self-test: {len(plants) + 2 - missed} of {len(plants) + 2} checks as expected")
+    return missed
 
 
 ENGINE_UNITS = {"build_seconds": ("Build, from nothing", "s"), "build_seconds_no_embeddings": ("Build, without embeddings", "s"),
@@ -2377,7 +3152,8 @@ def round_five(points: list[dict], cells: list[dict], agents: list[dict], arms: 
     tier_label = {tier: f"{cid} ({tier})" for tier, cid, _ in PUBLIC_CLASSES}
     out = ["", "## Round five", "",
            "The Rust engine in every combination of its parts, three earlier methods run again on the same day, and "
-           "a held-out set B of three more questions of the same shapes. One agent answering all three questions; "
+           "a held-out set B: a second set of three questions of the same three shapes, written later by the same team and not "
+           "seen by the people and agents who built the engine (it is not independent). One agent answering all three questions; "
            "light is Tier C and mid is Tier B. Hooks were on for every run of the round.", ""]
     for key, title in (("A", "Original questions, set A"), ("B", "Held-out questions, set B")):
         rows = sorted((p for p in round_points if p["set"] == key), key=lambda p: (order.index(p["arm"]), TIER_ORDER.index(p["tier"])))
@@ -2449,8 +3225,12 @@ def round_five(points: list[dict], cells: list[dict], agents: list[dict], arms: 
             f"- Start-up context grew between the sessions: the earlier A0, S1 and S3 single-agent runs averaged {start['earlier']:,.0f} "
             f"tokens ({start['earlier_agents']} agents) and the repeats A0r, S1r and S3r {start['later']:,.0f} ({start['later_agents']} agents), "
             f"on the {' and '.join(start['classes'])} classes.",
-            "- The control's file reads pass through token-goat's read compression on the test machine, which hid lines the control needed "
-            "in some runs. The earlier session (A0) ran without it."]
+            "- The control's file reads pass through token-goat's hooks on the test machine. The secret-redaction hook overwrote the two "
+            "lines that call the first question's target (its name contains \"api_key\") with a placeholder, so the control left that "
+            "caller out in four of its six original-question runs. The hook matches the file-reading tools only; the product "
+            "configurations ran their lookups through the shell tool and were not touched. The earlier session (A0) ran without the hooks. "
+            "The public site therefore does not set the control's fully correct counts or mean score against the product's; it compares "
+            "tokens and turns only, and fully correct counts only with the first generation. See Known weaknesses of the study."]
     control = facts.get("control")
     if control:
         def per_class(counts: dict) -> str:
@@ -2464,7 +3244,210 @@ def round_five(points: list[dict], cells: list[dict], agents: list[dict], arms: 
     return out
 
 
+def saving_section(public: dict) -> list[str]:
+    """The saving against no index, cell by cell, and the first generation beside the highlighted configuration, with the
+    lowest and the highest figure. These are the numbers the public site quotes as a range; they are computed from the
+    same configurations. The private report may say what the site only hints at."""
+    versus = public.get("versus")
+    configs = public["configs"]
+    best = next((c for c in configs if c["best"]), None)
+    first = first_generation(configs)
+    if not versus or not best:
+        return []
+    out = ["", "## Saving against no index, cell by cell", "",
+           f"The highlighted configuration (\"{BEST_LABEL}\" on the site) is {best['name']}. Tokens and turns of it and of the "
+           "no-index control in each of the four cells where both were measured. The site quotes the lowest and the highest saving "
+           "and labels any single cell it shows. It does not set the control's fully correct counts against the product's: in "
+           "these runs the control's reads were altered by token-goat's secret-redaction hook (see Known weaknesses of the study).", "",
+           "| Class | Questions | Tokens, highlighted | Tokens, no index | Saving | Turns, highlighted | Turns, no index |",
+           "|---|---|---:|---:|---:|---:|---:|"]
+    for cell in versus["cells"]:
+        out.append(f"| {cell['class']} | {cell['set']} | {cell['tokens']:,.0f} | {cell['control_tokens']:,.0f} | {cell['saving']:.1%} | "
+                   f"{cell['turns']:.2f} | {cell['control_turns']:.2f} |")
+    out += ["", f"Range of the saving in tokens: {versus['low']:.1%} to {versus['high']:.1%} ({saving_range(versus)} on the site).", ""]
+    if first and first is not best:
+        out += [f"Against the first generation ({first['name']}), the only comparison of fully correct counts the site makes, "
+                "because it ran in the same session under the same conditions:", "",
+                "| Class | Questions | Tokens, highlighted | Tokens, first generation | Turns, highlighted | Turns, first generation | "
+                "Fully correct, highlighted | Fully correct, first generation |",
+                "|---|---|---:|---:|---:|---:|---:|---:|"]
+        for cid, sid in BEST_CELLS:
+            b, f = cell_of(best, cid, sid), cell_of(first, cid, sid)
+            if b and f:
+                out.append(f"| {cid} | {sid} | {b['tokens']:,.0f} | {f['tokens']:,.0f} | {b['turns']:.2f} | {f['turns']:.2f} | "
+                           f"{of(b['perfect_runs'], b['runs'])} | {of(f['perfect_runs'], f['runs'])} |")
+        out.append("")
+    return out
+
+
+def known_weaknesses(public: dict) -> list[str]:
+    """The method review's list of weaknesses of the study, in plain words, each with what it could change and the
+    cheapest fix. The counts are the reviewer's own, taken from the transcripts and the harness; this build does not
+    recompute them, except where a sentence says so. The private report may name everything."""
+    study = public["study"]
+    behind = study["behind"]
+    items = [
+        ("The control's accuracy deficit comes from another tool, not from having no index",
+         "Token-goat's secret-redaction hook overwrote the two lines where the first question's target is called with a placeholder, "
+         "because the target's own name contains \"api_key\". Every one of the six control runs of the second session had the hook act "
+         "on its reads, and four of them left that caller out; the held-out control, whose first question has another target, had no "
+         "redaction and missed nothing. The hook matches only the file-reading tools, so the product configurations, which ran their "
+         "lookups through the shell tool the hook does not see, were not touched. In the first session, without the hook, the control was "
+         "fully correct in 10 of 11 runs across the light, mid and top classes on the original questions.",
+         "The control's fully correct counts (7 of 11 in the second session, against 15 of 16 for the first-session control and the "
+         "held-out control together), any claim that the index improves accuracy, and the control's tokens, which the hook lowered while it damaged the "
+         "answers. The public site no longer sets the control's correctness against the product's.",
+         "Rerun the control, original and held-out, with the hooks off, in the same session as the product runs and in alternating "
+         "order: about six light-class runs. Or choose a first-question target whose name does not contain \"api_key\"."),
+        ("The held-out set is not an independent test",
+         "It is a second draw from the same generator by the same people: the same filter, the same three shapes of question, unique "
+         "function names with four to twelve callers, and job descriptions that follow the wording of the functions' own documentation. "
+         "The answer key matches callers by bare name, which is how a name-based index resolves them, so the key and the index agree "
+         "by construction. Functions that share a name with another function (about one in eight) are never asked about. The output "
+         "formats of the tools were tuned on the first set over five rounds.",
+         "How much the held-out result says about questions of other shapes or other repositories. It checks fitting to the first "
+         "three questions, no more.",
+         "Pre-register a random draw stratified by duplicate-name and caller-count strata, have someone who has not seen the "
+         "documentation write the concept questions, add three questions that need a function body to answer, and include targets "
+         "whose name is shared."),
+        ("The held-out result is worse than the original one, and the headline quoted the best cell",
+         "Configurations that took two turns on every original-question run needed more on the held-out questions (the first "
+         "generation took three and five turns on the mid class, with two runs). The saving against the same-day control was largest in "
+         "the cell the headline showed. The site now gives the range over the four cells and says that two turns is true of the original "
+         "questions.",
+         "The size of the headline saving, and the claim that two turns is a floor for any question.",
+         "Show all four cells, and run the third runs that are missing."),
+        ("Three runs per cell cannot support a claim of significance",
+         "With three runs against three, the smallest exact two-sided permutation p-value is 0.10, and every product-against-control "
+         "token cell of the second session sits at that floor although the ranges do not overlap. A cell holds three repeats of one "
+         "bundle of three questions, so the effective sample for generalising is two bundles. Tokens equal about 65k times the turns, so "
+         "a cell is three draws of a small whole number. Differences of one turn or one fully correct run are inside the spread, among "
+         "them graph alone against graph and search on turns, and the memory comparisons.",
+         "Every finding that rests on one turn or one run. The site now says \"in these runs\" and gives the counts.",
+         "Ten repeats per cell for the control and the two leading configurations on the light class, both sets (about two dollars at the "
+         "table's prices), and about twenty randomly drawn questions so that the question dimension has a sample."),
+        ("The highlighted configuration is chosen by a rule written after the results",
+         "Only configurations with three runs in each of four cells can be chosen. The control and the first generation miss it only "
+         "because a third run of one cell was never started, and the memory configurations have no held-out cell, so the field is four "
+         "sibling configurations. Two of them tie on fully correct runs and the token tie-break decides. Other reasonable rules choose "
+         "the first generation or the code-graph configuration instead.",
+         "Which configuration is highlighted. The site now calls it \"Most reliable\", states the rule and that it was set after the runs, "
+         "and says that only configurations measured on both question sets were eligible.",
+         "Run the two missing third runs (four agents), publish the rule before the next round, or show every configuration with its "
+         "interval."),
+        ("The benchmark cannot tell the second generation from the first",
+         "On the original questions the two use the same tokens and turns and are fully correct as often. The second generation's "
+         "measured advantage is speed and size, not tokens or accuracy.",
+         "The ranking narrative. The site says the first generation matched it on tokens and turns and puts the difference under speed.",
+         "State the tie, or run both on a set built to need what the second generation added, such as impact analysis."),
+        ("The agents were told different amounts",
+         "The product configurations received command descriptions of 400 to 500 characters that list the fields the grader checks, show "
+         "how to batch questions and say not to verify. The control received one line naming its tools, with no hint to batch or to read "
+         "only what it needs. Every prompt also said the task measures what a code lookup costs, and the start-up context carries the "
+         "sponsor's own routing rules.",
+         "The two-turn floor, partly produced by the prompt, and the control's turn count. The Study page now says the descriptions "
+         "differ and were not controlled.",
+         "Give the control a usage note of the same length, give both sides the same \"when to read\" sentence, delete the sentence "
+         "about measuring tokens, and rerun the control (six runs)."),
+        ("The baseline is the weakest available and the questions suit a call graph",
+         "The control has file search and read tools and no shell, so no ripgrep, no context lines around a match, no ctags or "
+         "ast-grep, no language server. Two of the three questions ask for the function that encloses each call, which a plain search "
+         "cannot print, so the control needs an extra dependent turn, and in several rows it names the wrong enclosing function. No "
+         "question needs a function body to be read.",
+         "How large the saving is against a competent user of ordinary tools.",
+         "Add a tuned-search arm and a shell arm with context lines and a syntax-aware search, and add three questions about behaviour "
+         "whose answer needs a body read."),
+        ("The token headline is against a control the hook had made cheaper",
+         "The hooked control of the second session used fewer tokens than the clean control of the first (about 19% fewer on the light "
+         "class) while giving worse answers. Against the clean control the saving is larger (about 64% light and 53% mid). Within the "
+         "second session the start-up context of the control and the product differ by little, so the hook is the live difference.",
+         "The saving, upward. The site compares with the same-day control on tokens and turns and says so; the Study page gives the tokens of "
+         "both controls.",
+         "Run control and product in one session with the hooks off, in alternating order, and report one control."),
+        ("A token count weighs cached re-reads like fresh text",
+         "About 87% of all tokens are cache reads, which a bill weighs at a tenth. The size of the saving depends on the cache state: "
+         "in dollars it is much larger with a warm cache than with a cold one, and the absolute saving on the light class is a fraction "
+         "of a cent. The prices are constants typed into the analysis, and the light-class entry is about a tenth of the list price the "
+         "reviewer knew of. They cannot be checked from the repository.",
+         "Every money figure, including the orchestration cost multiple. The site now defines a token count, says most of the saving is "
+         "turns, and calls the multiple an estimate.",
+         "Show warm and cold dollars beside tokens, check the price table against a bill, and describe the saving as about two fewer "
+         "round trips."),
+        ("Grading is not entirely free of human choices",
+         "The key for the which-function question is hand-written, and for the held-out set a person widened it to accept either of two "
+         "functions. The parser has false negatives: a parameter written as name and type is read as nothing, a defensible alternative "
+         "function scores a partial mark, and one missed caller is enough to make a run not fully correct. None of the recorded answers "
+         "hit the parameter case.",
+         "Whether a single run counts as fully correct. The site now says the key was read from the syntax tree and reviewed by the "
+         "authors, and calls the percentage a mean score.",
+         "Parse parameter names with the syntax tree, publish the accepted answers before the runs, and score a defensible "
+         "alternative as its own class."),
+        ("Memory filled with the answers is a lookup, not a result",
+         "Four memory configurations were filled by a session that answered the same questions and were never run on the held-out set. "
+         "The only realistic test, memory from an exploring session, was neutral or worse on tokens in most cells and may overlap the "
+         "held-out targets, because the exploring notes were not compared with the questions.",
+         "Any suggestion that memory helps. The site now says \"filled with the answers\" in those four names and calls them a best case.",
+         "Label them as an upper bound, compare the exploring notes with both question sets, and test memory on a task that spans two "
+         "sessions."),
+        ("The speed table is not like for like",
+         "It compares a first generation written in Python with a binary written in Rust, so it measures the runtime and the "
+         "architecture, not an algorithm. The 130 second build of the first generation is from an earlier session and uses embeddings "
+         "(12 seconds without); the query figure is the whole-process median of one call answering the original-set questions. "
+         "Search alone, however fast, was often wrong on the callers question.",
+         "The 48-times and the build-time factors. The site now labels the query as one call answering three lookups, shows the single "
+         "lookup gap, and names the build.",
+         "Measure both engines on the same day, with and without embeddings, 20 runs each with the spread, on a larger repository."),
+        ("The competitor rows are not like for like",
+         "Three published comparators come from the first session with one to three runs, and are driven through descriptions written "
+         "by the sponsor, one of them through an awkward command-line wrapper of a tool-protocol call. "
+         f"{study['configurations_published']} of {study['configurations_tested']} configurations are published, chosen by a flag.",
+         "How the comparators compare when used as their makers intend. The leaderboard marks these rows as an earlier session and the "
+         "Study page no longer says everything was measured on the same day.",
+         "Rerun them on the same day with at least five runs and the maker's recommended use, and publish the thirty other rows in this report."),
+        ("Which transcripts enter the data is decided by hand",
+         "The parser takes a list of folders on the command line, with no manifest and no list of what was left out. Some labelled "
+         "agents on disk are not in the data, among them a control run that never produced a structured answer. A few runs with "
+         "off-policy tool use are kept. Nothing suggests a run was silently dropped, and nothing proves it.",
+         "The control's tally, by one run, and the trust in the data.",
+         "Commit a manifest of the included folders, refuse any labelled transcript not in one, report off-policy runs separately, and "
+         "count the control run that never answered."),
+        ("The orchestration claim rests on estimates and one set of briefs",
+         "Only three planning calls were ever measured and the mean is charged to the other orchestrated runs; every orchestrated run "
+         "of the original set reuses the same briefs; the reviewer is the top model class with tools, so the comparison mixes "
+         "orchestration with model class; and the single-agent comparison pools many configurations, including weak ones.",
+         "The cost multiple and the accuracy gap. The site now says the cost is an estimate, pooled, and that the reviewer is a larger "
+         "class.",
+         "Compare like for like on the same configurations and questions with independent plans for each run."),
+    ]
+    out = ["", "## Known weaknesses of the study", "",
+           "The method review of the study found the weaknesses below. Each has what it could change and the cheapest fix. The counts are "
+           "the reviewer's, taken from the transcripts and the harness; this build does not recompute them. "
+           f"For scale: {behind['runs']} single-agent runs in {behind['cells']} cells stand behind the public leaderboard, computed by this build.", ""]
+    for n, (title, what, changes, fix) in enumerate(items, 1):
+        out += [f"### {n}. {title}", "", what, "", f"- What it could change: {changes}", f"- Cheapest fix: {fix}", ""]
+    out += ["### Three claims the data does not support", "",
+            "1. That the index improves accuracy (12 of 12 against 7 of 11 fully correct). The gap is the redaction artefact; the clean "
+            "control was fully correct in 15 of 16 runs, and on the held-out set the control and the leading configuration were both "
+            "fully correct in every run.",
+            "2. That the highlighted configuration is better than the first generation. Tokens, turns and correct runs on the original "
+            "questions are the same within noise.",
+            "3. That the held-out result shows the engine was not fitted, or that it generalises beyond this repository and these "
+            "shapes of question. The held-out set is a second draw of the same shapes, and it shows more turns. The speed factors are "
+            "not like for like and the benefit of memory is unmeasured.", "",
+            "### The claims it does support", "",
+            "1. On this repository, for caller, definition and find-by-description questions, a one-call lookup lets light and mid agents "
+            "finish in about two turns where unaided search and read tools needed three to six. The saving in tokens against the "
+            "same-day control over the four cells is in the table above, and its direction does not depend on the hook.",
+            "2. Tokens here are turns times the start-up context. The index shrinks the tool output, which is small next to one extra turn. "
+            "Search without a call graph failed the callers question on the light class.",
+            "3. Memory does not help single lookups: memory holding the answers only matches the two-turn floor, and memory from an exploring "
+            "session used fewer tokens in a minority of cells.", ""]
+    return out
+
+
 def main() -> int:
+    if len(sys.argv) == 2 and sys.argv[1] == "--guard-selftest":
+        return 1 if guard_selftest(load("harness/arms.json"), install_of()) else 0
     if len(sys.argv) == 3 and sys.argv[1] == "--guard":
         scanned = guard_public(load("harness/arms.json"), install_of(), pathlib.Path(sys.argv[2]))
         print(f"guard passed: {scanned} files in {sys.argv[2]} hold nothing that must stay private")
@@ -2539,15 +3522,16 @@ def main() -> int:
     if stamped:
         print(f"asset links restamped in {stamped} pages")
     target = REPORT / "data" / "benchmark.js"
+    public = public_of(points, cells, agents, index, orchestration, hooks, arms)
     (BENCH / "RESULTS.md").write_text(
         markdown(points, index, arms, text) + more_tables(orchestration, hooks, arms, text)
-        + "\n".join(round_five(points, cells, agents, arms)) + "\n", encoding="utf-8")
+        + "\n".join(round_five(points, cells, agents, arms) + saving_section(public) + known_weaknesses(public)) + "\n",
+        encoding="utf-8")
     in_readme = write_readme(readme_block(original, arms, text))
     print("site data: " + ", ".join(f"{name} {size:,} bytes" for name, size in written))
     print(f"wrote {target.relative_to(REPO)} ({target.stat().st_size:,} bytes), benchmark/RESULTS.md"
           f"{' and the README results block' if in_readme else ' (README has no results markers)'}: "
           f"{len(points)} points from {len(cells)} runs, {len(agents)} agents, {len(described)} methods")
-    public = public_of(points, cells, agents, index, orchestration, hooks, arms)
     size = write_showcase_data(public)
     filled = write_showcase_pages(public)
     restamped = stamp_assets(DOCS, [name for name, _ in PUBLIC_PAGES])
@@ -2561,6 +3545,9 @@ def main() -> int:
     # The last step of every build, so nothing private can be published by accident.
     scanned = guard_public(arms, public["install"])
     print(f"guard passed: {scanned} files under docs/ hold nothing that must stay private")
+    # The guard is only worth having while it still catches what it was written to catch.
+    if guard_selftest(arms, public["install"]):
+        raise SystemExit("GUARD SELF-TEST FAILED: a planted violation was not caught.")
     return 0
 
 

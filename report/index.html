@@ -43,7 +43,7 @@
   <p>An agent re-reads its whole context on every turn, so the number of turns is what a lookup costs. A local index is worth having when it gives the answer in fewer turns.</p>
   <ul class="asks" id="asks">
     <li><a href="#leaderboard"><span class="q">Which lookup method is cheapest?</span><span class="a" data-ask="cheapest">11 methods are level at about 130k tokens and 2.0 turns for three lookups on the cheapest tier, 64% fewer than no index (365k). The build that ships, Shipped: lx ask, default index, is one of them.</span><span class="go">The leaderboard</span></a></li>
-    <li><a href="orchestration.html#verdict"><span class="q">Does an orchestrator pay for itself?</span><span class="a" data-ask="orchestrator">It buys accuracy at a price. On the cheapest subagents 48 of 48 orchestrated runs ended fully correct, against 38 of 43 for three subagents with nobody reviewing, and a run cost about 95 times one agent.</span><span class="go">Orchestration</span></a></li>
+    <li><a href="orchestration.html#verdict"><span class="q">Does an orchestrator pay for itself?</span><span class="a" data-ask="orchestrator">It came with more fully correct runs, at a price. On the cheapest subagents 48 of 48 orchestrated runs ended fully correct, against 38 of 43 for three subagents with nobody reviewing, and a run cost an estimated 95 times one agent at list prices.</span><span class="go">Orchestration</span></a></li>
     <li><a href="hooks.html#verdict"><span class="q">Do token-goat's hooks help?</span><span class="a" data-ask="hooks">Not on these lookups. Token use stayed inside the spread between repeats, and with no index 5 of 9 runs ended fully correct with the hooks against 13 of 17 without, because a redaction marker hid a line the lookup needed.</span><span class="go">Hooks</span></a></li>
     <li><a href="setup.html#install"><span class="q">How do I install it?</span><span class="a">One file: <code>python INSTALL.txt</code>. Rules, three agents, a session hook and the lx command, for Claude Code, Codex and Copilot.</span><span class="go">Setup</span></a></li>
   </ul>
@@ -77,7 +77,7 @@
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=74a1014b"></script>
+<script src="data/benchmark.js?v=39c86ca3"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/home.js?v=8e20c0ce"></script>
 </body>

@@ -30,7 +30,7 @@ MODEL = VIDEO / "models" / "kokoro-v1.0.onnx"
 VOICES = VIDEO / "models" / "voices-v1.0.bin"
 SR = 24000          # the speech model's native rate
 OUT_SR = 48000      # the delivered audio
-BED_BELOW_DB = 18   # music bed under the voice, integrated loudness (the brief asks for at least 14)
+BED_BELOW_DB = 14   # music bed under the voice, integrated loudness (the brief asks for at least 14; 18 left the bed inaudible on a phone)
 
 
 def run(cmd, **kw):
@@ -96,10 +96,22 @@ def split_caption(text: str, max_line=42, max_lines=2):
             cur.append(w)
     if cur:
         pieces.append(cur)
-    # prefer to break a long cue after punctuation: merge nothing, keep greedy but re-balance the last two pieces
+    # a piece that needs two lines is broken so the lines are nearly as long as each other, after punctuation when
+    # that costs little: no caption ends on a lone word
+    def balanced(ws):
+        if len(" ".join(ws)) <= max_line:
+            return [" ".join(ws)]
+        best = None
+        for k in range(1, len(ws)):
+            a, b = " ".join(ws[:k]), " ".join(ws[k:])
+            if len(a) <= max_line and len(b) <= max_line:
+                score = max(len(a), len(b)) - (4 if a[-1] in ",:;." else 0)
+                if best is None or score < best[0]:
+                    best = (score, [a, b])
+        return best[1] if best else wrap(ws)
     out = []
     for p in pieces:
-        out.append((wrap(p), sum(len(w) for w in p) + len(p)))
+        out.append((balanced(p), sum(len(w) for w in p) + len(p)))
     return out
 
 
@@ -290,11 +302,30 @@ def vtt_time(t: float) -> str:
     return f"{int(h):02d}:{int(m):02d}:{s:06.3f}"
 
 
+def caption_cues(scene, min_len=1.0, max_chars=84):
+    """The caption cues of one scene. A cue under min_len seconds is joined to its neighbour in the scene, so a
+    caption never flashes by; the picture still cuts on every spoken cue."""
+    cues = [dict(c) for c in scene["cues"]]
+    i = 0
+    while i < len(cues):
+        c = cues[i]
+        if c["end"] - c["start"] < min_len and len(cues) > 1:
+            lo = i if i + 1 < len(cues) else i - 1
+            a, b = cues[lo], cues[lo + 1]
+            text = a["text"] + " " + b["text"]
+            if len(text) <= max_chars:
+                cues[lo:lo + 2] = [{"start": a["start"], "end": b["end"], "text": text}]
+                i = max(0, lo - 1)
+                continue
+        i += 1
+    return cues
+
+
 def write_vtt(tl, path: Path):
     lines = ["WEBVTT", ""]
     n = 1
     for scene in tl["scenes"]:
-        for cue in scene["cues"]:
+        for cue in caption_cues(scene):
             pieces = split_caption(cue["text"])
             total_w = sum(w for _, w in pieces)
             a = cue["start"]

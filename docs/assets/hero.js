@@ -1,8 +1,10 @@
 /* The Overview stage. Two streams of particles drawn with WebGL2: the tokens one task takes with no index, and the
    tokens it takes with the best configuration. One particle stands for a fixed number of tokens, so the count of
    particles and the thickness of each stream are the measured numbers from window.SHOWCASE. Scrolling plays the
-   film: the small stream rises into the large one, the tokens the best configuration does not need are let go
-   while the count falls with them, and what is left draws the mark.
+   film: the title gives way to the count, the small stream rises into the large one, the tokens the best configuration
+   does not need are let go while the count falls with them, and, as the stage leaves, what is left settles into a
+   line that is the top edge of the next section. Scrolling past a mark changes a state of the stage and the change is
+   drawn in under 200 ms; the count rolls with the scroll and, once the scroll stops, shows a whole number.
    Without WebGL2, or where the stage has no room, the page keeps its lanes (home.js). With reduced motion the
    stage is one still frame. The numbers are also in the page as text. */
 (function () {
@@ -13,34 +15,22 @@
   var clamp = App.clamp, mix = function (a, b, t) { return a + (b - a) * t; };
   var smooth = function (t) { t = clamp(t); return t * t * (3 - 2 * t); };
 
-  /* ---------- the stacks of the first chapter: the total above a stack counts the turns that have landed ---------- */
-  // The same starts and spans as the stylesheet gives the blocks (.stack, .stack.best and the fade of .slab).
+  /* ---------- the chapter: each block lands as the scroll passes its mark ---------- */
   (function () {
     var chapter = document.querySelector('.ch-problem');
     if (!chapter || !App.film) return;
-    var FADE = 0.07, stacks = [];
+    var slabs = [];
     each(chapter.querySelectorAll('.stack'), function (el) {
-      var total = el.querySelector('[data-od]'), to = total ? parseFloat(total.getAttribute('data-to')) : NaN, best = el.classList.contains('best');
-      var od = to > 0 ? App.od(total, 'tokens', to) : null;
-      if (!od) return;
-      var parts = Array.prototype.map.call(el.querySelectorAll('.slab'), function (s) { return parseFloat(s.style.getPropertyValue('--h')) || 0; });
-      var sum = parts.reduce(function (a, b) { return a + b; }, 0) || 1;
-      stacks.push({ od: od, to: to, parts: parts, sum: sum, start: best ? 0.66 : 0.06, gap: (best ? 0.2 : 0.5) / parts.length });
+      var best = el.classList.contains('best');
+      each(el.querySelectorAll('.slab'), function (slab, n) { slabs.push({ el: slab, at: best ? 0.62 + n * 0.14 : 0.08 + n * 0.13 }); });
     });
-    App.pin(chapter, function (p) {
-      stacks.forEach(function (s) {
-        var landed = 0;
-        s.parts.forEach(function (h, i) { landed += clamp((p - s.start - i * s.gap) / FADE) * h; });
-        var share = landed / s.sum;
-        s.od.set(s.to * share, share >= 1);
-      });
-    });
+    App.pin(chapter, function (p) { slabs.forEach(function (slab) { slab.el.classList.toggle('on', p >= slab.at); }); });
   })();
 
   /* ---------- the particle stage ---------- */
   var hero = document.getElementById('hero'), stage = hero ? hero.querySelector('.hero-stage') : null;
   var read = hero ? hero.querySelector('.hero-read') : null, found = data ? App.headline(data) : null;
-  function plain() { root.classList.remove('gl-on', 'gl-live'); App.gl = false; }
+  function plain() { root.classList.remove('gl-on', 'gl-live'); App.gl = false; var b = stage && stage.querySelector('.motion-btn'); if (b) b.hidden = true; }
   if (!stage || !read || !found || !found.c || !window.WebGL2RenderingContext) { plain(); return; }
   var canvas = document.createElement('canvas'), gl = null;
   try { gl = canvas.getContext('webgl2', { alpha: true, antialias: false, premultipliedAlpha: true, powerPreference: 'high-performance' }); } catch (err) { gl = null; }
@@ -54,8 +44,8 @@
   var GRAINS = [1, 2, 4, 8, 16], grain = App.fine ? 0 : 1, locked = false;
   var MOST = Math.max(1, Math.round(REF / FINEST)), MOST_BEST = Math.max(1, Math.round(BEST / FINEST));
   var perEl = read.querySelector('[data-per]'), numEl = read.querySelector('.hero-num'), countEl = read.querySelector('.hero-count');
-  var tags = [read.querySelector('.tag-ref'), read.querySelector('.tag-best')], word = read.querySelector('.hero-word');
-  var copy = stage.querySelector('.hero-copy'), tabbar = document.querySelector('.tabbar'), markEl = read.querySelector('.hero-mark');
+  var tags = [read.querySelector('.tag-ref'), read.querySelector('.tag-best')], pauseBtn = stage.querySelector('.motion-btn');
+  var copy = stage.querySelector('.hero-copy'), tabbar = document.querySelector('.tabbar');
   var od = numEl && App.film ? App.od(numEl, 'tokens', REF) : null;
 
   var VERT = [
@@ -68,26 +58,16 @@
     'uniform vec4 uPhase;',                      // intro, merge, condense, mark
     'uniform vec3 uPtr;',                        // the pointer and how hard it pushes
     'uniform vec2 uCam;',                        // the drift of the camera
-    'uniform vec3 uGlyph;',                      // the mark: centre and the pixels of one unit of its grid
+    'uniform vec3 uGlyph;',                      // the line the small stream settles into: its height is the second value
     'out float vAlpha;',
     'out float vHeat;',
     'out float vRound;',
+    'out float vSoft;',
     'float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
     'float noise(vec2 p) {',
     '  vec2 i = floor(p), f = fract(p);',
     '  f = f * f * (3.0 - 2.0 * f);',
     '  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), f.x), mix(hash(i + vec2(0.0, 1.0)), hash(i + vec2(1.0, 1.0)), f.x), f.y) * 2.0 - 1.0;',
-    '}',
-    // The mark on its 24 unit grid: a stroke 42.35 units long (stem, top, bowl, return), then the dot.
-    'vec2 glyph(float t, float v, float w) {',
-    '  if (t > 0.9) { float r = 1.9 * sqrt(abs(v)); float g = w * 3.14159; return vec2(18.5, 18.6) + r * vec2(cos(g), sin(g)); }',
-    '  float d = t / 0.9 * 42.35;',
-    '  vec2 p; vec2 n;',
-    '  if (d < 16.0) { p = vec2(7.0, 4.0 + d); n = vec2(1.0, 0.0); }',
-    '  else if (d < 22.5) { p = vec2(7.0 + d - 16.0, 4.0); n = vec2(0.0, 1.0); }',
-    '  else if (d < 35.85) { float g = (d - 22.5) / 4.25; n = vec2(sin(g), -cos(g)); p = vec2(13.5, 8.25) + 4.25 * n; }',
-    '  else { p = vec2(13.5 - (d - 35.85), 12.5); n = vec2(0.0, 1.0); }',
-    '  return p + n * v * 1.6;',
     '}',
     'void main() {',
     '  float u = seed.x, v = seed.y, w = seed.z, s = seed.w;',
@@ -117,10 +97,7 @@
     '  } else if (mark > 0.0) {',
     '    k = clamp(mark * 1.5 - r1 * 0.5, 0.0, 1.0);',
     '    k = k * k * (3.0 - 2.0 * k);',
-    '    vec2 g = uGlyph.xy + (glyph(u, v, w) - vec2(12.0)) * uGlyph.z;',
-    '    g += vec2(noise(vec2(s * 50.0, uTime * 0.6)), noise(vec2(uTime * 0.6, s * 50.0))) * uGlyph.z * 0.1;',
-    '    x = mix(x, g.x, k);',
-    '    y = mix(y, g.y, k);',
+    '    y = mix(y, uGlyph.y + (r2 - 0.5) * 2.0, k);',
     '  }',
     // The pointer parts the stream.
     '  vec2 d = vec2(x, y) - uPtr.xy;',
@@ -138,6 +115,7 @@
     // while they flow, a point once they sit in the mark.
     '  float wide = step(0.965, r2);',
     '  vRound = max(k, wide);',
+    '  vSoft = wide;',
     '  gl_PointSize = max(1.0, mix(1.3, 2.7, r1) * persp * mix(mix(2.8, 1.25, k), 8.0, wide) * uSize * uDpr);',
     '  vAlpha = alpha * mix(1.0, 0.05, wide) * mix(1.0, 0.42, clamp(z, 0.0, 1.0)) * mix(0.62, 1.0, max(heat, k));',
     '  vHeat = heat;',
@@ -148,6 +126,7 @@
     'in float vAlpha;',
     'in float vHeat;',
     'in float vRound;',
+    'in float vSoft;',
     'uniform vec3 uCold, uHot;',
     'out vec4 color;',
     'void main() {',
@@ -155,7 +134,7 @@
     '  c.y *= mix(3.4, 1.0, vRound);',
     '  float a = 1.0 - dot(c, c);',
     '  if (a <= 0.0) discard;',
-    '  a = a * a * vAlpha;',
+    '  a = mix(smoothstep(0.0, 0.5, a), a * a, vSoft) * vAlpha;',
     '  color = vec4(mix(uCold, uHot, vHeat) * a, a);',
     '}'].join('\n');
 
@@ -228,7 +207,7 @@
     if (!W || !H) return false;
     // Device pixels up to two for one, within a budget of pixels to fill: a large stage on a dense screen is
     // drawn a little under two for one, which integrated graphics can hold while the page scrolls.
-    dpr = Math.min(window.devicePixelRatio || 1, 2, Math.max(1, Math.sqrt(3400000 / (W * H))));
+    dpr = Math.min(window.devicePixelRatio || 1, 2, Math.max(1, Math.sqrt(4400000 / (W * H))));
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     gl.viewport(0, 0, canvas.width, canvas.height);
@@ -249,8 +228,7 @@
     var under = countEl && countEl.offsetHeight ? countEl.offsetTop + countEl.offsetHeight + 28 : H * 0.42;
     var deep = Math.max(thick, Math.min(H * 0.34, (floor - 56 - under) * 0.86));
     second = { y: (under + floor - 40) / 2, t: deep };
-    var unit = Math.min((floor - 120) * 0.62, W * 0.7) / 20;
-    glyph = { x: W / 2, y: (floor - 60) * 0.46 + 16, unit: unit };
+    glyph = { x: W / 2, y: H - 8, unit: 1 };
     tags.forEach(function (tag, i) {
       if (!tag) return;
       var t = i ? thick * KEEP : thick;
@@ -258,21 +236,17 @@
       tag.style.setProperty('--t', t.toFixed(1) + 'px');
       tag.style.setProperty('--s', (i ? 0 : first.spill).toFixed(1) + 'px');
     });
-    if (word) word.style.setProperty('--y', (glyph.y + unit * 10.4 + 18).toFixed(1) + 'px');
-    if (markEl) {
-      markEl.style.setProperty('--x', glyph.x.toFixed(1) + 'px');
-      markEl.style.setProperty('--y', glyph.y.toFixed(1) + 'px');
-      markEl.style.setProperty('--u', unit.toFixed(3) + 'px');
-    }
     return true;
   }
 
   /* ---------- one frame ---------- */
-  var p = 0, shown = 0, time = 0, intro = 0, ptr = { x: -999, y: -999, tx: -999, ty: -999, f: 0, on: false, nx: 0, ny: 0 };
+  var p = 0, shown = 0, exitShown = 0, time = 0, intro = 0, ptr = { x: -999, y: -999, tx: -999, ty: -999, f: 0, on: false, nx: 0, ny: 0 };
+  // How far the stage has left: the stage is pinned until its track ends, then it scrolls away over its own height.
+  function leaving() { var top = stage.getBoundingClientRect().top; return top < 0 ? clamp(-top / H) : 0; }
   function counts() { var per = GRAINS[grain]; return [Math.max(1, Math.round(MOST / per)), Math.max(1, Math.round(MOST_BEST / per))]; }
   function draw() {
-    // The same marks on the scroll as the stylesheet uses for the words on the stage.
-    var cam = smooth(shown / 0.2), merge = smooth((shown - 0.1) / 0.1), cond = clamp((shown - 0.22) / 0.42), mark = clamp((shown - 0.72) / 0.2);
+    // The streams move with the scroll; the words on the stage change state at the marks set in `states`.
+    var cam = smooth(shown / 0.2), merge = smooth((shown - 0.08) / 0.12), cond = clamp((shown - 0.16) / 0.62), mark = smooth(clamp((exitShown - 0.45) / 0.5));
     var n = counts(), y = mix(first.y, second.y, cam), half = mix(first.t, second.t, cam) / 2;
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -295,11 +269,11 @@
     gl.uniform4f(uni.uBand, mix(first.small, y, merge), half * KEEP, Math.max(1.5, half * KEEP * 0.12), 0.07);
     gl.bindVertexArray(vaos[1]);
     gl.drawArrays(gl.POINTS, 0, n[1]);
-    if (od) od.set(REF - (REF - BEST) * cond, cond <= 0 || cond >= 1);
+    if (od) od.set(REF - (REF - BEST) * cond, shown === p || cond <= 0 || cond >= 1);
   }
 
   /* ---------- the loop: it stops when the stage is off screen or the tab is hidden, and it sizes itself at the start ---------- */
-  var running = false, visible = true, last = 0, seen = 0, spent = 0, mean = 0;
+  var running = false, visible = true, paused = false, last = 0, seen = 0, spent = 0, mean = 0;
   function label() {
     var per = FINEST * GRAINS[grain], n = counts();
     if (perEl) perEl.textContent = per >= 1000 ? per / 1000 + 'k' : String(per);
@@ -320,15 +294,18 @@
   }
   function tick(now) {
     if (!running) return;
-    if (!visible || document.hidden) { running = false; return; }
+    if (!visible || document.hidden || paused) { running = false; return; }
     var dt = last ? Math.min(0.05, (now - last) / 1000) : 0.016;
     if (last) sample(now - last);
     last = now;
     time += dt;
     intro = Math.min(1, intro + dt / 1.8);
     // The film follows the scroll with a short lag, so a wheel step is a glide and not a jump.
-    shown += (p - shown) * Math.min(1, dt * 9);
-    if (Math.abs(p - shown) < 0.0004) shown = p;
+    shown += (p - shown) * Math.min(1, dt * 18);
+    if (Math.abs(p - shown) < 0.004) shown = p;
+    var gone = leaving();
+    exitShown += (gone - exitShown) * Math.min(1, dt * 14);
+    if (Math.abs(gone - exitShown) < 0.004) exitShown = gone;
     // Taken fast, released slowly: the stream closes behind the pointer like something thick.
     ptr.x += (ptr.tx - ptr.x) * Math.min(1, dt * 14);
     ptr.y += (ptr.ty - ptr.y) * Math.min(1, dt * 14);
@@ -336,7 +313,7 @@
     draw();
     requestAnimationFrame(tick);
   }
-  function start() { if (running || App.reduced) return; running = true; last = 0; requestAnimationFrame(tick); }
+  function start() { if (running || App.reduced || paused) return; running = true; last = 0; requestAnimationFrame(tick); }
   function still() { time = 4.2; intro = 1; shown = p = 0; draw(); }
 
   canvas.className = 'hero-gl';
@@ -348,12 +325,47 @@
   label();
   if (App.reduced) still(); else draw();
 
+  // The words of the stage have three states: the title, the count, and the count with its answer. A mark of the scroll
+  // changes the state and the stylesheet draws the change in under 200 ms.
+  var counting = false, answered = false;
+  function states(v) {
+    if ((v > 0.07) !== counting) { counting = !counting; stage.classList.toggle('s-count', counting); App.bar(counting ? 1 : 0); }
+    if ((v >= 0.8) !== answered) { answered = !answered; stage.classList.toggle('s-done', answered); }
+  }
   if (App.film) {
     App.barOwned = true;
-    App.pin(hero, function (v) { p = v; App.bar((v - 0.1) / 0.04); if (!running) start(); });
+    App.pin(hero, function (v) {
+      p = v;
+      states(v);
+      if (paused) { shown = p; exitShown = leaving(); draw(); } else if (!running) start();
+    });
+  }
+  // Motion can be stopped: the streams hold their frame, and the film below stops its preview too.
+  if (pauseBtn && !App.reduced) {
+    pauseBtn.hidden = false;
+    pauseBtn.addEventListener('click', function () {
+      paused = !paused;
+      App.paused = paused;
+      pauseBtn.textContent = paused ? 'Resume motion' : 'Pause motion';
+      document.dispatchEvent(new CustomEvent('pgr-motion', { detail: { paused: paused } }));
+      if (paused) { shown = p; exitShown = leaving(); draw(); } else start();
+    });
   }
   if ('ResizeObserver' in window) {
-    new ResizeObserver(function () { if (layout()) { if (App.reduced || !running) { if (App.reduced) still(); else draw(); } } }).observe(stage);
+    // The stage measures its words, so it is laid out again when they grow, as they do under a larger text size.
+    // Where the words no longer leave room for the streams, the stage steps aside for the plain header.
+    var relayout = new ResizeObserver(function () {
+      if (layout()) { if (App.reduced || !running) { if (App.reduced) still(); else draw(); } return; }
+      if (!canvas.parentNode) return;
+      running = false;
+      paused = true;
+      App.barOwned = false;
+      stage.removeChild(canvas);
+      stage.classList.remove('s-count', 's-done');
+      plain();
+    });
+    relayout.observe(stage);
+    if (copy) relayout.observe(copy);
   }
   if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (entries) {

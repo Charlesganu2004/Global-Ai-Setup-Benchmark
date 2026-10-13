@@ -4,7 +4,7 @@
   "fps": 30,
   "lead": 0.7,
   "tail": 1.4,
-  "speed": 0.9,
+  "speed": 0.95,
   "scenes": [
     {
       "id": "cold",
@@ -43,7 +43,13 @@
           "text": "One answer."
         },
         {
-          "text": "The stream shortens to {tok_best} tokens. {pct} fewer, in {turns_best} turns."
+          "text": "The stream shortens to {tok_best} tokens."
+        },
+        {
+          "text": "{pct} fewer than no index, in {turns_best} turns."
+        },
+        {
+          "text": "That is one comparison: light class, first question set."
         }
       ]
     },
@@ -80,13 +86,19 @@
           "text": "To measure it, we ran {agents} agents on one Python repository of {files} files."
         },
         {
-          "text": "Three questions, graded against the syntax tree, on three model classes: light, mid and top."
+          "text": "Three questions, graded against the syntax tree."
         },
         {
-          "text": "{configs} ways of finding code, ranked. The best one is marked."
+          "text": "Three model classes: light, mid and top."
         },
         {
-          "text": "Runs fully correct: {perfect_best} of {runs_best}. With no index, {perfect_ref} of {runs_ref}."
+          "text": "{configs} ways to find code, fewest tokens first. The most reliable is marked."
+        },
+        {
+          "text": "Against no index: {range_min} to {range_max} fewer tokens, across {cells} comparisons."
+        },
+        {
+          "text": "The most reliable was fully correct in every run, on both question sets."
         }
       ]
     },
@@ -110,10 +122,10 @@
     }
   ],
   "voice_speed": {
-    "am_michael": 1.0
+    "am_michael": 1.1
   },
   "poster": {
-    "cue": "change.4",
-    "offset": 4.6
+    "cue": "study.5",
+    "offset": 2.4
   }
 }

@@ -7,7 +7,7 @@
     "first_generation": {"build_seconds": 130, "build_seconds_no_embeddings": 12, "ask_ms": 1937, "about_ms": 319, "index_mb": 14.53}
   },
   "public": [
-    {"name": "Our engine, first generation", "build_seconds": 130, "query_ms": 1937, "index_mb": 14.5},
-    {"name": "PGR", "build_seconds": 0.52, "query_ms": 40, "index_mb": 8.1}
+    {"name": "Our engine, first generation", "from": "first_generation", "build_note": "with embeddings"},
+    {"name": "PGR", "from": "pgr", "build_note": "with embeddings"}
   ]
 }

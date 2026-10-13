@@ -9,13 +9,14 @@
 <meta name="description" content="How the measurements were made, what they cover and what they leave out.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
 <script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=da33b975">
+<link rel="stylesheet" href="assets/app.css?v=2e9ba78a">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
 <div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Study</span></div>
-<!--slot:sidebar--><nav class="sidebar" aria-label="Pages">
+<!--slot:sidebar--><header class="sidebar">
     <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+    <nav aria-label="Pages">
     <div class="side-wrap">
       <span class="side-ind" aria-hidden="true" style="--i:2"></span>
       <ul class="side-pages">
@@ -26,16 +27,20 @@
           <li><a href="#asked">What was asked</a></li>
           <li><a href="#sets">Question sets</a></li>
           <li><a href="#graded">How answers were graded</a></li>
+          <li><a href="#told">What each agent was told</a></li>
           <li><a href="#scale">How much was run</a></li>
+          <li><a href="#tokens">What a token count is</a></li>
           <li><a href="#classes">Model classes</a></li>
-          <li><a href="#sessions">Sessions, memory and the control</a></li>
+          <li><a href="#sessions">Sessions and memory</a></li>
+          <li><a href="#control">The control</a></li>
           <li><a href="#limits">Limits</a></li>
           <li><a href="#unpublished">What is not published</a></li>
         </ul></li>
         <li><a href="install.html">Install</a></li>
       </ul>
     </div>
-  </nav><!--/slot:sidebar-->
+  </nav>
+  </header><!--/slot:sidebar-->
 <main id="main" class="page">
   <header class="large-title">
     <h1 id="title" aria-label="Study"><span class="w" aria-hidden="true" style="--i:0"><span>Study</span></span></h1>
@@ -60,16 +65,26 @@
     <div class="card">
       <!--slot:sets--><ul class="rows">
       <li class="row stack"><span class="label">Original questions</span><span class="detail">The three questions above. Every round has used them, and the people who built the engine saw them while building it, so a result on them could reflect tuning to them.</span></li>
-      <li class="row stack"><span class="label">Held-out questions</span><span class="detail">Three more lookups of the same three shapes, written after the engine was built and never seen by the people or agents who built it. They exist to check that the engine was not fitted to the first set. They were run on six configurations, on the light and mid classes, with 2 to 3 runs in each cell.</span></li>
+      <li class="row stack"><span class="label">Held-out questions</span><span class="detail">A second set of three questions of the same three shapes, written later by the same team. The people and agents who built the engine did not see them while building it. It is not independent: the same team wrote both sets, on the same repository, in the same three shapes, and the job descriptions in the which-function questions follow the wording of the functions&#x27; own documentation. It checks whether the engine was fitted to the first three questions, not whether it works on other kinds of question. They were run on six configurations, on the light and mid classes, with 2 to 3 runs in each cell.</span></li>
     </ul><!--/slot:sets-->
     </div>
   </section>
 
   <section class="section" aria-labelledby="graded">
     <h2 id="graded" class="section-title">How answers were graded</h2>
+    <div class="card prose"><!--slot:graded-->
+      <p>Every answer was checked by a script against an answer key, and no score was given by a person judging an answer. The keys for the questions about callers and definitions were read from the repository&#x27;s syntax tree; the key for the which-function question was written by hand. The authors reviewed all of them. For the which-function question on the held-out set, the key accepts either of two functions, because both do the job.</p>
+      <p>Each answer scores between 0 and 1, with partial credit: a list of callers scores by how many are named and how many are wrong. The mean score is the average of these scores. A run is fully correct when all three of its answers score full marks, so one missed caller is enough to make a run not fully correct.</p>
+      <p>Only one question separates the configurations in these runs: of the 18 published single-agent runs that were not fully correct, 15 missed part of the answer to &quot;Who calls a function&quot;.</p>
+    <!--/slot:graded-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="told">
+    <h2 id="told" class="section-title">What each agent was told</h2>
     <div class="card prose">
-      <p>Every answer was checked by a script against facts read from the repository's syntax tree, so no score depends on a person's judgement.</p>
-      <p>Each answer scores between 0 and 1. The share of answers correct is the average score. A run is fully correct when all three of its answers score full marks.</p>
+      <p>Each configuration's agent was given a description of its own tool, so that it knew what the tool does and how to ask it. These descriptions differ in length and detail, and this was not controlled. The agent with no index was told which of its ordinary tools it could use and nothing more.</p>
+      <p>Every agent was also told that the task was a measurement of what a code lookup costs. A result therefore mixes the tool with how well it was described. The prompts are not published.</p>
     </div>
   </section>
 
@@ -77,12 +92,14 @@
     <h2 id="scale" class="section-title">How much was run</h2>
     <div class="card">
       <!--slot:scale--><ul class="rows">
-      <li class="row"><span class="label">Repository</span><span class="value">Python, 86 files, about 68,000 lines</span></li>
-      <li class="row"><span class="label">Questions</span><span class="value">3 in each of 2 sets, each asked in every run on its set</span></li>
-      <li class="row"><span class="label">Agents</span><span class="value">884</span></li>
-      <li class="row"><span class="label">Runs</span><span class="value">499</span></li>
-      <li class="row"><span class="label">Configurations tested</span><span class="value">44, of which 14 are published here</span></li>
-      <li class="row"><span class="label">Runs per configuration and class</span><span class="value">1 to 6</span></li>
+      <li class="row"><span class="label">Repository</span><span class="value">Python, 86 files, about 68,000 lines</span></li>
+      <li class="row"><span class="label">Questions</span><span class="value">3 in each of 2 sets, each asked in every run on its set</span></li>
+      <li class="row"><span class="label">Runs per published cell</span><span class="value">1 to 3</span></li>
+    </ul>
+      <ul class="rows">
+      <li class="row stack"><span class="label">Runs behind the leaderboard</span><span class="detail">112 single-agent runs in 42 cells: 5 cells of 1 run; 4 cells of 2 runs; 33 cells of 3 runs.</span></li>
+      <li class="row stack"><span class="label">Agents and runs in all</span><span class="detail">884 agents and 499 runs, which also count configurations that are not published, tests of another tool and setups with several agents. They show effort, not the sample behind a result.</span></li>
+      <li class="row stack"><span class="label">Configurations</span><span class="detail">44 were tested and 14 are published here. The authors chose which to publish; no rule did. Ten of the 25 unpublished configurations run at least 3 times on the light class and the original questions also took 2 turns with every run fully correct. Those runs are from the first session, when the start-up context was 3% smaller, so their tokens are not directly comparable.</span></li>
     </ul><!--/slot:scale-->
     </div>
     <p class="group-title spaced">Three ways of organising the agents were tried. Only the first feeds the leaderboard and the chart.</p>
@@ -92,6 +109,18 @@
       <li class="row stack"><span class="label">Setup 2</span><span class="detail">Three agents, one question each, with nobody checking their answers.</span></li>
       <li class="row stack"><span class="label">Setup 3</span><span class="detail">One agent that briefs three workers and checks what they return.</span></li>
     </ul><!--/slot:setups-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="tokens">
+    <h2 id="tokens" class="section-title">What a token count is</h2>
+    <div class="card">
+      <!--slot:tokens--><ul class="rows">
+      <li class="row stack"><span class="label">What is counted</span><span class="detail">The tokens of a run are the input, the output and the cache reads and writes of the agent, added up over the whole task. 99% of the tokens counted in the 112 published single-agent runs were cache reads or writes.</span></li>
+      <li class="row stack"><span class="label">Where they come from</span><span class="detail">An agent starts with a context of about 64.7k tokens: the instructions, skills and tool descriptions of the test machine. Every turn reads it again. On the light class with the original questions that context made up 97% of the tokens of &quot;PGR: graph and search&quot; and 94% of those of the no-index agent.</span></li>
+      <li class="row stack"><span class="label">What follows</span><span class="detail">Tokens and turns are therefore one measurement counted twice, and most of the saving shown here is the saving of turns: about 69k tokens for each turn avoided. The output of the lookups themselves is small beside that.</span></li>
+      <li class="row stack"><span class="label">Money</span><span class="detail">A token read from the cache costs less than one that is not, so a saving in tokens is not a saving in money of the same size. This site gives no money figures except the estimate in the orchestration finding.</span></li>
+    </ul><!--/slot:tokens-->
     </div>
   </section>
 
@@ -108,15 +137,30 @@
   </section>
 
   <section class="section" aria-labelledby="sessions">
-    <h2 id="sessions" class="section-title">Sessions, memory and the control</h2>
-    <p class="group-title">What differs between the two sessions the results come from, and what to keep in mind about the control.</p>
+    <h2 id="sessions" class="section-title">Sessions and memory</h2>
+    <p class="group-title">What differs between the two sessions the results come from, and how the memory was filled.</p>
     <div class="card">
       <!--slot:sessions--><ul class="rows">
-      <li class="row stack"><span class="label">Two sessions</span><span class="detail">The results come from two sessions a few days apart. The first measured the earlier configurations. The second measured the second-generation engine and the held-out questions, and repeated three earlier configurations: no index and two builds of the first-generation engine. The leaderboard shows the repeats, so every configuration compared with the engine was measured on the same day. The earlier runs of those three are not shown here. Three configurations from the first session were not repeated and keep their first-session figures: Two separate tools: code graph and semantic search; Symbol index with embeddings; Read-compression tool.</span></li>
+      <li class="row stack"><span class="label">Two sessions</span><span class="detail">The results come from two sessions a few days apart. The first measured the earlier configurations. The second measured the second-generation engine and the held-out questions, and repeated three earlier configurations: no index and two builds of the first-generation engine. The leaderboard shows the repeats, which were measured on the same day as the second generation. Three configurations from the first session were not repeated. They keep their first-session figures and are marked &quot;Earlier session&quot; on the leaderboard: Two separate tools: code graph and semantic search; Symbol index with embeddings; Read-compression tool. Their tokens are not directly comparable with the rest.</span></li>
       <li class="row stack"><span class="label">Start-up context</span><span class="detail">An agent&#x27;s start-up context, the text it reads before it sees a question, grew between the sessions. On the light and mid classes it averaged 62.9k tokens in the earlier runs of the three repeated configurations (23 agents) and 64.9k in their repeats (15 agents). Every turn reads it again, so the same configuration costs more tokens now than it did then. That is why the leaderboard compares runs made on the same day.</span></li>
-      <li class="row stack"><span class="label">How the memory was filled</span><span class="detail">Some configurations use a memory of earlier sessions. Before the runs, the memory was filled by one of two earlier sessions: one that answered the same questions the runs ask, and one that explored the repository without seeing any question. The first kind is a best case, because the memory already holds the answers. Neither is a test of the task memory is for: work that spans sessions was not measured.</span></li>
-      <li class="row stack"><span class="label">The control</span><span class="detail">On the test machine, the control&#x27;s file reads pass through a read-compression tool, which hid lines the control needed in some runs. In the second session the control was fully correct in 2 of 3 light-class runs and 0 of 3 mid-class runs on the original questions, and in 3 of 3 light-class runs and 2 of 2 mid-class runs on the held-out questions. In the first session, which had no such tool, it was fully correct in 4 of 5 light-class runs, 3 of 3 mid-class runs and 3 of 3 top-class runs.</span></li>
+      <li class="row stack"><span class="label">How the memory was filled</span><span class="detail">Some configurations use a memory of earlier sessions. Before the runs, the memory was filled by one of two earlier sessions: one that answered the same questions the runs ask, and one that explored the repository without seeing any question. The first kind is a best case, because the memory already holds the answers, and the configurations that use it say so in their names. Neither is a test of the task memory is for: work that spans sessions was not measured.</span></li>
     </ul><!--/slot:sessions-->
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="control">
+    <h2 id="control" class="section-title">The control</h2>
+    <p class="group-title">The no-index agent, and what happened to its reads on the test machine.</p>
+    <div class="card">
+      <!--slot:control--><ul class="rows">
+      <li class="row stack"><span class="label">What happened</span><span class="detail">On the test machine, another tool altered some of the lines the no-index agent read. In some runs it hid the very lines that show one of the callers the callers question asks for, so those agents left that caller out. That is a fact about the test machine, not about having no index.</span></li>
+      <li class="row stack"><span class="label">How often</span><span class="detail">In the second session the tool acted on 11 of 11 no-index runs. Among the other published configurations it acted on PGR: code graph (8 of 12 runs); PGR: search (11 of 12 runs); PGR: search and memory, filled with the answers (5 of 6 runs), and on none of the runs of the other seven, among them &quot;PGR: graph and search&quot;.</span></li>
+      <li class="row stack"><span class="label">The day&#x27;s counts</span><span class="detail">In the second session the no-index agent was fully correct in 2 of 3 light-class runs and 0 of 3 mid-class runs on the original questions, and in 3 of 3 light-class runs and 2 of 2 mid-class runs on the held-out questions.</span></li>
+      <li class="row stack"><span class="label">The earlier session&#x27;s counts</span><span class="detail">In the first session, which had no such tool, it was fully correct in 4 of 5 light-class runs, 3 of 3 mid-class runs and 3 of 3 top-class runs.</span></li>
+      <li class="row stack"><span class="label">Tokens in each session</span><span class="detail">On the light class and the original questions the no-index agent used 365k tokens and 5.0 turns in the first session (5 runs) and 294k tokens and 4.0 turns in the second (3 runs). The second session&#x27;s control used fewer tokens, so it is the less favourable one for the product on tokens.</span></li>
+      <li class="row stack"><span class="label">Effect on tokens</span><span class="detail">In earlier tests of the same tool, token use changed by +2%, against 21% between repeats of one prompt.</span></li>
+      <li class="row stack"><span class="label">What this site does about it</span><span class="detail">The no-index figures are shown as measured, with a note on the leaderboard. The product is set against no index on tokens and turns only. Fully correct runs and mean score are set only against the first-generation engine, which was measured on the same day on the same machine and which the tool did not act on. Running the control again with that tool off, in the same session as the others, would remove the problem.</span></li>
+    </ul><!--/slot:control-->
     </div>
   </section>
 
@@ -124,13 +168,17 @@
     <h2 id="limits" class="section-title">Limits</h2>
     <div class="card">
       <!--slot:limits--><ul class="rows">
-      <li class="row stack"><span class="label">One repository</span><span class="detail">Every result comes from one Python repository of 86 files. Other repositories may behave differently.</span></li>
+      <li class="row stack"><span class="label">One repository</span><span class="detail">Every result comes from one Python repository of 86 files. Other repositories may behave differently.</span></li>
       <li class="row stack"><span class="label">One language</span><span class="detail">Python only. Nothing here says how the configurations do on other languages.</span></li>
-      <li class="row stack"><span class="label">Six questions</span><span class="detail">Six lookup questions of modest difficulty, in two sets of three. Harder questions may separate the configurations more, or less.</span></li>
-      <li class="row stack"><span class="label">Small run counts</span><span class="detail">Each configuration and class was run between 1 and 6 times. A cell with one run is an example, not an average, and a difference of one turn is inside the noise.</span></li>
-      <li class="row stack"><span class="label">Three runs per cell</span><span class="detail">The second session ran each cell three times, and two of its 33 cells hold two complete runs. With three runs, a difference of one fully correct run is inside the noise.</span></li>
+      <li class="row stack"><span class="label">Six questions</span><span class="detail">Six lookup questions of modest difficulty, in two sets of three. Only one question separates the configurations: of the 18 published single-agent runs that were not fully correct, 15 missed part of the answer to &quot;Who calls a function&quot;. The &quot;Which function does a job&quot; question was fully answered in 110 of 112 runs, 23 of 23 of them by configurations without search, so these runs cannot show whether searching by meaning helps. Harder questions may separate the configurations more, or less.</span></li>
+      <li class="row stack"><span class="label">Questions that suit the tool</span><span class="detail">Two of the three questions in each set ask for the callers of a function, which a lookup tool answers directly, and none was written to need the body of a function to be read. Questions about what a function does may come out differently.</span></li>
+      <li class="row stack"><span class="label">A weak baseline</span><span class="detail">The no-index agent had only its own basic file search and file reading tools, and no command line. A stronger unaided baseline, such as an agent with a shell and a syntax-aware search, was not measured, so the savings shown are against this baseline only.</span></li>
+      <li class="row stack"><span class="label">Few runs, one task</span><span class="detail">Each published cell holds 1 to 3 runs, and every run answers the same 3 questions, so the runs of a cell are repeats of one task, not samples of many. Three runs cannot support a claim of significance, and this site makes none. A difference of one run or one turn is inside the run-to-run spread. In the 37 published cells with at least two runs, the highest run used 1% more tokens than the lowest at the median and 215% more at most, and in 11 of them at least half as many again. One turn is about 69k tokens. In 7 cells some runs were fully correct and some were not. For &quot;PGR: graph and search&quot;, the lowest and highest run in each of its four cells were: light class, original questions, 134k to 134k; mid class, original questions, 133k to 133k; light class, held-out questions, 134k to 274k; mid class, held-out questions, 134k to 204k.</span></li>
+      <li class="row stack"><span class="label">Unequal instructions</span><span class="detail">Each configuration&#x27;s agent was given a description of its own tool. The descriptions differ in length and detail, and this was not controlled. See What each agent was told.</span></li>
+      <li class="row stack"><span class="label">The same team</span><span class="detail">The same team built the engine, wrote both question sets and ran the study.</span></li>
+      <li class="row stack"><span class="label">Start-up context</span><span class="detail">An agent starts with about 64.7k tokens of context from the test machine: its instructions, skills and tools. On another machine each turn costs a different number of tokens, and so does the saving.</span></li>
       <li class="row stack"><span class="label">Machine load</span><span class="detail">Wall time depends on what else the test machine was doing. Token counts do not.</span></li>
-      <li class="row stack"><span class="label">Cost figures</span><span class="detail">Where a run is said to cost a multiple of another, the cost is list prices applied to the measured tokens.</span></li>
+      <li class="row stack"><span class="label">Cost figures</span><span class="detail">Where a run is said to cost a multiple of another, the cost is an estimate: a price list typed into the analysis and applied to the measured tokens, not read from a bill.</span></li>
     </ul><!--/slot:limits-->
     </div>
   </section>
@@ -139,15 +187,15 @@
     <h2 id="unpublished" class="section-title">What is not published</h2>
     <div class="card prose">
       <p>Implementation details are not published.</p>
-      <p>This site reports measured outcomes only: counts of tokens, turns and answers. It does not describe how any configuration works or how the agents were set up.</p>
+      <p>This site reports measured outcomes only: counts of tokens, turns and answers. It names what each configuration can do (look up definitions and callers, search, remember), not how it does it, and it does not publish the prompts or settings of the agents.</p>
     </div>
   </section>
 
-  <footer class="foot">
-    <p>Implementation details are not published. This site reports measured outcomes only.</p>
-    <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
-  </footer>
 </main>
+<footer class="foot">
+  <p>Implementation details are not published. This site reports measured outcomes only.</p>
+  <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
+</footer>
 <!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
     <span class="tab-ind" aria-hidden="true" style="--n:4;--i:2"></span>
     <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
@@ -155,6 +203,6 @@
     <a href="study.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
     <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
   </nav><!--/slot:tabbar-->
-<script src="assets/app.js?v=338633b9"></script>
+<script src="assets/app.js?v=fe9ca4e1"></script>
 </body>
 </html>

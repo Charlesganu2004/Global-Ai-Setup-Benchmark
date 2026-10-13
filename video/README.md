@@ -20,9 +20,11 @@ What a build does, in order:
 
 1. `tools/facts.mjs` reads `docs/data/showcase.js` and picks the headline pair exactly as the site does
    (`App.headline` in `docs/assets/app.js`: the configuration flagged best and the first control, on the light
-   class). It writes `build/facts.json` (every number as digits and as spoken words) and `build/facts.js`
-   (what the pages read). It stops with a message if the story in the script no longer holds, for example if the
-   best configuration stops needing fewer tokens than no index.
+   class and the first question set). It also works out the four comparisons behind the range the site states (two
+   model classes by two question sets) and the highlighted configuration's own run count. It writes
+   `build/facts.json` (every number as digits and as spoken words) and `build/facts.js` (what the pages read). It
+   stops with a message if the story in the script no longer holds, for example if the best configuration stops
+   needing fewer tokens than no index in any of the four comparisons, or stops being fully correct in every run.
 2. `tools/voice.py` fills the narration in `script/<film>.json` with those numbers, speaks each cue, measures
    every clip, builds the timeline (scene starts, cue starts, scene lengths) from the measurements, writes the
    captions, and masters the audio to about -16 LUFS with a true peak under -1.5 dB (FFmpeg `loudnorm`, two
@@ -41,7 +43,20 @@ Everything lands in `docs/media/`: `pgr-<film>-1080p.mp4`, `pgr-<film>-2160p.mp4
 
 Other commands: `node tools/shot.mjs <film> 3.2 12.5` writes single frames to `scratch/shots` (to look at them),
 `node tools/check-numbers.mjs <film>` reads the text on screen at the end of every cue and fails on a figure that
-is not in `showcase.js`, `node tools/montage.mjs out.png a.png b.png` tiles frames.
+is not in `showcase.js`, `node tools/montage.mjs out.png a.png b.png` tiles frames, `node tools/check-fresh.mjs`
+fails when a file in `docs/media/` is older than `showcase.js` and was drawn from other figures or labels than
+`showcase.js` holds today (each build keeps the figures it used in `renders/pgr-<film>-<height>p.facts.json`, because
+the site's build rewrites `showcase.js` often without changing a figure).
+
+Rules the pictures keep (the films are watched about 360 px wide, and the site's player puts captions and controls
+over the lower third): every line that qualifies a claim is set in the `.q` size of `scenes/stage.css` (60 px or
+more on the 1920 x 1080 stage, against a floor of 43 px in the ad and 32 px in the explainer, which is 4 and 3
+percent of the frame height) and sits in the upper two thirds of the frame. Each figure is labelled as the comparison
+it is (light class, first question set). The films set the product's fully-correct count nowhere against the no index
+control's: they compare with it on tokens and turns only. The poster of each film is a frame whose main text is large,
+in the upper two thirds, and clear of the circle the player's play button covers in the middle of the frame (about
+180 px around the centre of the stage) and of its control bar (below y 790); the poster frame is `poster` in
+`script/<film>.json`.
 
 Voice only, after editing a line: `.venv\Scripts\python.exe -I tools\voice.py explainer`, then
 `node tools/build.mjs explainer --skip-voice`. Only the changed cue is spoken again (clips are cached by text,
@@ -143,4 +158,14 @@ A browser other than Edge: set `PGR_BROWSER` to its executable. Another FFmpeg: 
 * The voice is synthetic and was checked by numbers (loudness, length, speech against captions) and by the phonemes the model is given, never by ear.
 * The explainer uses the headline pair of the site. A faster `engine-v2` row appears in the leaderboard when it is
   in `showcase.js`; an `engine` speed table is not used, because its shape is not known yet.
+* The range and the run count come from the `configs` points of `showcase.js` (the best configuration against no
+  index, for each model class and question set both were run on); the word on the highlighted row is
+  `data.labels.best` or `data.best_label` when `showcase.js` has one, else "Most reliable". Both films stop early
+  if the highlighted configuration is no longer fully correct in every run on both question sets, or if the range
+  differs from the one in `data.versus` (the site's own statement of it).
+* The captions are the browser's own and the site's player lifts them to the fourth line from the bottom, so on a
+  1080 frame they cover roughly the band from y 700 to y 830 (an estimate from the default cue size, not a
+  measurement: a headless browser does not paint video). The heaviest leaderboard rows of the explainer lie in that
+  band for about five seconds while a caption says what the rows are; everything that qualifies a claim stays
+  above it.
 

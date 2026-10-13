@@ -2,7 +2,9 @@
 //   build/facts.json  for the voice script (spoken words and caption forms of every number)
 //   build/facts.js    for the scenes (window.FACTS, on-screen strings and raw values)
 // The headline pair is chosen exactly as the site does in docs/assets/app.js (App.headline): the configuration
-// flagged best and the first control, both on the light class. Nothing here is typed in by hand.
+// flagged best and the first control, both on the light class and the first question set. It also works out the
+// four comparisons the site states as a range (two model classes by two question sets), and checks the sentence the
+// films say about the highlighted configuration (fully correct in every run). Nothing here is typed in by hand.
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
@@ -50,7 +52,11 @@ export function load() {
   return data;
 }
 
-const lightPoint = (c) => (c ? c.points.find((p) => p.class === 'light' && p.setup === 'single') || c.points.find((p) => p.class === 'light') || null : null);
+// The headline comparison: light class, first question set (the site's own headline cell).
+const lightPoint = (c, firstSet) => (c
+  ? (firstSet && c.points.find((p) => p.class === 'light' && p.set === firstSet && p.setup === 'single'))
+    || c.points.find((p) => p.class === 'light' && p.setup === 'single') || c.points.find((p) => p.class === 'light') || null
+  : null);
 
 export function compute(data) {
   let best = null; let control = null;
@@ -58,7 +64,8 @@ export function compute(data) {
     if (c.best) best = c;
     if (c.family === 'control' && !control) control = c;
   }
-  const b = lightPoint(best); const c = lightPoint(control);
+  const firstSet = (data.sets && data.sets[0] && data.sets[0].id) || null;
+  const b = lightPoint(best, firstSet); const c = lightPoint(control, firstSet);
   if (!best || !control || !b || !c) throw new Error('SHOWCASE has no best configuration or no control on the light class');
   if (!(b.tokens < c.tokens) || !(b.turns < c.turns)) {
     throw new Error(`The narration says the best configuration needs fewer tokens and fewer turns than no index, but SHOWCASE now says ${b.tokens} tokens and ${b.turns} turns against ${c.tokens} and ${c.turns}. Rewrite video/script/*.json before rendering.`);
@@ -69,16 +76,54 @@ export function compute(data) {
     tokText: showTokens(p.tokens), turnsText: showTurns(p.turns), shareText: showShare(p.correct), ofText: `${p.perfect_runs} of ${p.runs}`,
   });
   const rows = (data.configs || []).map((cfg) => {
-    const p = lightPoint(cfg);
+    const p = lightPoint(cfg, firstSet);
     return p ? { ...point(cfg, p), family: cfg.family, best: !!cfg.best } : null;
   }).filter(Boolean);
+  // The comparisons behind the range the site states: the highlighted configuration against no index, one cell for
+  // each model class and question set that both were run on.
+  const cells = [];
+  for (const cls of data.classes || []) {
+    for (const set of data.sets || []) {
+      const pick = (cfg) => cfg.points.find((q) => q.class === cls.id && q.set === set.id && q.setup === 'single');
+      const pb = pick(best); const pc = pick(control);
+      if (!pb || !pc || !(pc.tokens > 0)) continue;
+      cells.push({
+        class: cls.id, className: cls.name, set: set.id, setName: set.name,
+        bestTokens: pb.tokens, controlTokens: pc.tokens, pct: Math.round((1 - pb.tokens / pc.tokens) * 100),
+        bestTurns: pb.turns, controlTurns: pc.turns, perfect: pb.perfect_runs, runs: pb.runs, headline: pb === b,
+      });
+    }
+  }
+  if (cells.length < 2) throw new Error('SHOWCASE has fewer than two comparisons of the best configuration against no index');
+  if (cells.some((q) => !(q.bestTokens < q.controlTokens))) {
+    throw new Error('In at least one comparison the best configuration no longer needs fewer tokens than no index; the range sentence in video/script/*.json must be rewritten.');
+  }
+  const pcts = cells.map((q) => q.pct);
+  const range = { min: Math.min(...pcts), max: Math.max(...pcts), n: cells.length };
+  // The site states the same range in data.versus (low and high as shares). When that field is there, the films must
+  // say what it says: a disagreement means one of the two is stale, and the narration must not go out.
+  const versus = data.versus;
+  if (versus && typeof versus.low === 'number' && typeof versus.high === 'number') {
+    const vmin = Math.round(versus.low * 100); const vmax = Math.round(versus.high * 100);
+    if (vmin !== range.min || vmax !== range.max || (Array.isArray(versus.cells) && versus.cells.length !== cells.length)) {
+      throw new Error(`The site states ${vmin}% to ${vmax}% over ${(versus.cells || []).length} comparisons, but the points give ${range.min}% to ${range.max}% over ${cells.length}. Rebuild the site data before rendering.`);
+    }
+  }
+  // The films say the highlighted configuration was fully correct in every run on both question sets. Say it only while it is true.
+  const reliable = { perfect: cells.reduce((a, q) => a + q.perfect, 0), runs: cells.reduce((a, q) => a + q.runs, 0), sets: new Set(cells.map((q) => q.set)).size };
+  if (reliable.perfect !== reliable.runs || reliable.sets < 2) {
+    throw new Error(`The narration says the highlighted configuration was fully correct in every run on both question sets, but SHOWCASE says ${reliable.perfect} of ${reliable.runs} runs on ${reliable.sets} sets. Rewrite video/script/*.json before rendering.`);
+  }
+  // The word on the highlighted row: the site's field when it has one, else the wording the site uses today.
+  const bestLabel = (data.labels && data.labels.best) || data.best_label || 'Most reliable';
   const study = data.study || {};
   const perCell = study.runs_per_cell || { min: 1, max: 1 };
   const num = (n) => String(n);
   const facts = {
     built: data.built,
     best: point(best, b), control: point(control, c), pct, fewerText: showTokens(c.tokens - b.tokens),
-    rows,
+    rows, cells, range, reliable, bestLabel,
+    labels: { classLabel: `${((data.classes || [])[0] || { name: 'Light' }).name} class`, firstSet: 'first question set' },
     study: {
       agents: study.agents, files: study.repository.files, language: study.repository.language, runs: study.runs,
       configsPublished: rows.length, questions: study.questions, classes: data.classes, runsMin: perCell.min, runsMax: perCell.max,
@@ -92,6 +137,8 @@ export function compute(data) {
       configs: words(rows.length), perfect_best: words(b.perfect_runs), runs_best: words(b.runs),
       perfect_ref: words(c.perfect_runs), runs_ref: words(c.runs), runs_min: words(perCell.min), runs_max: words(perCell.max),
       questions: words((study.questions || []).length), classes: words((data.classes || []).length),
+      range_min: words(range.min) + ' percent', range_max: words(range.max) + ' percent', cells: words(range.n),
+      perfect_all: words(reliable.perfect), runs_all: words(reliable.runs),
     },
     cap: {
       tok_ref: showTokens(c.tokens), tok_best: showTokens(b.tokens),
@@ -100,6 +147,8 @@ export function compute(data) {
       configs: num(rows.length), perfect_best: num(b.perfect_runs), runs_best: num(b.runs),
       perfect_ref: num(c.perfect_runs), runs_ref: num(c.runs), runs_min: num(perCell.min), runs_max: num(perCell.max),
       questions: num((study.questions || []).length), classes: num((data.classes || []).length),
+      range_min: range.min + '%', range_max: range.max + '%', cells: num(range.n),
+      perfect_all: num(reliable.perfect), runs_all: num(reliable.runs),
     },
   };
   return facts;
@@ -116,4 +165,5 @@ export function writeFacts() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const f = writeFacts();
   console.log(`facts: best ${f.best.tokText} tokens ${f.best.turnsText} turns (${f.best.name}); no index ${f.control.tokText} ${f.control.turnsText}; ${f.pct}% fewer; ${f.rows.length} rows`);
+  console.log(`facts: ${f.range.n} comparisons, ${f.range.min}% to ${f.range.max}% fewer (${f.cells.map((q) => `${q.className} ${q.setName} ${q.pct}%`).join(', ')}); ${f.reliable.perfect} of ${f.reliable.runs} runs fully correct; label "${f.bestLabel}"`);
 }

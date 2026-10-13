@@ -1,6 +1,7 @@
 /* The explainer. Every frame is drawn from the time t alone: window.PGR.seek(t). The picture follows the voice,
    so every reveal is keyed to a cue of build/explainer.timeline.js, and every number is read from window.FACTS
-   (built from docs/data/showcase.js by tools/facts.mjs). */
+   (built from docs/data/showcase.js by tools/facts.mjs). Anything that qualifies a claim is set in the .q size
+   (60 px or more on the 1920 x 1080 stage) and kept in the upper two thirds of the frame, clear of the captions. */
 (function () {
   'use strict';
   var L = window.PGRLIB, G = window.PGRGFX, F = window.FACTS, TL = window.TIMELINE;
@@ -8,7 +9,7 @@
   var ACC = L.ACCENT, HOT = L.HOT, INK = L.INK, INK2 = L.INK2, CONTROL = L.CONTROL;
   var ui = document.getElementById('ui'), world = L.makeCanvas('world'), ctx = world.ctx;
   var grainEl = document.getElementById('grain'), curtain = document.getElementById('curtain');
-  var FPS = TL.fps, SANS = '500 30px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+  var FPS = TL.fps, SANS = '600 34px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
   var SANS36 = '500 36px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
   var SANS36B = '650 36px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
 
@@ -21,7 +22,7 @@
     return c.start + (c.end - c.start) * (i < 0 ? 0 : i / c.spoken.length);
   }
   var C1 = cue('cold', 1), C2 = cue('cold', 2), C3 = cue('cold', 3), C4 = cue('cold', 4);
-  var H1 = cue('change', 1), H2 = cue('change', 2), H3 = cue('change', 3), H4 = cue('change', 4);
+  var H1 = cue('change', 1), H2 = cue('change', 2), H3 = cue('change', 3), H4 = cue('change', 4), H5 = cue('change', 5), H6 = cue('change', 6);
   var GV = sc('gives'), SD = sc('study'), CL = sc('close');
   var DUR = TL.duration;
 
@@ -65,21 +66,26 @@
   var LANE_BEST_END = SX + SW * M / N;
 
   // ---------- flow: the cold open and the change
-  var f_h1 = ML('Three simple', 'display h1', 150, 395), f_h2 = ML('code lookups.', 'display h1', 150, 545);
-  var f_hs = ML('No index. Light model class. One agent.', 'sub s ink3', 150, 740);
+  // What the first figure is a figure of: one comparison, the light class on the first question set.
+  var CLS = F.labels.classLabel, SETL = F.labels.firstSet, CMP = CLS + ', ' + SETL + '.';
+  var f_h1 = ML('Three simple', 'display h1', 150, 250), f_h2 = ML('code lookups.', 'display h1', 150, 400);
+  var f_hs = ML('One agent, no index. ' + CMP, 'q', 150, 590);
   var f_num = T('num', '0', 150, 96, 300), f_numl = ML('turns', 'sub ink2', 700, 290);
   var f_numl2 = ML('tokens per task', 'sub ink2', 860, 290);
-  var f_subA = ML('Turns: ' + F.control.turnsText + '. No index, light class.', 'sub s ink3', 150, 396);
-  var f_subB = ML('Tokens per task. Turns: ' + F.best.turnsText + '. Light class.', 'sub s ink3', 150, 396);
-  var f_each = [ML('Each turn,', 'display', 1230, 466, 62), ML('it reads everything', 'display', 1230, 534, 62), ML('again.', 'display', 1230, 602, 62)];
-  var f_lane0 = ML('No index', 'sub ink2', 150, 566, 48);
-  var f_mark = L.markSvg(ui, 54, 't'); f_mark.root._x = 150; f_mark.root._y = 556; f_mark.root.style.transform = 'translate3d(150px,556px,0)';
-  var f_lane1 = ML('PeterGanuRusty', 'sub', 222, 566, 48);
+  var f_subA = ML('No index. ' + CMP, 'q', 150, 388);
+  var f_subB = ML(CMP, 'q', 150, 388);
+  var f_each = [ML('Each turn, it reads', 'display', 1150, 466, 62), ML('its whole conversation', 'display', 1150, 534, 62), ML('again.', 'display', 1150, 602, 62)];
+  var f_lane0 = ML('No index', 'sub ink2', 150, 556, 56);
+  var f_mark = L.markSvg(ui, 62, 't'); f_mark.root._x = 150; f_mark.root._y = 550; f_mark.root.style.transform = 'translate3d(150px,550px,0)';
+  var f_lane1 = ML('PeterGanuRusty', 'sub', 232, 556, 56);
   f_lane1.root.style.color = 'var(--ink)';
-  var f_pct = T('num', F.pct + '%', 1010, 96, 300), f_pctl = ML('fewer tokens', 'sub ink2', 1010, 380);
-  var f_pctl2 = ML('than no index', 'sub ink2', 1010, 436);
+  var f_pct = T('num', F.pct + '%', 1080, 96, 300), f_pctl = ML('fewer tokens', 'q big', 1080, 380);
+  var f_pctl2 = ML('than no index', 'q big', 1080, 452);
   var f_gap = ML(F.fewerText + ' fewer tokens', 'sub ink2', 0, 0, 52);
-  var f_ask = ML('ask', 'sub s ink2', 0, 0), f_ans = ML('answer', 'sub s ink2', 0, 0);
+  var f_ask = ML('ask', 'sub s ink2', 0, 0, 48), f_ans = ML('answer', 'sub s ink2', 0, 0, 48);
+  // the stream's time, in seconds: the numeral counts and the particles shorten while the voice says "134k tokens"
+  var CNT = Math.max(1.2, C3.end - C3.start - 0.45);
+  var COUNT0 = H4.start + 0.3, COUNT1 = Math.max(COUNT0 + 1.2, H4.end - 0.4), SHR = Math.max(1, (COUNT1 - COUNT0) / 1.6);
 
   function drawFlow(t) {
     var inStack = t < H1.start + 0.05;
@@ -90,19 +96,19 @@
 
     // ---- bands: one for each turn, hard-cut cadence
     var bandT = [], b;
-    for (b = 0; b < TURNS; b++) bandT.push(C2.start + b * 0.19);
+    for (b = 0; b < TURNS; b++) bandT.push(C2.start + b * 0.16);
     var bandsOut = 1 - ease.ioC(seg(t, H1.start + 0.05, H1.start + 0.7));
 
     // ---- hero numeral
     var turnsShown = 0;
     for (b = 0; b < TURNS; b++) if (t >= bandT[b]) turnsShown = b + 1;
-    var filled = 0, tf = (t - C3.start) / 1.55;
+    var filled = 0, tf = (t - C3.start) / CNT;
     if (t >= C3.start) filled = clamp(Math.round(Math.pow(clamp(tf), 1.0) * N), 0, N);
     var numText = '', numCol = 'var(--ink)';
     if (t >= C2.start && t < C3.start) numText = turnsShown >= TURNS ? F.control.turnsText : String(turnsShown);
-    else if (t >= C3.start && t < H4.start + 0.3) numText = filled >= N ? F.control.tokText : (filled < 1 ? '0' : filled + 'k');
-    var count = ease.outQ(seg(t, H4.start + 0.3, H4.start + 1.9));
-    if (t >= H4.start + 0.3) {
+    else if (t >= C3.start && t < COUNT0) numText = filled >= N ? F.control.tokText : (filled < 1 ? '0' : filled + 'k');
+    var count = ease.outQ(seg(t, COUNT0, COUNT1));
+    if (t >= COUNT0) {
       var v = mix(F.control.tokens, F.best.tokens, count);
       numText = count >= 1 ? F.best.tokText : L.fmtTokens(v);
       numCol = 'var(--accent)';
@@ -113,9 +119,9 @@
       at(f_num, { o: 1 });
     } else L.vis(f_num, false);
     pop(f_numl, ease.outQ(seg(t, C2.start + 0.1, C2.start + 0.5)) * (1 - ease.inC(seg(t, C3.start - 0.02, C3.start + 0.18))));
-    pop(f_numl2, ease.outQ(seg(t, C3.start + 0.1, C3.start + 0.5)) * (1 - ease.inC(seg(t, cueAt(H4, 'Sixty-four') - 0.35, cueAt(H4, 'Sixty-four') - 0.1))));
-    pop(f_subA, ease.outQ(seg(t, C3.start + 0.5, C3.start + 0.9)) * (1 - ease.inC(seg(t, H4.start + 0.2, H4.start + 0.5))));
-    pop(f_subB, ease.outQ(seg(t, H4.start + 1.5, H4.start + 1.9)));
+    pop(f_numl2, ease.outQ(seg(t, C3.start + 0.1, C3.start + 0.5)) * (1 - ease.inC(seg(t, H5.start - 0.3, H5.start - 0.05))));
+    pop(f_subA, ease.outQ(seg(t, C2.start + 0.15, C2.start + 0.55)) * (1 - ease.inC(seg(t, H4.start - 0.1, H4.start + 0.2))));
+    pop(f_subB, ease.outQ(seg(t, H4.start + 0.3, H4.start + 0.7)));
 
     // ---- the explanation in the staircase's empty corner
     var eachIn = C4.start + 0.05, eachOut = 1 - ease.inC(seg(t, H1.start - 0.25, H1.start + 0.1));
@@ -129,7 +135,7 @@
     pop(f_lane1, ease.outQ(seg(t, tName + 0.5, tName + 1.0)));
 
     // ---- the percentage
-    var t64 = cueAt(H4, 'Sixty-four') - 0.2;
+    var t64 = H5.start + 0.02;
     if (t >= t64) { at(f_pct, { y: (1 - ease.outQ(seg(t, t64, t64 + 0.45))) * 40, o: ease.outQ(seg(t, t64, t64 + 0.2)) }); setText(f_pct, F.pct + '%'); } else L.vis(f_pct, false);
     pop(f_pctl, ease.outQ(seg(t, t64 + 0.25, t64 + 0.7)));
     pop(f_pctl2, ease.outQ(seg(t, t64 + 0.33, t64 + 0.78)));
@@ -151,7 +157,7 @@
     }
     // lane track (appears as the bands melt into it)
     var laneIn = ease.ioC(seg(t, tMerge + 0.7, tMerge + 1.4));
-    var ghost = ease.outQ(seg(t, tShort + 1.5, tShort + 2.0));
+    var ghost = ease.outQ(seg(t, tShort + 1.5 * SHR, tShort + 2.0 * SHR));
     if (laneIn > 0) {
       L.hair(ctx, 0.16 * laneIn);
       ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(SX - 16, LANE_Y - 14, SW + 32, LANE_H + 28, 18); else ctx.rect(SX - 16, LANE_Y - 14, SW + 32, LANE_H + 28); ctx.stroke();
@@ -171,11 +177,11 @@
     }
 
     for (i = 0; i < N; i++) {
-      var p = P[i], age = t - (C3.start + 1.55 * (i / N));
+      var p = P[i], age = t - (C3.start + CNT * (i / N));
       if (age <= 0) { p.a = 0; continue; }
       var fly = ease.outQ(seg(age, 0, 0.4)), m = ease.ioC(seg(t, tMerge + 0.55 * (i / N), tMerge + 0.55 * (i / N) + 1.15));
       // the stream moves along its band; near layers faster; it stops where the merge begins
-      var du = ((p.su + (14 + 26 * p.z) * Math.min(age, tMerge - (C3.start + 1.55 * (i / N))) / p.sw) % 1 + 1) % 1;
+      var du = ((p.su + (14 + 26 * p.z) * Math.min(age, tMerge - (C3.start + CNT * (i / N))) / p.sw) % 1 + 1) % 1;
       var sxx = SX + du * p.sw + (p.r1 - 0.5) * 7;
       var edge = clamp(du * p.sw / 70) * clamp((1 - du) * p.sw / 70);
       var x = mix(sxx, p.lx, m), y = mix(p.sy, p.ly, m) - Math.sin(m * Math.PI) * (p.r1 - 0.5) * 110;
@@ -183,10 +189,10 @@
       x += Math.sin(t * 0.9 + i * 1.3) * 1.5; y += Math.cos(t * 0.7 + i * 1.9) * 1.5;
       var a = seg(age, 0, 0.1) * (0.55 + 0.45 * p.z) * mix(edge, 1, m), boost = 1.6 * (1 - seg(age, 0, 0.35)), ca = 0, flash = 0;
       // the stream's pulse runs at the speed of its turns: five for no index, two for the best
-      if (m > 0.4) a *= 0.8 + 0.2 * Math.sin(p.lx * 0.018 - t * 2.3 * mix(TURNS, BT, i < M ? ease.ioC(seg(t, tAcc + 0.9 * (i / M), tAcc + 0.9 * (i / M) + 0.5)) : 0));
-      if (i < M) ca = ease.ioC(seg(t, tAcc + 0.9 * (i / M), tAcc + 0.9 * (i / M) + 0.5));
+      if (m > 0.4) a *= 0.8 + 0.2 * Math.sin(p.lx * 0.018 - t * 2.3 * mix(TURNS, BT, i < M ? ease.ioC(seg(t, tAcc + 0.9 * SHR * (i / M), tAcc + 0.9 * SHR * (i / M) + 0.5 * SHR)) : 0));
+      if (i < M) ca = ease.ioC(seg(t, tAcc + 0.9 * SHR * (i / M), tAcc + 0.9 * SHR * (i / M) + 0.5 * SHR));
       else {
-        var d0 = tShort + 1.1 * ((N - 1 - i) / (N - M)), d = ease.inC(seg(t, d0, d0 + 0.5));
+        var d0 = tShort + 1.1 * SHR * ((N - 1 - i) / (N - M)), d = ease.inC(seg(t, d0, d0 + 0.5 * SHR));
         a *= 1 - d; y += d * 34; flash = Math.sin(d * Math.PI);
       }
       if (inStack || m < 1) {
@@ -224,7 +230,25 @@
     } else { L.vis(f_ask.root, false); L.vis(f_ans.root, false); }
     f_gap.root._x = LANE_BEST_END + 24 + 40; f_gap.root._y = LANE_Y + LANE_H / 2 - 30;
     f_gap.root.style.transform = 'translate3d(' + f_gap.root._x + 'px,' + f_gap.root._y + 'px,0)';
-    pop(f_gap, ease.outQ(seg(t, tShort + 1.9, tShort + 2.4)));
+    var tGap = cueAt(H5, 'in two') - 0.1;
+    pop(f_gap, ease.outQ(seg(t, tGap, tGap + 0.5)));
+    // the label of the figure: each half is underlined as the voice says it ("light class," then "first question set")
+    var tLight = cueAt(H6, 'light'), tFirst = cueAt(H6, 'first');
+    var u1 = ease.outQ(seg(t, tLight - 0.1, tLight + 0.5)), u2 = ease.outQ(seg(t, tFirst - 0.1, tFirst + 0.6));
+    if (u1 > 0 || u2 > 0) {
+      var sp = labelSpans();
+      ctx.fillStyle = rgba(ACC, 0.9);
+      ctx.fillRect(150, 462, sp.a * u1, 3); ctx.fillRect(150 + sp.b0, 462, (sp.b1 - sp.b0) * u2, 3);
+    }
+  }
+  // where the two halves of the label lie, measured on the text itself once the fonts are in
+  var spans = null;
+  function labelSpans() {
+    if (spans) return spans;
+    var node = f_subB.inner.firstChild, text = node.nodeValue, rg = document.createRange();
+    var w = function (to) { rg.setStart(node, 0); rg.setEnd(node, to); return rg.getBoundingClientRect().width; };
+    spans = { a: w(text.indexOf(',') + 1), b0: w(text.indexOf('first')), b1: w(text.length) };
+    return spans;
   }
 
   function drawParticles() {
@@ -255,26 +279,35 @@
     ['What a change reaches.', 'Before anyone edits.'],
     ['Findings that stay.', 'Remembered between sessions.']
   ];
-  var gv_h = STATEMENTS.map(function (s) { return ML(s[0], 'display h2', 150, 748); });
-  var gv_s = STATEMENTS.map(function (s) { return ML(s[1], 'sub', 150, 902); });
-  var gv_lbl = ['Definitions and callers', 'Search by meaning', 'What a change reaches', 'Findings that stay'].map(function (s) { return ML(s, 'sub s ink2', 0, 0); });
+  // the study measured the first two only; the sample names in the pictures are made up
+  var MEASURED = [true, true, false, false];
+  var GV_NAMES = [['Definitions', 'and callers'], ['Search by', 'meaning'], ['What a change', 'reaches'], ['Findings', 'that stay']];
+  var gv_h = STATEMENTS.map(function (s) { return ML(s[0], 'display h2', 150, 92); });
+  var gv_s = STATEMENTS.map(function (s) { return ML(s[1], 'sub', 150, 232); });
+  var gv_tag = MEASURED.map(function (m) { return T('tag' + (m ? '' : ' off'), m ? 'Measured' : 'Not yet measured', 150, 20, 44); });
+  var gv_ill = T('tag off r', 'Illustration: example names', -150, 20, 44);
+  var gv_lbl = GV_NAMES.map(function (s) { return ML(s[0] + '<br>' + s[1], 'sub s ink2 ctr', 0, 0, 46); });
+  var gv_st = MEASURED.map(function (m) { return ML(m ? 'Measured' : 'Not yet measured', 'sub s ctr ' + (m ? 'acc' : 'ink2'), 0, 0, 48); });
   var GV_CENTERS = [315, 745, 1175, 1605];
 
   function drawGives(t) {
     var cues = GV.cues, g1 = cues[0], k;
-    // g1: the four, small; each statement then takes the stage
+    // g1: the four, small, with what the study measured; each statement then takes the stage
     var rowOut = 1 - ease.inC(seg(t, cues[1].start - 0.3, cues[1].start - 0.05));
     for (k = 0; k < 4; k++) {
       var st = g1.start + 0.15 + k * 0.28, p = ease.outC(seg(t, st, st + 0.9));
       if (p > 0 && rowOut > 0) {
-        ctx.globalAlpha = rowOut;
+        ctx.globalAlpha = rowOut * (MEASURED[k] ? 1 : 0.6);
         G.list[k](ctx, p, { cx: GV_CENTERS[k], cy: 480, s: 0.34, labels: false });
         ctx.globalAlpha = 1;
       }
-      var lb = gv_lbl[k], lw = [400, 330, 380, 300][k];
-      lb.root._x = GV_CENTERS[k] - lw / 2; lb.root._y = 640; lb.root.style.transform = 'translate3d(' + lb.root._x + 'px,640px,0)';
+      var lb = gv_lbl[k], sb = gv_st[k];
+      lb.root._x = GV_CENTERS[k] - lb.root.offsetWidth / 2; lb.root._y = 612; lb.root.style.transform = 'translate3d(' + lb.root._x + 'px,612px,0)';
+      sb.root._x = GV_CENTERS[k] - sb.root.offsetWidth / 2; sb.root._y = 332; sb.root.style.transform = 'translate3d(' + sb.root._x + 'px,332px,0)';
       pop(lb, ease.outQ(seg(t, st + 0.3, st + 0.7)) * rowOut);
+      pop(sb, ease.outQ(seg(t, st + 0.3, st + 0.7)) * rowOut);
     }
+    var illO = 0;
     for (k = 0; k < 4; k++) {
       var c = cues[k + 1], t0 = c.start - 0.02, t1 = (k < 3 ? cues[k + 2].start : GV.start + GV.dur) - 0.02;
       var build = seg(t, t0 + 0.05, t0 + (c.end - c.start) * 0.9);
@@ -282,51 +315,67 @@
       if (k === 3) outP = 1;
       if (t >= t0 - 0.01 && t < t1 + 0.05) {
         ctx.globalAlpha = Math.min(1, inP * 2) * (k === 3 ? 1 : outP);
-        G.list[k](ctx, ease.ioC(build), { cx: 1000, cy: 392, s: 1.36, labels: true });
+        G.list[k](ctx, ease.ioC(build), { cx: 1000, cy: 620, s: 1.1, labels: true });
         ctx.globalAlpha = 1;
       }
       pop(gv_h[k], inP * outP); pop(gv_s[k], ease.outQ(seg(t, t0 + 0.14, t0 + 0.69)) * outP);
+      at(gv_tag[k], { o: ease.outQ(seg(t, t0 + 0.1, t0 + 0.45)) * outP });
+      illO = Math.max(illO, ease.outQ(seg(t, t0 + 0.1, t0 + 0.45)) * outP);
     }
+    at(gv_ill, { o: illO });
   }
 
   // ---------- study
   var Q = F.study.questions || [];
+  var QY0 = 110, QPITCH = 158;
   var sd_n = T('num', '0', 150, 96, 300), sd_nl = ML('agents', 'sub ink2', 700, 290);
   var sd_n2 = T('num', String(F.study.files), 1010, 96, 300), sd_n2l = ML(F.study.language + ' files,', 'sub ink2', 1390, 234), sd_n2l2 = ML('one repository', 'sub ink2', 1390, 290);
-  var sd_q = Q.map(function (q, n) { return ML(q.title, 'display', 150, 190 + n * 170, 78); });
+  var sd_q = Q.map(function (q, n) { return ML(q.title, 'display', 150, QY0 + n * QPITCH, 78); });
   var CLASS_NAMES = (window.SHOWCASE && window.SHOWCASE.classes || []).map(function (c) { return c.name; });
-  var sd_c = CLASS_NAMES.map(function (n, ci) { return T('pill', n, 150 + ci * 200, 760); });
-  var sd_cap = ML('Graded against the syntax tree.', 'sub s ink2', 150, 690);
-  var sd_lbT = ML('Light class. Tokens per task, turns, runs fully correct.', 'sub s ink2', 150, 100);
-  var sd_lbN = ML('Ranked by runs fully correct, then tokens.', 'sub s ink3', 150, 990, 34);
-  var ROWS = (function () {
-    var rows = F.rows.slice();
-    rows.sort(function (a, b) {
-      var ra = a.perfect / a.runs, rb = b.perfect / b.runs;
-      return rb - ra || a.tokens - b.tokens;
-    });
-    return rows;
-  })();
+  var sd_c = CLASS_NAMES.map(function (n, ci) { return T('pill', n, 150 + ci * 230, 622, 52); });
+  var sd_cap = ML('Graded against the syntax tree.', 'q', 150, 548);
+  // the leaderboard: one row for each configuration, fewest tokens first. The bar is the row's background, so the
+  // name, the bar and the figures can only be read as one row. Tokens and turns only: no fully-correct counts here.
+  var sd_lbT = ML(CMP, 'q', 150, 36);
+  var sd_lbN = ML('Tokens per task and turns, fewest tokens first. Marked: ' + F.bestLabel.toLowerCase() + '.', 'sub s ink2', 150, 108, 44);
+  var ROWS = F.rows.slice().sort(function (a, b) { return a.tokens - b.tokens || a.turns - b.turns; });
   var MAXTOK = Math.max.apply(null, ROWS.map(function (r) { return r.tokens; }));
-  var LB_Y0 = 190, LB_PITCH = Math.min(132, 770 / ROWS.length), LB_BAR_MAX = 880;
+  var LB_Y0 = 214, LB_PITCH = Math.min(60, 790 / ROWS.length), LB_CELL = LB_PITCH - 8, LB_X0 = 150, LB_BAR_MAX = 1250;
+  var LB_FONT = Math.min(36, Math.floor(LB_CELL * 0.7));
   var sd_rows = ROWS.map(function (r, n) {
-    var y = LB_Y0 + n * LB_PITCH;
-    var nm = T('lbname' + (r.best ? ' best' : ''), (r.name.replace(' (control)', '')), 150, y, 38);
+    var y = LB_Y0 + n * LB_PITCH, cy = y + LB_CELL / 2;
+    var nm = T('lbname', r.name.replace(' (control)', ''), LB_X0 + 18, cy - LB_FONT * 0.56, LB_FONT);
     nm.style.color = r.best ? 'var(--ink)' : 'var(--ink2)';
     if (r.best) nm.style.fontWeight = '650';
-    var val = T('lbval r', '', -150, y + 52, 34);
-    var tag = r.best ? T('tag', 'Best', 0, y + 2) : null;
+    var val = T('lbval r', '', -150, cy - 33 * 0.56, 33);
+    var tag = r.best ? T('tag', F.bestLabel, 0, cy - 18, 34) : null;
     return { r: r, y: y, nm: nm, val: val, tag: tag };
   });
-  var big_a = T('num', F.best.ofText, 150, 250, 300), big_b = T('num', F.control.ofText, 1010, 250, 300);
-  var big_al = ML('PeterGanuRusty', 'sub', 150, 560), big_bl = ML('No index', 'sub ink2', 1010, 560);
-  var big_al2 = ML('runs fully correct', 'sub s ink2', 150, 628), big_bl2 = ML('runs fully correct', 'sub s ink2', 1010, 628);
-  big_a.style.color = 'var(--accent)'; big_b.style.color = 'var(--ink2)';
+  // the saving in four comparisons: two model classes by two question sets
+  var CELLS = F.cells;
+  var CLASS_IDS = [], SET_IDS = [];
+  CELLS.forEach(function (q) { if (CLASS_IDS.indexOf(q.class) < 0) CLASS_IDS.push(q.class); if (SET_IDS.indexOf(q.set) < 0) SET_IDS.push(q.set); });
+  function setLabel(q) { return q.set === SET_IDS[0] ? SETL : q.setName.toLowerCase() + ' set'; }
+  var rg_t = ML(F.range.min + '% to ' + F.range.max + '%', 'display', 150, 36, 230);
+  var rg_s = ML('fewer tokens than no index, across ' + F.range.n + ' comparisons.', 'q big', 150, 262);
+  var rg_cells = CELLS.map(function (q) {
+    var x = 150 + SET_IDS.indexOf(q.set) * 820, y = 380 + CLASS_IDS.indexOf(q.class) * 165;
+    var num = T('num', q.pct + '%', x, y, 130);
+    num.style.color = q.headline ? 'var(--accent)' : 'var(--ink)';
+    return { q: q, num: num, l1: ML(q.className + ' class,', 'q', x + 340, y + 8), l2: ML(setLabel(q), 'q', x + 340, y + 74) };
+  });
+  // the highlighted configuration: fully correct in every run on both question sets (its own count, nothing set against it)
+  var CLASS_LIST = CLASS_IDS.map(function (id) { return CELLS.filter(function (q) { return q.class === id; })[0].className; });
+  var rl_tag = T('tag', F.bestLabel, 150, 70, 56);
+  var rl_n = T('num', F.reliable.perfect + ' of ' + F.reliable.runs, 150, 190, 300);
+  rl_n.style.color = 'var(--accent)';
+  var rl_l1 = ML('runs fully correct,', 'q big', 150, 480), rl_l2 = ML('on both question sets.', 'q big', 150, 552);
+  var rl_l3 = ML(CLASS_LIST.join(' and ') + (CLASS_LIST.length > 1 ? ' classes.' : ' class.'), 'q', 150, 632);
 
   function rowColor(r) { return r.best ? ACC : r.family === 'control' ? CONTROL : r.family === 'tool' ? [211, 211, 219] : [176, 100, 70]; }
 
   function drawStudy(t) {
-    var c1 = SD.cues[0], c2 = SD.cues[1], c3 = SD.cues[2], c4 = SD.cues[3], i;
+    var c1 = SD.cues[0], c2 = SD.cues[1], c3 = SD.cues[2], c4 = SD.cues[3], c5 = SD.cues[4], c6 = SD.cues[5], i;
     var tRepo = cueAt(c1, 'one Python') - 0.2;
     var phase1 = 1 - ease.inC(seg(t, c2.start - 0.25, c2.start));
     // 1. agents and the repository
@@ -356,70 +405,75 @@
     } else {
       L.vis(sd_n, false); L.vis(sd_nl.root, false); L.vis(sd_n2, false); L.vis(sd_n2l.root, false); L.vis(sd_n2l2.root, false);
     }
-    // 2. three questions, graded against the syntax tree, three classes
-    var ph2 = ease.outQ(seg(t, c2.start, c2.start + 0.2)) * (1 - ease.inC(seg(t, c3.start - 0.25, c3.start)));
-    var tGraded = cueAt(c2, 'graded'), tClasses = cueAt(c2, 'on three model');
+    // 2. three questions, graded against the syntax tree, then the three classes one by one (stay until the leaderboard)
+    var qOut = 1 - ease.inC(seg(t, c4.start - 0.3, c4.start - 0.02));
+    var ph2 = ease.outQ(seg(t, c2.start, c2.start + 0.2)) * qOut;
+    var tGraded = cueAt(c2, 'graded');
     sd_q.forEach(function (l, qn) {
       var s0 = c2.start + 0.05 + qn * 0.34;
-      pop(l, ease.outQ(seg(t, s0, s0 + 0.55)) * (ph2 > 0 ? 1 : 0) * (1 - ease.inC(seg(t, c3.start - 0.25, c3.start))));
+      pop(l, ease.outQ(seg(t, s0, s0 + 0.55)) * (ph2 > 0 ? 1 : 0) * qOut);
     });
     if (ph2 > 0) {
-      // the syntax tree, and a check landing on each question
+      // the syntax tree, and a neutral marker beside each question: the key they were graded against
       var tree = ease.outC(seg(t, tGraded - 0.1, tGraded + 0.9));
       drawTree(1360, 200, tree, ph2, t, tGraded);
       Q.forEach(function (q, qn) {
-        var s0 = tGraded + 0.35 + qn * 0.4, ck = ease.outC(seg(t, s0, s0 + 0.3));
-        if (ck <= 0) return;
-        var cy = 190 + qn * 170 + 64, cx = 1190;
-        ctx.strokeStyle = rgba(ACC, ph2); ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + 18 * Math.min(1, ck * 2), cy + 18 * Math.min(1, ck * 2));
-        if (ck > 0.5) ctx.lineTo(cx + 18 + 40 * (ck - 0.5) * 2, cy + 18 - 52 * (ck - 0.5) * 2);
-        ctx.stroke();
+        var s0 = tGraded + 0.35 + qn * 0.4, mk = ease.outC(seg(t, s0, s0 + 0.3));
+        if (mk <= 0) return;
+        var my = QY0 + qn * QPITCH + 64, mx = 1190;
+        ctx.fillStyle = rgba(INK, 0.7 * ph2); ctx.beginPath(); ctx.arc(mx, my, 13 * mk, 0, Math.PI * 2); ctx.fill();
+        L.stamp(ctx, INK, mx, my, 34, 0.3 * mk * ph2);
       });
-      pop(sd_cap, ease.outQ(seg(t, tGraded - 0.1, tGraded + 0.4)) * ph2);
-      sd_c.forEach(function (e, ci) { var s0 = tClasses + ci * 0.22; at(e, { o: ease.outQ(seg(t, s0, s0 + 0.3)) * ph2, y: (1 - ease.outQ(seg(t, s0, s0 + 0.4))) * 24 }); });
-    } else {
-      sd_c.forEach(function (e) { L.vis(e, false); }); L.vis(sd_cap.root, false);
     }
-    // 3 and 4. the leaderboard forms, the best row is marked, then the proof in two numbers
-    var lbOn = t >= c3.start - 0.05;
-    if (lbOn) {
-      pop(sd_lbT, ease.outQ(seg(t, c3.start, c3.start + 0.5)) * (1 - ease.inC(seg(t, c4.start - 0.1, c4.start + 0.2))));
-      pop(sd_lbN, ease.outQ(seg(t, c3.start + 0.3, c3.start + 0.8)) * (1 - ease.inC(seg(t, c4.start - 0.1, c4.start + 0.2))));
-      var nrows = sd_rows.length, span = (c3.end - c3.start) * 0.62;
-      sd_rows.forEach(function (row, rn) {
-        var r = row.r, order = nrows - 1 - rn;                   // the last place is drawn first, the best last
-        var s0 = c3.start + 0.1 + order * (span / nrows), p = ease.outQ(seg(t, s0, s0 + 0.55));
-        var o = p * (1 - ease.inC(seg(t, c4.start - 0.05, c4.start + 0.3)));
-        at(row.nm, { o: o, x: (1 - p) * -40 });
-        var len = LB_BAR_MAX * r.tokens / MAXTOK * ease.outQ(seg(t, s0 + 0.05, s0 + 0.8)), by = row.y + 64;
-        var col = rowColor(r), flash = r.best ? seg(t, c3.end - 0.1, c3.end + 0.15) : 0;
-        if (o > 0) {
-          ctx.fillStyle = 'rgba(255,255,255,0.06)'; ctx.fillRect(150, by, LB_BAR_MAX, 14);
-          ctx.fillStyle = rgba(col, (r.best ? 1 : 0.62) * o); ctx.fillRect(150, by, len, 14);
-          if (r.best) { L.stamp(ctx, ACC, 150 + len, by + 7, 54, 0.55 * o * (0.6 + 0.4 * ease.outQ(flash))); }
-        }
-        var shownTok = Math.round(mix(0, r.tokens, ease.outQ(seg(t, s0 + 0.05, s0 + 0.8))));
-        var vtxt = (len > 8 ? (seg(t, s0 + 0.8, s0 + 0.85) >= 1 ? r.tokText : L.fmtTokens(shownTok)) : '') + ' tokens, ' + r.turnsText + ' turns, ' + r.ofText + ' fully correct';
-        row.val._x = -150; row.val._y = row.y + 44;
-        setText(row.val, vtxt); row.val.style.color = r.best ? 'var(--ink)' : 'var(--ink3)';
-        L.put(row.val, { x: row.val._x, y: row.val._y, o: o * seg(len, 6, 60) });
-        if (row.tag) {
-          row.tag._x = 150 + row.nm.offsetWidth + 28; row.tag._y = row.y + 4;
-          at(row.tag, { o: ease.outQ(seg(t, c3.end - 0.5, c3.end - 0.1)) * (1 - ease.inC(seg(t, c4.start - 0.1, c4.start + 0.2))) });
-        }
-      });
-    } else sd_rows.forEach(function (row) { L.vis(row.nm, false); L.vis(row.val, false); if (row.tag) L.vis(row.tag, false); });
-    // the proof
-    var bp = ease.outQ(seg(t, c4.start + 0.1, c4.start + 0.6));
-    if (bp > 0) {
-      at(big_a, { o: bp, y: (1 - bp) * 50 }); at(big_b, { o: ease.outQ(seg(t, cueAt(c4, 'With no') - 0.1, cueAt(c4, 'With no') + 0.4)), y: (1 - bp) * 50 });
-      pop(big_al, ease.outQ(seg(t, c4.start + 0.3, c4.start + 0.7))); pop(big_al2, ease.outQ(seg(t, c4.start + 0.4, c4.start + 0.8)));
-      var tB = cueAt(c4, 'With no');
-      pop(big_bl, ease.outQ(seg(t, tB + 0.2, tB + 0.6))); pop(big_bl2, ease.outQ(seg(t, tB + 0.3, tB + 0.7)));
-    } else {
-      L.vis(big_a, false); L.vis(big_b, false); L.vis(big_al.root, false); L.vis(big_bl.root, false); L.vis(big_al2.root, false); L.vis(big_bl2.root, false);
-    }
+    pop(sd_cap, ease.outQ(seg(t, tGraded - 0.1, tGraded + 0.4)) * ph2);
+    sd_c.forEach(function (e, ci) {
+      var s0 = cueAt(c3, CLASS_NAMES[ci].toLowerCase()) - 0.1;
+      at(e, { o: ease.outQ(seg(t, s0, s0 + 0.3)) * qOut, y: (1 - ease.outQ(seg(t, s0, s0 + 0.4))) * 24 });
+    });
+    // 3. the leaderboard forms, fewest tokens first; the most reliable row is marked
+    var lbOut = 1 - ease.inC(seg(t, c5.start - 0.1, c5.start + 0.25));
+    pop(sd_lbT, ease.outQ(seg(t, c4.start, c4.start + 0.5)) * lbOut);
+    pop(sd_lbN, ease.outQ(seg(t, c4.start + 0.3, c4.start + 0.8)) * lbOut);
+    var nrows = sd_rows.length, span = (c4.end - c4.start) * 0.62;
+    sd_rows.forEach(function (row, rn) {
+      var r = row.r, order = nrows - 1 - rn;                   // the last place is drawn first, the first last
+      var s0 = c4.start + 0.1 + order * (span / nrows), p = ease.outQ(seg(t, s0, s0 + 0.5));
+      var o = p * lbOut;
+      at(row.nm, { o: o, x: (1 - p) * -40 });
+      var grow = ease.outQ(seg(t, s0 + 0.05, s0 + 0.7)), len = LB_BAR_MAX * r.tokens / MAXTOK * grow;
+      var col = rowColor(r), flash = r.best ? seg(t, c4.end - 0.1, c4.end + 0.15) : 0;
+      if (o > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(LB_X0, row.y, LB_BAR_MAX, LB_CELL);
+        ctx.fillStyle = rgba(col, (r.best ? 0.55 : 0.36) * o); ctx.fillRect(LB_X0, row.y, len, LB_CELL);
+        ctx.fillStyle = rgba(col, (r.best ? 1 : 0.8) * o); ctx.fillRect(LB_X0 + len - 4, row.y, 4, LB_CELL);
+        if (r.best) { L.stamp(ctx, ACC, LB_X0 + len, row.y + LB_CELL / 2, 54, 0.55 * o * (0.6 + 0.4 * ease.outQ(flash))); }
+      }
+      var shownTok = Math.round(mix(0, r.tokens, grow));
+      var vtxt = (len > 8 ? (seg(t, s0 + 0.7, s0 + 0.75) >= 1 ? r.tokText : L.fmtTokens(shownTok)) : '') + ' tokens, ' + r.turnsText + ' turns';
+      setText(row.val, vtxt); row.val.style.color = r.best ? 'var(--ink)' : 'var(--ink2)';
+      L.put(row.val, { x: row.val._x, y: row.val._y, o: o * seg(len, 6, 60) });
+      if (row.tag) {
+        row.tag._x = LB_X0 + 18 + row.nm.offsetWidth + 26; row.tag._y = row.y + LB_CELL / 2 - 18;
+        at(row.tag, { o: ease.outQ(seg(t, c4.end - 0.5, c4.end - 0.1)) * lbOut });
+      }
+    });
+    // 4. the saving in four comparisons
+    var rgOut = 1 - ease.inC(seg(t, c6.start - 0.1, c6.start + 0.2));
+    var tNum = cueAt(c5, 'twenty-eight') - 0.15, tGrid = tNum + 1.6;
+    pop(rg_t, ease.outQ(seg(t, tNum, tNum + 0.55)) * rgOut);
+    pop(rg_s, ease.outQ(seg(t, tNum + 0.4, tNum + 0.9)) * rgOut);
+    rg_cells.forEach(function (cell, cn) {
+      var s0 = tGrid + cn * 0.55, a = ease.outQ(seg(t, s0, s0 + 0.4)) * rgOut;
+      at(cell.num, { o: a, y: (1 - ease.outQ(seg(t, s0, s0 + 0.5))) * 30 });
+      pop(cell.l1, ease.outQ(seg(t, s0 + 0.1, s0 + 0.5)) * rgOut); pop(cell.l2, ease.outQ(seg(t, s0 + 0.18, s0 + 0.58)) * rgOut);
+    });
+    // 5. the highlighted configuration, fully correct in every run on both question sets
+    var tFull = cueAt(c6, 'fully'), tOn = cueAt(c6, 'on both');
+    at(rl_tag, { o: ease.outQ(seg(t, c6.start + 0.05, c6.start + 0.4)), y: (1 - ease.outQ(seg(t, c6.start + 0.05, c6.start + 0.5))) * 20 });
+    at(rl_n, { o: ease.outQ(seg(t, tFull - 0.1, tFull + 0.35)), y: (1 - ease.outQ(seg(t, tFull - 0.1, tFull + 0.45))) * 40 });
+    pop(rl_l1, ease.outQ(seg(t, tFull + 0.15, tFull + 0.55)));
+    pop(rl_l2, ease.outQ(seg(t, tOn, tOn + 0.4)));
+    pop(rl_l3, ease.outQ(seg(t, tOn + 0.25, tOn + 0.65)));
   }
 
   // a small syntax tree, drawn as hairlines: the key the answers were graded against
@@ -453,20 +507,20 @@
   }
 
   // ---------- close
-  var cl_1 = ML('One repository.', 'display h1', 150, 130, 128);
-  var cl_2 = ML(F.study.runsMin + ' to ' + F.study.runsMax + ' runs for each setup.', 'display h1', 150, 275, 128);
-  var cl_3 = ML('Measured: the first two.', 'display h1', 150, 420, 128);
-  var cl_g = ['Definitions and callers', 'Search by meaning', 'What a change reaches', 'Findings that stay'].map(function (s, k) { return ML(s, 'sub s ' + (k < 2 ? '' : 'ink3'), 0, 0); });
+  var cl_1 = ML('One repository.', 'display h1', 150, 20, 96);
+  var cl_2 = ML(F.study.runsMin + ' to ' + F.study.runsMax + ' runs for each setup.', 'display h1', 150, 120, 96);
+  var cl_3 = ML('Measured: the first two.', 'display h1', 150, 220, 96);
+  var cl_g = GV_NAMES.map(function (s) { return ML(s[0] + '<br>' + s[1], 'sub s ctr', 0, 0, 44); });
+  var cl_st = MEASURED.map(function (m) { return ML(m ? 'Measured' : 'Not measured', 'sub s ctr ' + (m ? 'acc' : 'ink2'), 0, 0, 48); });
   var cl_nm = ML('PeterGanuRusty', 'display', 0, 0, 156);
-  var cl_pp = ML('Private preview', 'sub', 0, 0, 64);
+  var cl_pp = ML('Private preview', 'q big', 0, 0);
   var cl_mk = L.markSvg(ui, 340, 't');
-  var cl_note = ML('Not measured', 'sub s ink3', 0, 0);
 
   function drawClose(t) {
     var c1 = CL.cues[0], c2 = CL.cues[1], c3 = CL.cues[2], k;
     var pg = 1 - ease.inC(seg(t, c3.start - 0.5, c3.start - 0.05));
-    var tOne = cueAt(c1, 'one repository'), tRuns = cueAt(c1, 'a few runs');
-    pop(cl_1, ease.outQ(seg(t, tOne, tOne + 0.55)) * pg);
+    var tRuns = cueAt(c1, 'a few runs');
+    pop(cl_1, ease.outQ(seg(t, c1.start + 0.05, c1.start + 0.55)) * pg);
     pop(cl_2, ease.outQ(seg(t, tRuns - 0.1, tRuns + 0.45)) * pg);
     var o2 = ease.outQ(seg(t, c2.start, c2.start + 0.5));
     pop(cl_3, o2 * pg);
@@ -475,22 +529,24 @@
       var cx = GV_CENTERS[k], s0 = c2.start + 0.25 + k * 0.12, a = ease.outC(seg(t, s0, s0 + 0.6)) * pg;
       if (a > 0) {
         ctx.save(); ctx.globalAlpha = a * (k < 2 ? 1 : 0.4);
-        G.list[k](ctx, 1, { cx: cx, cy: 800, s: 0.36, labels: false });
+        G.list[k](ctx, 1, { cx: cx, cy: 495, s: 0.34, labels: false });
         ctx.restore();
-        if (k > 1) { L.hair(ctx, 0.5 * a); ctx.setLineDash([5, 7]); ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(cx - 190, 800 - 120, 380, 240, 18); ctx.stroke(); ctx.setLineDash([]); }
+        if (k > 1) { L.hair(ctx, 0.5 * a); ctx.setLineDash([5, 7]); ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(cx - 180, 495 - 118, 360, 236, 18); else ctx.rect(cx - 180, 495 - 118, 360, 236); ctx.stroke(); ctx.setLineDash([]); }
       }
-      var l = cl_g[k]; l.root._x = cx - [185, 150, 175, 135][k]; l.root._y = 940; l.root.style.transform = 'translate3d(' + l.root._x + 'px,940px,0)';
+      var l = cl_g[k], sb = cl_st[k];
+      l.root._x = cx - l.root.offsetWidth / 2; l.root._y = 608; l.root.style.transform = 'translate3d(' + l.root._x + 'px,608px,0)';
+      sb.root._x = cx - sb.root.offsetWidth / 2; sb.root._y = 326; sb.root.style.transform = 'translate3d(' + sb.root._x + 'px,326px,0)';
       pop(l, ease.outQ(seg(t, s0 + 0.2, s0 + 0.6)) * pg);
+      pop(sb, ease.outQ(seg(t, s0 + 0.2, s0 + 0.6)) * pg);
     }
     // the name and the mark
     var tn = c3.start - 0.05;
     var mp = ease.ioC(seg(t, tn, tn + 0.9)), np = ease.outQ(seg(t, tn + 0.5, tn + 1.1)), pp = ease.outQ(seg(t, tn + 0.85, tn + 1.3));
     cl_mk.root._x = 150; cl_mk.root._y = 330;
-    var spring = 1;
     cl_mk.root.style.transform = 'translate3d(150px,330px,0)';
     L.markDraw(cl_mk, mp);
-    cl_nm.root._x = 560; cl_nm.root._y = 420; cl_nm.root.style.transform = 'translate3d(560px,420px,0)';
-    cl_pp.root._x = 566; cl_pp.root._y = 620; cl_pp.root.style.transform = 'translate3d(566px,620px,0)';
+    cl_nm.root._x = 560; cl_nm.root._y = 400; cl_nm.root.style.transform = 'translate3d(560px,400px,0)';
+    cl_pp.root._x = 566; cl_pp.root._y = 590; cl_pp.root.style.transform = 'translate3d(566px,590px,0)';
     pop(cl_nm, np); pop(cl_pp, pp);
     // the filament under the name: the best lane, once
     var fl = ease.outQ(seg(t, tn + 0.9, tn + 1.6));

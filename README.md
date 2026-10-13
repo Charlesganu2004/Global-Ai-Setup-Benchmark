@@ -37,11 +37,11 @@ docs/         the public results site (GitHub Pages): measured outcomes only
 ## Results in short
 
 <!-- results:start -->
-884 agent runs on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
+884 agents measured on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
 
 One agent on the cheapest model tier, fewest tokens first (methods run at least three times):
 
-| # | Method | Runs | Turns | Tokens | Cost, cache warm | Correct |
+| # | Method | Runs | Turns | Tokens | Cost, cache warm | Mean score |
 |---:|---|---:|---:|---:|---:|---:|
 | 1 | S1 Shipped: lx ask, default index | 3 | 2.0 | 129,686 | $0.0018 | 97% |
 | 2 | S3 Shipped: lx ask, embeddings on | 3 | 2.0 | 129,954 | $0.0019 | 100% |
@@ -84,6 +84,9 @@ One agent on the cheapest model tier, fewest tokens first (methods run at least 
 | 39 | C1 Rust index + token-goat + graphify + semble | 3 | 4.3 | 310,595 | $0.0052 | 99% |
 | 40 | A0 No index | 5 | 5.0 | 364,508 | $0.0074 | 98% |
 
+The mean score is the average score of the answers, with partial credit; it is not a share of fully correct runs.
+A0r: another tool on the test machine, token-goat's secret-redaction hook, altered some of this row's reads, so its mean score is not comparable with the others and its fully correct runs are not set against the product's. See "Known weaknesses of the study" in benchmark/RESULTS.md.
+
 - An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 884 agents measured, 87% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
 - Where the shipped build, the round 1 leaders and the control stand among those 40 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 26; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 22; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 40.
 - The shipped build on an index with Rust embeddings and on the default index without them. Tier C, one agent: Shipped: lx ask, embeddings on 130k (2 turns over 3 runs), against Shipped: lx ask, default index 130k (2 turns over 3 runs); Shipped: all commands, embeddings on 198k (2 to 4 turns over 3 runs), against Shipped: all commands, default index 130k (2 turns over 3 runs).
@@ -94,7 +97,7 @@ One agent on the cheapest model tier, fewest tokens first (methods run at least 
 - Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier C, one agent: lx, every new command 130k (2 turns over 3 runs), against Rust index + graphify + semble 289k (3 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat + graphify + semble 311k (4 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat 282k (3 to 5 turns over 3 runs).
 - Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier B, one agent: lx, every new command 130k (2 turns over 2 runs), against Rust index + graphify + semble 428k (5 to 7 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat + graphify + semble 314k (3 to 6 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat 393k (5 to 6 turns over 2 runs).
 - The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.
-- Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything.
+- In these runs orchestration came with more fully correct runs, and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything. The orchestrator is of a larger model class than the subagents, so this compares more than orchestration, and every cost is an estimate at list prices, with the cost of planning imputed from the few planning calls that were measured.
 - token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.
 <!-- results:end -->
 
@@ -124,7 +127,12 @@ techniques from other projects, each credited in its text.
 
 ## Read this before quoting a number
 
-One repository, one language, three easy lookup questions, and between one and
-six runs per cell. A difference of one turn between two methods is noise. The
-start-up context every agent carries belongs to the machine the test ran on.
-Costs are list prices applied to measured tokens.
+One repository, one language, three easy lookup questions in each of two sets, and between
+one and six runs per cell, three in most. A difference of one turn or of one fully correct
+run between two methods is noise, and nothing here is a claim of significance. The second set
+of questions was written later by the same team and is not an independent test. The start-up
+context every agent carries belongs to the machine the test ran on, and most of the saving
+shown is fewer turns of it. Costs are list prices applied to measured tokens. In the second
+session the no-index control had its reads altered by another tool on the test machine, so its
+correctness is not set against the product's. The section "Known weaknesses of the study" at the
+end of [benchmark/RESULTS.md](benchmark/RESULTS.md) lists everything the method review found.

@@ -111,13 +111,19 @@ def main():
         x, sr = sf.read(str(VIDEO / "build" / f"{a.film}.{a.voice}.voice.wav"), dtype="float32")
         hop = int(sr * 0.01)
         env = np.sqrt((x[: len(x) // hop * hop].reshape(-1, hop) ** 2).mean(axis=1)) > 0.004
-        cap = {"cues": len(cues), "max_line_chars": 0, "max_lines": 0, "outside_scene": [], "low_speech_overlap": [], "overlaps": []}
+        cap = {"cues": len(cues), "max_line_chars": 0, "max_lines": 0, "outside_scene": [], "low_speech_overlap": [], "overlaps": [], "short": [], "fast": []}
         prev_end = 0.0
         for k, q in enumerate(cues):
             cap["max_lines"] = max(cap["max_lines"], len(q["lines"]))
             cap["max_line_chars"] = max([cap["max_line_chars"]] + [len(l) for l in q["lines"]])
             if q["start"] < prev_end - 1e-6:
                 cap["overlaps"].append(k + 1)
+            span = q["end"] - q["start"]
+            chars = len(" ".join(q["lines"]))
+            if span < 0.9:
+                cap["short"].append({"cue": k + 1, "seconds": round(span, 2), "text": " ".join(q["lines"])})
+            if chars / max(span, 0.01) > 21:
+                cap["fast"].append({"cue": k + 1, "chars_per_second": round(chars / span, 1), "text": " ".join(q["lines"])})
             prev_end = q["end"]
             scene = [s for s in tl["scenes"] if s["start"] - 1e-6 <= q["start"] and q["end"] <= s["start"] + s["dur"] + 1e-6]
             if not scene:
@@ -131,6 +137,10 @@ def main():
             problems.append("a caption has more than 2 lines or 42 characters per line")
         if cap["outside_scene"] or cap["overlaps"]:
             problems.append("captions outside their scene or overlapping")
+        if cap["short"]:
+            problems.append("captions on screen for under 0.9 s: " + json.dumps(cap["short"]))
+        if cap["fast"]:
+            problems.append("captions read faster than 21 characters a second: " + json.dumps(cap["fast"]))
         if cap["low_speech_overlap"]:
             problems.append("some captions are mostly over silence: " + json.dumps(cap["low_speech_overlap"]))
         if cues and cues[-1]["end"] > info["seconds"] + 0.05:

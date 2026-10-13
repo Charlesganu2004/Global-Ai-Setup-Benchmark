@@ -2,31 +2,28 @@
   "film": "ad",
   "title": "PeterGanuRusty: 20 second ad",
   "fps": 60,
-  "lead": 0.6,
-  "tail": 0.05,
-  "speed": 1.12,
+  "lead": 0.3,
+  "tail": 0.4,
+  "speed": 1.18,
   "scenes": [
     {
       "id": "hook",
-      "hold": 0.15,
-      "gap": 0.2,
-      "pre": 0.05,
+      "hold": 0.1,
+      "gap": 0.25,
+      "pre": 0.0,
       "cues": [
         {
-          "text": "Your agent reads everything."
+          "text": "Your agent reads the whole conversation."
         },
         {
-          "text": "Again."
-        },
-        {
-          "text": "And again."
+          "text": "Again. And again."
         }
       ],
       "bundle": true
     },
     {
       "id": "mass",
-      "hold": 0.55,
+      "hold": 0.4,
       "gap": 0.18,
       "pre": 0.1,
       "cues": [
@@ -41,7 +38,7 @@
     },
     {
       "id": "collapse",
-      "hold": 0.75,
+      "hold": 0.55,
       "gap": 0.3,
       "pre": 0.3,
       "cues": [
@@ -56,7 +53,7 @@
     },
     {
       "id": "number",
-      "hold": 0.7,
+      "hold": 0.5,
       "gap": 0.2,
       "pre": 0.15,
       "cues": [
@@ -67,15 +64,15 @@
     },
     {
       "id": "claim",
-      "hold": 0.6,
+      "hold": 0.45,
       "gap": 0.22,
       "pre": 0.1,
       "cues": [
         {
-          "text": "{pct} fewer."
+          "text": "{pct} fewer, against no index."
         },
         {
-          "text": "Against no index, on our study."
+          "text": "One comparison: light class, first question set."
         }
       ],
       "bundle": true
@@ -97,10 +94,10 @@
     }
   ],
   "voice_speed": {
-    "am_michael": 1.2
+    "am_michael": 1.3
   },
   "poster": {
-    "cue": "number.1",
-    "offset": 1.1
+    "cue": "claim.2",
+    "offset": 2.8
   }
 }

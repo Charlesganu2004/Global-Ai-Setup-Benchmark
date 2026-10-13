@@ -1,7 +1,9 @@
 /* The ad. One idea: the token mass collapses into a filament. Hard cuts land on the first frame of each spoken
    cue (build/ad.timeline.js), type is set at the scale of the stage, and the only numbers are the three the site
-   headlines: tokens with no index, tokens with the best configuration, and the saving between them. Every frame is
-   a function of t alone: window.PGR.seek(t). */
+   headlines: tokens with no index, tokens with the best configuration, and the saving between them, each labelled
+   as one comparison (light class, first question set). Every line that qualifies a claim is 64 px or more on the
+   1920 x 1080 stage and sits in the upper two thirds, clear of the captions. Every frame is a function of t alone:
+   window.PGR.seek(t). */
 (function () {
   'use strict';
   var L = window.PGRLIB, F = window.FACTS, TL = window.TIMELINE;
@@ -17,8 +19,12 @@
     var i = c.spoken.toLowerCase().indexOf(phrase.toLowerCase());
     return c.start + (c.end - c.start) * (i < 0 ? 0 : i / c.spoken.length);
   }
-  var HK = [cue('hook', 1), cue('hook', 2), cue('hook', 3)], MS = [cue('mass', 1), cue('mass', 2)];
+  var HK = [cue('hook', 1), cue('hook', 2)], MS = [cue('mass', 1), cue('mass', 2)];
   var CO = [cue('collapse', 1), cue('collapse', 2)], NB = cue('number', 1), CM = [cue('claim', 1), cue('claim', 2)], CS = [cue('close', 1), cue('close', 2)];
+
+  var tAgain = cueAt(HK[1], 'And again');          // the second half of "Again. And again."
+  var CMP = F.labels.classLabel + ', ' + F.labels.firstSet + '.';
+  var lc = function (v) { return v.charAt(0).toLowerCase() + v.slice(1); };
 
   // ---------- type: every line is its own element, cut in on a frame, never faded
   function T(cls, html, x, y, size) {
@@ -30,22 +36,25 @@
   function win(e, t, a, b) { L.vis(e, t >= a && t < b); }
   function setText(e, s) { if (e._s !== s) { e._s = s; e.textContent = s; } }
 
-  var a_reads = T('display', 'reads', 140, 112, 470), a_every = T('display', 'everything.', 146, 560, 300);
+  var a_ctx = T('display ink2', 'Your agent reads the whole', 146, 70, 104), a_conv = T('display', 'conversation.', 140, 190, 250);
   var a_again = T('display', 'again.', 140, 250, 580), a_and = T('display', 'and again.', 146, 330, 340);
-  var a_num1 = T('num', '0', 134, 190, 700), a_num1sub = T('sub', 'tokens per task. No index.', 150, 842, 56);
-  var a_lookups = T('display', 'for three lookups.', 146, 826, 118);
+  var a_num1 = T('num', '0', 134, 40, 520), a_num1sub = T('sub', 'tokens per task, for three lookups.', 150, 570, 68), a_num1cmp = T('q big', 'No index. ' + CMP, 150, 644);
   var a_q1 = T('display', 'one question.', 146, 84, 290), a_q2 = T('display', 'one answer.', 146, 84, 290);
-  var a_num2 = T('num', F.best.tokText, 134, 190, 700), a_num2sub = T('sub', 'tokens per task.', 150, 842, 56);
-  var a_pct = T('num', F.pct + '%', 134, 70, 700), a_fewer = T('display', 'fewer tokens', 146, 700, 150);
-  var a_against = T('sub', 'Against no index, on our study.', 150, 884, 58);
-  var a_mark = L.markSvg(ui, 300, 't'); a_mark.root._x = 150; a_mark.root._y = 70; a_mark.root.style.transform = 'translate3d(150px,70px,0)';
-  var a_name = T('display', 'PeterGanuRusty', 142, 420, 214), a_find = T('display', 'Find code in one step.', 148, 726, 92), a_pp = T('sub', 'Private preview', 150, 858, 50);
-  a_pct.style.color = 'var(--ink)'; a_num2.style.color = 'var(--ink)'; a_pp.style.color = 'var(--ink3)';
+  var a_num2 = T('num', F.best.tokText, 134, 40, 520), a_num2sub = T('sub', 'tokens per task.', 150, 570, 68), a_num2cmp = T('q big', CMP, 150, 644);
+  var a_pct = T('num', F.pct + '%', 134, 0, 470), a_fewer = T('display', 'fewer tokens', 146, 410, 110);
+  // the lines that qualify the claim stand in a column on the right: clear of the play button the site's player lays over
+  // the middle of the poster, and above its control bar
+  function Tl(lines, x, y) { return lines.map(function (l, n) { return T('q', l, x, y + n * 67); }); }
+  var a_cmp1 = Tl([F.control.tokText + ' to ' + F.best.tokText + ' tokens', 'per task, against', 'no index.'], 1160, 90);
+  var a_cmp2 = Tl(['One comparison:', lc(F.labels.classLabel) + ',', F.labels.firstSet + '.'], 1160, 330);
+  var a_mark = L.markSvg(ui, 250, 't'); a_mark.root._x = 150; a_mark.root._y = 40; a_mark.root.style.transform = 'translate3d(150px,40px,0)';
+  var a_name = T('display', 'PeterGanuRusty', 142, 300, 214), a_find = T('display', 'Find code in one step.', 148, 525, 92), a_pp = T('q big', 'Private preview', 150, 640);
+  a_pct.style.color = 'var(--ink)'; a_num2.style.color = 'var(--ink)';
   var domAll = Array.prototype.slice.call(ui.children);
 
   // ---------- the token mass: one particle for each 1k tokens of the no index total
   var N = Math.round(F.control.tokens / 1000), M = Math.round(F.best.tokens / 1000);
-  var X0 = 150, SPAN = 1620, FIL_Y = 540, FIL_LEN = SPAN * M / N, FIL_X0 = 960 - FIL_LEN / 2;
+  var X0 = 150, SPAN = 1620, FIL_Y = 500, FIL_LEN = SPAN * M / N, FIL_X0 = 960 - FIL_LEN / 2;
   var P = [], R = L.rng(3), i;
   for (i = 0; i < N; i++) {
     var r1 = R(), r2 = R(), r3 = R(), r4 = R(), r5 = R(), q = R();
@@ -58,10 +67,10 @@
 
   // beams: the read head. Three passes in the hook, each faster, and one that counts the tokens.
   var BEAMS = [
-    { a: HK[0].start + 0.05, b: HK[0].start + 1.35 }, { a: HK[1].start, b: HK[1].start + 0.55 },
-    { a: HK[2].start, b: HK[2].start + 0.46 }, { a: MS[0].start, b: MS[0].start + 0.9 }
+    { a: HK[0].start + 0.05, b: HK[0].end - 0.1 }, { a: HK[1].start, b: HK[1].start + 0.55 },
+    { a: tAgain, b: tAgain + 0.46 }, { a: MS[0].start, b: MS[0].end - 0.4 }          // the last one counts, and lands on the last word
   ];
-  var KICKS = [[HK[0].start, 5], [HK[1].start, 12], [HK[2].start, 16], [MS[0].start, 10], [CO[0].start, 12], [CO[1].start, 14],
+  var KICKS = [[HK[0].start, 5], [HK[1].start, 12], [tAgain, 16], [MS[0].start, 10], [CO[0].start, 12], [CO[1].start, 14],
     [NB.start, 18], [CM[0].start, 16], [CS[0].start, 11]];
   function beamX(b, t) { return X0 - 40 + (SPAN + 80) * ease.ioQ(seg(t, b.a, b.b)); }
 
@@ -72,7 +81,7 @@
     ctx.save();
     ctx.translate(W / 2, H / 2); ctx.scale(K, K); ctx.translate(-W / 2, -H / 2);
 
-    var intro = ease.outQ(seg(t, 0, 0.7));
+    var intro = 0.55 + 0.45 * ease.outQ(seg(t, 0, 0.5));      // the pile is already there on the first frame
     var c1 = ease.ioC(seg(t, CO[0].start, CO[0].start + 0.85));
     var gone = 1 - ease.inC(seg(t, CM[0].start, CM[0].start + 0.2));     // the claim and the close are on a clean ground
     var counted = 0, bm = BEAMS[3], bx3 = beamX(bm, t);
@@ -151,7 +160,7 @@
     }
     // the closing filament under the name
     if (t >= CS[0].start) {
-      var cs = ease.outQ(seg(t, CS[0].start + 0.35, CS[0].start + 0.95)), fy = 680, fx = 150;
+      var cs = ease.outQ(seg(t, CS[0].start + 0.35, CS[0].start + 0.95)), fy = 760, fx = 150;
       ctx.fillStyle = rgba(HOT, 0.95 * cs); ctx.fillRect(fx, fy - 1, FIL_LEN * cs, 2);
       var gg = ctx.createLinearGradient(0, fy - 30, 0, fy + 30); gg.addColorStop(0, 'rgba(255,122,61,0)'); gg.addColorStop(0.5, 'rgba(255,122,61,' + (0.3 * cs).toFixed(3) + ')'); gg.addColorStop(1, 'rgba(255,122,61,0)');
       ctx.fillStyle = gg; ctx.fillRect(fx - 10, fy - 30, FIL_LEN * cs + 20, 60);
@@ -169,22 +178,29 @@
     var counted = drawWorld(t);
 
     // ---- type, cut in on the first frame of the cue that names it
-    win(a_reads, t, HK[0].start, HK[1].start);
-    win(a_every, t, cueAt(HK[0], 'everything'), HK[1].start);
-    win(a_again, t, HK[1].start, HK[2].start);
-    win(a_and, t, HK[2].start, MS[0].start);
+    win(a_ctx, t, 0, HK[1].start);
+    win(a_conv, t, 0, HK[1].start);
+    win(a_again, t, HK[1].start, tAgain);
+    win(a_and, t, tAgain, MS[0].start);
     var tokText = t < MS[0].start ? '0' : seg(t, BEAMS[3].a, BEAMS[3].b) >= 1 ? F.control.tokText : L.fmtTokens(counted * 1000);
     setText(a_num1, tokText);
     win(a_num1, t, MS[0].start, CO[0].start);
-    win(a_num1sub, t, MS[0].start + 0.9, MS[1].start);
-    win(a_lookups, t, MS[1].start, CO[0].start);
+    win(a_num1sub, t, MS[0].start + 0.6, CO[0].start);
+    win(a_num1cmp, t, MS[1].start, CO[0].start);
     win(a_q1, t, CO[0].start, CO[1].start);
     win(a_q2, t, CO[1].start, NB.start);
     win(a_num2, t, NB.start, CM[0].start);
     win(a_num2sub, t, NB.start + 0.35, CM[0].start);
+    win(a_num2cmp, t, NB.start + 0.6, CM[0].start);
     win(a_pct, t, CM[0].start, CS[0].start);
     win(a_fewer, t, cueAt(CM[0], 'fewer'), CS[0].start);
-    win(a_against, t, CM[1].start, CS[0].start);
+    a_cmp1.forEach(function (e) { win(e, t, cueAt(CM[0], 'against'), CS[0].start); });
+    // the label of the figure is uncovered left to right while the voice says it, so the claim never holds one picture
+    var uncover = ease.ioC(seg(t, CM[1].start, CM[1].end - 0.1));
+    a_cmp2.forEach(function (e) {
+      win(e, t, CM[1].start, CS[0].start);
+      e.style.clipPath = uncover >= 1 ? 'none' : 'inset(-30px ' + ((1 - uncover) * 100).toFixed(2) + '% -30px -30px)';   // room above and below for the letters' tails
+    });
     L.markDraw(a_mark, ease.ioC(seg(t, CS[0].start, CS[0].start + 0.5)));
     win(a_name, t, CS[0].start + 0.12, DUR + 1);
     win(a_find, t, CS[1].start, DUR + 1);

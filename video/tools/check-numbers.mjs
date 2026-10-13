@@ -17,6 +17,9 @@ const add = (...vals) => vals.forEach((v) => figures(v).forEach((f) => allowed.a
 const pts = [facts.best, facts.control, ...facts.rows];
 pts.forEach((p) => add(p.tokText, p.turnsText, p.shareText, p.ofText));
 add(facts.pct + '%', facts.fewerText, facts.study.agents, facts.study.files, facts.study.runsMin, facts.study.runsMax, facts.study.configsPublished);
+// the range of the four comparisons, each comparison's saving, and the highlighted configuration's own run count
+facts.cells.forEach((q) => add(q.pct + '%'));
+add(facts.range.min + '%', facts.range.max + '%', facts.range.n, facts.reliable.perfect, facts.reliable.runs);
 
 const times = [];
 for (const s of tl.scenes) {
@@ -31,8 +34,9 @@ try {
     await page.evaluate(`window.PGR.seek(${t})`);
     const texts = await page.evaluate(`Array.from(document.querySelectorAll('#ui *')).filter(e => e.children.length === 0 && e.textContent.trim()).filter(e => { const r = e.getBoundingClientRect(), cs = getComputedStyle(e); let p = e, op = 1, vis = true; while (p && p.id !== 'ui') { const c = getComputedStyle(p); if (c.visibility === 'hidden') vis = false; op *= parseFloat(c.opacity); p = p.parentElement; } return vis && op > 0.2 && r.width > 0; }).map(e => e.textContent.trim())`);
     const found = texts.flatMap(figures).map((f) => f.replace(/\s/g, ''));
-    // a numeral that is counting between the no index figure and the best one is in motion by design
-    const counting = (f) => /^\d+k$/.test(f) && parseInt(f) >= Math.round(facts.best.tokens / 1000) && parseInt(f) <= Math.round(facts.control.tokens / 1000);
+    // a numeral that is counting up (a leaderboard row) or between the no index figure and the best one is in motion by design
+    const maxK = Math.round(Math.max(facts.control.tokens, ...facts.rows.map((r) => r.tokens)) / 1000);
+    const counting = (f) => /^\d+k$/.test(f) && parseInt(f) <= maxK;
     const unknown = found.filter((f) => !allowed.has(f) && !counting(f));
     if (unknown.length) { bad++; console.log(`  t=${t.toFixed(2)}: not a site number: ${unknown.join(', ')}   [${texts.join(' | ')}]`); }
   }

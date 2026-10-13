@@ -657,7 +657,7 @@
    "name": "pgr, memory only",
    "public": {
     "slug": "engine-v2-memory",
-    "name": "PGR: memory",
+    "name": "PGR: memory, filled with the answers",
     "family": "engine-v2",
     "order": 9
    },
@@ -687,7 +687,7 @@
    "name": "pgr, graph and memory",
    "public": {
     "slug": "engine-v2-graph-memory",
-    "name": "PGR: graph and memory",
+    "name": "PGR: graph and memory, filled with the answers",
     "family": "engine-v2",
     "order": 11
    },
@@ -704,7 +704,7 @@
    "name": "pgr, search and memory",
    "public": {
     "slug": "engine-v2-search-memory",
-    "name": "PGR: search and memory",
+    "name": "PGR: search and memory, filled with the answers",
     "family": "engine-v2",
     "order": 12
    },
@@ -720,7 +720,7 @@
    "name": "pgr, all three, memory from the same questions",
    "public": {
     "slug": "engine-v2-all",
-    "name": "PGR: graph, search and memory",
+    "name": "PGR: graph, search and memory, filled with the answers",
     "family": "engine-v2",
     "order": 13
    },

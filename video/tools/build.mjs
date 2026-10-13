@@ -90,6 +90,8 @@ for (const v of opt.voices.split(',')) {
   run(FFMPEG, ['-y', '-v', 'error', '-i', src, '-c:a', 'aac', '-b:a', '160k', path.join(VIDEO_DIR, 'renders', `pgr-${film}-${v}${v === primary ? '.muxed' : ''}.m4a`)], 'audio copy');
 }
 fs.copyFileSync(master, path.join(VIDEO_DIR, 'renders', `pgr-${film}-${H}p.master.mp4`));
+// the figures and labels this render was drawn from, for tools/check-fresh.mjs
+fs.copyFileSync(path.join(BUILD, 'facts.json'), path.join(VIDEO_DIR, 'renders', `pgr-${film}-${H}p.facts.json`));
 if (opt.scale === 1) {
   const listPath = path.join(ROOT, 'benchmark', 'data', 'video.json');
   let list = { public: [] };

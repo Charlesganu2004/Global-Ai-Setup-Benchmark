@@ -1,95 +1,101 @@
 WEBVTT
 
 1
-00:00:00.800 --> 00:00:02.684
+00:00:00.800 --> 00:00:02.631
 Three simple code lookups.
 
 2
-00:00:02.884 --> 00:00:03.866
-Four turns.
+00:00:02.831 --> 00:00:06.239
+Four turns. 294k tokens.
 
 3
-00:00:04.066 --> 00:00:06.425
-294k tokens.
+00:00:06.439 --> 00:00:10.772
+Every turn, an AI coding agent
+reads its whole conversation again.
 
 4
-00:00:06.625 --> 00:00:11.049
-Every turn, an AI coding agent reads its
-whole conversation again.
-
-5
-00:00:12.109 --> 00:00:14.936
+00:00:11.422 --> 00:00:14.083
 Now the same lookups, with PeterGanuRusty.
 
-6
-00:00:15.156 --> 00:00:16.195
+5
+00:00:14.303 --> 00:00:15.330
 One question.
 
+6
+00:00:15.550 --> 00:00:20.278
+One answer. The stream
+shortens to 134k tokens.
+
 7
-00:00:16.415 --> 00:00:17.356
-One answer.
+00:00:20.498 --> 00:00:23.710
+54% fewer than no index, in 2 turns.
 
 8
-00:00:17.576 --> 00:00:24.257
-The stream shortens to 134k tokens. 54%
-fewer, in 2 turns.
+00:00:23.930 --> 00:00:27.370
+That is one comparison:
+light class, first question set.
 
 9
-00:00:25.384 --> 00:00:27.103
+00:00:28.104 --> 00:00:29.794
 It gives an agent four things.
 
 10
-00:00:27.403 --> 00:00:31.065
-Where a function is defined, and what
-calls it, in one lookup.
+00:00:30.094 --> 00:00:33.546
+Where a function is defined,
+and what calls it, in one lookup.
 
 11
-00:00:31.365 --> 00:00:34.676
-Search by meaning: describe a job, get the
-function.
+00:00:33.846 --> 00:00:37.061
+Search by meaning: describe
+a job, get the function.
 
 12
-00:00:34.976 --> 00:00:37.217
+00:00:37.361 --> 00:00:39.505
 What a change reaches, before the edit.
 
 13
-00:00:37.517 --> 00:00:40.080
+00:00:39.805 --> 00:00:42.234
 And findings, remembered between sessions.
 
 14
-00:00:41.415 --> 00:00:48.178
-To measure it, we ran 884 agents on one
-Python repository of 86 files.
+00:00:42.943 --> 00:00:49.578
+To measure it, we ran 884 agents on
+one Python repository of 86 files.
 
 15
-00:00:48.478 --> 00:00:53.978
-Three questions, graded against the syntax
-tree, on three model classes: light, mid
+00:00:49.878 --> 00:00:52.616
+Three questions, graded
+against the syntax tree.
 
 16
-00:00:53.978 --> 00:00:54.567
-and top.
+00:00:52.916 --> 00:00:55.422
+Three model classes: light, mid and top.
 
 17
-00:00:54.867 --> 00:00:58.625
-14 ways of finding code, ranked. The best
-one is marked.
+00:00:55.722 --> 00:01:00.821
+14 ways to find code, fewest tokens
+first. The most reliable is marked.
 
 18
-00:00:58.925 --> 00:01:02.823
-Runs fully correct: 3 of 3. With no index,
-2 of 3.
+00:01:01.121 --> 00:01:07.682
+Against no index: 28% to 54% fewer
+tokens, across 4 comparisons.
 
 19
-00:01:04.271 --> 00:01:08.693
-The limits are real: one repository, a few
-runs for each setup.
+00:01:07.982 --> 00:01:12.420
+The most reliable was fully correct
+in every run, on both question sets.
 
 20
-00:01:09.143 --> 00:01:11.596
-The study measures the first two things
-only.
+00:01:13.699 --> 00:01:17.929
+The limits are real: one repository,
+a few runs for each setup.
 
 21
-00:01:12.046 --> 00:01:14.532
+00:01:18.379 --> 00:01:20.768
+The study measures the
+first two things only.
+
+22
+00:01:21.218 --> 00:01:23.644
 PeterGanuRusty. Private preview.

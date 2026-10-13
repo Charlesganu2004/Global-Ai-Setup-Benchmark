@@ -1,6 +1,7 @@
 /* Shared behaviour for the four pages: number formats, the motion helpers, numerals that roll, the scroll film
-   (pinned chapters and scrubbed entries), the compact bar, the reading progress line, pointer light, tilt, the
-   lattice behind the page, the segmented control and the tooltip.
+   (pinned chapters), reveals, the compact bar, the reading progress line, the segmented control and the figure of what
+   the product does. A thing that is read is always drawn whole: scrolling changes a state and the change takes under
+   250 ms, so a stop anywhere shows a finished picture.
    Every page reads without any of it; this only adds the parts that need a script. */
 (function () {
   'use strict';
@@ -47,14 +48,16 @@
   };
 
   /* ---------- number formats, the same as the ones written into the pages ---------- */
+  var NB = ' ';
   App.tokens = function (v) {
     if (!(v > 0)) return '0';
     return v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : Math.round(v / 1e3) + 'k';
   };
   // A share is never rounded up to 100%: 99.6% reads as 99%.
   App.share = function (v) { return v >= 0.9995 ? '100%' : Math.min(99, Math.floor(v * 100 + 0.5)) + '%'; };
-  App.of = function (count, total) { return count + ' of ' + total; };
-  App.seconds = function (v) { return Math.round(v) + ' s'; };
+  // A count and a range are one value: a narrow column breaks a line between values, never inside one.
+  App.of = function (count, total) { return count + NB + 'of' + NB + total; };
+  App.seconds = function (v) { return Math.round(v) + NB + 's'; };
   App.turns = function (v) { return v.toFixed(1); };
 
   // The best configuration and the control on the light class and the original questions, the same pair the pages are written from.
@@ -73,6 +76,8 @@
   /* ---------- numerals that roll: one strip of digits for each place, turned like a counter ---------- */
   // The lowest place turns with the value; a higher place turns only while the place below it passes from 9 to 0.
   // The element keeps its text for a screen reader. Returns null where the value cannot be shown this way.
+  // set(v) shows the value mid-roll; set(v, true) shows the whole number the page's own format would write: a roll
+  // that has stopped is always settled, so no digit is ever left between two positions.
   var PLACES = { tokens: { unit: 1000, dec: 0, tail: 'k', fmt: App.tokens }, turns: { unit: 1, dec: 1, tail: '', fmt: App.turns },
     share: { unit: 0.01, dec: 0, tail: '%', fmt: App.share } };
   App.od = function (el, kind, most) {
@@ -107,11 +112,11 @@
       if (found[0] > 0) wide = found;
     }
     return { set: function (v, settle) {
-      // Settled, the strips show exactly what the page's own format would write.
       var x = settle ? parseFloat(spec.fmt(v)) : v / spec.unit, below = 0;
       if (!wide) widths();
       for (var n = cols.length - 1; n >= 0; n -= 1) {
         var c = cols[n], q = x / c.w, pos = c.w === low ? q % 10 : Math.floor(q + 1e-9) % 10 + Math.max(0, below - 9);
+        if (settle) pos = Math.round(pos) % 10;
         var at = Math.floor(pos) % 10, part = pos - Math.floor(pos);
         below = pos;
         c.d.style.display = c.w > 1 && !(x > c.w - low + 1e-6) ? 'none' : '';
@@ -122,35 +127,29 @@
     } };
   };
 
-  /* ---------- scroll reveals: scrubbed by the scroll position where the browser can, otherwise once ---------- */
-  var scrubbed = !!(window.CSS && CSS.supports && CSS.supports('animation-timeline: view()'));
+  /* ---------- reveals: a thing comes in once, in under 250 ms, when it is first seen ---------- */
   var revealIO = null;
   App.reveal = function (el) {
     if (App.reduced || el.classList.contains('reveal')) return;
     el.classList.add('reveal');
-    if (scrubbed) return;
-    if (!revealIO && 'IntersectionObserver' in window) {
+    if (!('IntersectionObserver' in window)) { el.classList.add('in'); return; }
+    if (!revealIO) {
       revealIO = new IntersectionObserver(function (entries) {
         entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); revealIO.unobserve(e.target); } });
-      }, { rootMargin: '0px 0px -8% 0px' });
+      }, { rootMargin: '0px 0px -6% 0px' });
     }
-    if (revealIO) revealIO.observe(el); else el.classList.add('in');
+    revealIO.observe(el);
   };
-  each(document.querySelectorAll('.section > .section-title, .section > .card:not(.tilt), .section > .finding-list, .cine-frame, .stream, .foot'), App.reveal);
+  each(document.querySelectorAll('.section > .section-title, .section > .card, .section > .finding-list, .section > .ledger, .rl-row, .flag, .also, .key, .cine, .stream, .proof-text'), App.reveal);
+  each(document.querySelectorAll('.kin'), function (el) { if (!App.reduced) App.once(el, function () { el.classList.add('in'); }, 0.15); });
 
-  /* ---------- the scroll film: a pinned chapter publishes its progress as --p, an entry as --k ---------- */
-  // Where the browser has scroll-driven animations the stylesheet drives both; here they are set by hand otherwise.
-  // A script that needs the number itself (the particle stage, a count) asks for it with App.pin.
-  var pins = [], scrubs = [];
+  /* ---------- the scroll film: a pinned chapter publishes its progress as --p ---------- */
+  // A script that needs the number itself (the particle stage, the stacks) asks for it with App.pin.
+  var pins = [];
   App.film = !App.reduced && window.innerHeight >= 560 && !!document.querySelector('.pin');
   if (App.film) root.classList.add('film-on');
-  if (scrubbed && !App.reduced) root.classList.add('css-scrub');
   each(document.querySelectorAll('.pin'), function (el) {
     pins.push({ el: el, stage: el.querySelector('.pin-stage'), top: 0, span: 0, v: -1, fns: [] });
-  });
-  if (!App.reduced) each(document.querySelectorAll('.kin, .hops'), function (el) {
-    el.classList.add('scrub');
-    if (!scrubbed) scrubs.push({ el: el, top: 0, h: 0, v: -1 });
   });
   App.pin = function (el, fn) {
     pins.forEach(function (pin) { if (pin.el === el) { pin.fns.push(fn); if (pin.v >= 0) fn(pin.v); } });
@@ -161,6 +160,7 @@
     if (stage && stage !== el) return docTop(stage.parentNode, y) + el.getBoundingClientRect().top - stage.getBoundingClientRect().top;
     return el.getBoundingClientRect().top + y;
   }
+  var bar = document.getElementById('bar'), title = document.getElementById('title');
   function measure() {
     var y = window.scrollY || root.scrollTop || 0;
     pins.forEach(function (pin) {
@@ -173,16 +173,12 @@
       }
       pin.span = App.film && pin.stage ? pin.el.offsetHeight - pin.stage.offsetHeight : 0;
     });
-    scrubs.forEach(function (s) { s.top = docTop(s.el, y); s.h = s.el.offsetHeight; });
     queue();
   }
-
-  /* ---------- the compact bar condenses the large title as it scrolls away ---------- */
-  var bar = document.getElementById('bar'), title = document.getElementById('title');
   App.bar = function (c) { if (bar) bar.style.setProperty('--c', clamp(c).toFixed(3)); };
 
-  /* ---------- the reading progress line, and the section the reader is in (one pass per frame) ---------- */
-  var line = document.createElement('div'), wipe = document.createElement('div'), spy = [], queued = false;
+  /* ---------- the reading progress line, the section the reader is in, the bar that steps aside (one pass per frame) ---------- */
+  var line = document.createElement('div'), wipe = document.createElement('div'), spy = [], queued = false, lastY = window.scrollY || 0;
   line.className = 'progress';
   line.setAttribute('aria-hidden', 'true');
   document.body.appendChild(line);
@@ -203,14 +199,14 @@
       var v = pin.span > 0 ? clamp((y - pin.top) / pin.span) : 0;
       if (v === pin.v) return;
       pin.v = v;
-      if (!scrubbed) pin.el.style.setProperty('--p', v.toFixed(4));
+      pin.el.style.setProperty('--p', v.toFixed(4));
       pin.fns.forEach(function (fn) { fn(v); });
     });
-    scrubs.forEach(function (s) {
-      var k = clamp((y + vh - s.top) / (0.44 * (vh + s.h)));
-      if (k !== s.v) { s.v = k; s.el.style.setProperty('--k', k.toFixed(4)); }
-    });
     if (bar && title && !App.barOwned) App.bar((bar.offsetHeight + 28 - title.getBoundingClientRect().bottom) / 44);
+    // On a phone the top bar leaves on the way down and comes back on the way up, so the controls under it get the room.
+    if (window.innerWidth < 1000) {
+      if (Math.abs(y - lastY) > 6) { root.classList.toggle('away', y > lastY && y > 240); lastY = y; }
+    } else root.classList.remove('away');
     var at = null, limit = vh * 0.35;
     spy.forEach(function (s) { if (s.h.getBoundingClientRect().top <= limit) at = s; });
     spy.forEach(function (s) {
@@ -221,59 +217,34 @@
   window.addEventListener('scroll', queue, { passive: true });
   window.addEventListener('resize', measure);
   if ('ResizeObserver' in window) new ResizeObserver(measure).observe(document.body);
+  // Sticky controls cover the top of the screen: what takes focus is scrolled clear of them.
+  var sticky = document.querySelector('.seg-bar');
+  if (sticky && 'ResizeObserver' in window) {
+    new ResizeObserver(function () { root.style.setProperty('--seg', (sticky.offsetParent ? sticky.offsetHeight : 0) + 'px'); }).observe(sticky);
+  }
   measure();
   paint();
 
-  /* ---------- numbers that roll from the no-index value to the best one when they come into view ---------- */
+  /* ---------- numbers that count from the no-index value to the best one, once, when they come into view ---------- */
   each(document.querySelectorAll('[data-count]'), function (el, i) {
     var kind = el.getAttribute('data-count'), final = el.textContent;
     var from = parseFloat(el.getAttribute('data-from')), to = parseFloat(el.getAttribute('data-to'));
-    var fromText = el.getAttribute('data-from-text');
     var fmt = kind === 'tokens' ? App.tokens : kind === 'turns' ? App.turns : kind === 'share' ? App.share : null;
-    if (App.reduced || (!fmt && fromText == null)) { el.classList.add('in'); return; }
-    var od = fmt ? App.od(el, kind, Math.max(from, to)) : null, strip = null;
-    if (od) od.set(from);
-    else if (fmt) el.textContent = fmt(from);
-    else {
-      // A count such as "4 of 5" to "3 of 3" cannot pass through states that were never measured: one line
-      // leaves and the other arrives, once.
-      var spoken = document.createElement('span'), box = document.createElement('span'), cell = document.createElement('span');
-      spoken.className = 'sr-only';
-      spoken.textContent = final;
-      box.className = 'od';
-      box.setAttribute('aria-hidden', 'true');
-      cell.className = 'od-d';
-      strip = cell.appendChild(document.createElement('span'));
-      strip.textContent = fromText + '\n' + final;
-      box.appendChild(cell);
-      el.replaceChildren(spoken, box);
-    }
     el.classList.add('in');
+    if (App.reduced || !fmt) return;
+    el.textContent = fmt(from);
     App.once(el, function () {
-      setTimeout(function () {
-        if (od) { App.run(1700, function (p) { od.set(from + (to - from) * App.ease(p), p >= 1); }); return; }
-        if (fmt) { App.count(el, from, to, fmt, 1500, final); return; }
-        strip.style.transition = 'transform 760ms ' + App.spring;
-        strip.style.transform = 'translateY(-1.1em)';
-      }, 160 + i * 110);
+      setTimeout(function () { App.count(el, from, to, fmt, 340, final); }, 60 + i * 60);
     }, 0.5);
   });
-  // The pair drawn beside a figure, and the small figures of what the product does, play when they are first seen.
   each(document.querySelectorAll('.close-mark'), function (el) { App.once(el, function () { el.classList.add('draw'); }, 0.9); });
-  each(document.querySelectorAll('.figure'), function (el) {
-    if (App.reduced) { el.classList.add('in'); return; }
-    App.once(el, function () { el.classList.add('in'); }, 0.4);
-  });
-  // What each part of a figure does and when: selector, move, delay, duration, and either the gap between
-  // siblings or how far a token travels. At rest every part is in its final place, so nothing depends on this.
-  var MOVES = { on: [{ opacity: 0.16 }, {}], pop: [{ opacity: 0, transform: 'scale(.3)' }, {}], draw: [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }],
-    wave: [{ opacity: 0.7, transform: 'scale(.3)' }, { opacity: 0, transform: 'scale(9)' }] };
+
+  // The figure of the one capability the study measures plays when first seen and again when pointed at; at rest it shows
+  // the outcome. Each part: selector, move, delay, duration, and either the gap between siblings or how far a token travels.
+  var MOVES = { on: [{ opacity: 0.16 }, {}], pop: [{ opacity: 0, transform: 'scale(.3)' }, {}], draw: [{ strokeDashoffset: 1 }, { strokeDashoffset: 0 }] };
   var PARTS = [['.fig-one .tok', 'go', 150, 620, 50], ['.fig-one .hit', 'on', 700, 240, 0], ['.fig-one .fan path', 'draw', 780, 520, 0],
-    ['.fig-one .lit circle', 'pop', 1180, 420, 0], ['.fig-mean .words rect', 'on', 120, 260, 140], ['.fig-mean .wire', 'draw', 620, 700, 0],
-    ['.fig-mean .hit', 'pop', 1280, 420, 0], ['.fig-mean .halo', 'pop', 1340, 620, 0], ['.fig-reach .wave', 'wave', 200, 1700, 0],
-    ['.fig-reach .hop', 'on', 420, 300, 400], ['.fig-mem .t1', 'go', 150, 1500, 112], ['.fig-mem .hit:not(.kept)', 'pop', 1560, 420, 0],
-    ['.fig-mem .wire', 'draw', 1820, 420, 0], ['.fig-mem .kept', 'pop', 2180, 420, 0], ['.fig-mem .t2', 'go', 2560, 420, 112]];
-  each(document.querySelectorAll('.do'), function (item) {
+    ['.fig-one .lit circle', 'pop', 1180, 420, 0]];
+  each(document.querySelectorAll('.flag'), function (item) {
     if (App.reduced || !item.animate) return;
     var running = [];
     function play() {
@@ -292,34 +263,6 @@
     item.addEventListener('click', play);
   });
 
-  /* ---------- pointer light on cards, and a slight tilt on the best one (fine pointers only) ---------- */
-  each(document.querySelectorAll('.spot'), function (card) {
-    if (App.reduced) { card.classList.add('lit'); return; }
-    if (!App.fine) return;
-    var tilt = card.classList.contains('tilt'), mx = 0, my = 0, rx = 0, ry = 0, tx = 0, ty = 0, over = false, id = 0;
-    function frame() {
-      id = 0;
-      rx += (tx - rx) * 0.16;
-      ry += (ty - ry) * 0.16;
-      card.style.setProperty('--mx', mx.toFixed(1) + 'px');
-      card.style.setProperty('--my', my.toFixed(1) + 'px');
-      if (tilt) card.style.transform = over || Math.abs(rx) + Math.abs(ry) > 0.02 ? 'perspective(900px) rotateX(' + rx.toFixed(2) + 'deg) rotateY(' + ry.toFixed(2) + 'deg)' : '';
-      if (over || Math.abs(tx - rx) + Math.abs(ty - ry) > 0.02) id = requestAnimationFrame(frame);
-    }
-    card.addEventListener('pointermove', function (e) {
-      var box = card.getBoundingClientRect();
-      mx = e.clientX - box.left;
-      my = e.clientY - box.top;
-      if (tilt) { ty = (mx / box.width - 0.5) * 10; tx = -(my / box.height - 0.5) * 10; }
-      over = true;
-      if (!id) id = requestAnimationFrame(frame);
-    });
-    card.addEventListener('pointerleave', function () {
-      over = false; tx = 0; ty = 0;
-      if (!id) id = requestAnimationFrame(frame);
-    });
-  });
-
   /* ---------- a magnetic button: near it, the button leans a third of the way toward the pointer ---------- */
   each(document.querySelectorAll('.magnet'), function (button) {
     var zone = button.closest('.card') || button.parentNode;
@@ -332,66 +275,6 @@
     });
     zone.addEventListener('pointerleave', function () { button.style.transform = ''; });
   });
-
-  /* ---------- behind the page: a lattice of points that the pointer parts, and the light the cursor carries ---------- */
-  if (App.fine && !App.reduced) (function () {
-    var canvas = document.createElement('canvas'), g = canvas.getContext ? canvas.getContext('2d') : null, glint = document.createElement('div');
-    if (!g) return;
-    canvas.style.cssText = 'position:fixed;inset:0;z-index:0;width:100%;height:100%;pointer-events:none';
-    canvas.setAttribute('aria-hidden', 'true');
-    glint.style.cssText = 'position:fixed;left:0;top:0;z-index:44;width:440px;height:440px;margin:-220px 0 0 -220px;border-radius:50%;' +
-      'pointer-events:none;opacity:0;transition:opacity .5s ease-out;will-change:transform;' +
-      'background:radial-gradient(closest-side,rgba(255,255,255,.05),rgba(255,255,255,.018) 45%,transparent)';
-    glint.setAttribute('aria-hidden', 'true');
-    document.body.insertBefore(canvas, document.body.firstChild);
-    document.body.appendChild(glint);
-    var STEP = 36, REACH = 150, W = 0, H = 0, dpr = 1, px = -999, py = -999, tx = -999, ty = -999, id = 0, seen = false;
-    var rgb = (getComputedStyle(root).getPropertyValue('--accent-rgb') || '255,122,61').replace(/\s/g, '');
-    function draw() {
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.clearRect(0, 0, W, H);
-      for (var y = STEP / 2; y < H; y += STEP) {
-        for (var x = STEP / 2; x < W; x += STEP) {
-          var dx = x - px, dy = y - py, d2 = dx * dx + dy * dy;
-          if (d2 < REACH * REACH) {
-            var d = Math.sqrt(d2) || 1, f = 1 - d / REACH;
-            f *= f;
-            g.fillStyle = 'rgba(' + rgb + ',' + (0.12 + f * 0.75).toFixed(3) + ')';
-            g.fillRect(x + dx / d * f * 26 - 0.5 - f, y + dy / d * f * 26 - 0.5 - f, 1 + 2 * f, 1 + 2 * f);
-          } else {
-            g.fillStyle = 'rgba(255,255,255,.11)';
-            g.fillRect(x - 0.5, y - 0.5, 1, 1);
-          }
-        }
-      }
-    }
-    function size() {
-      W = window.innerWidth; H = window.innerHeight;
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
-      canvas.width = Math.round(W * dpr);
-      canvas.height = Math.round(H * dpr);
-      draw();
-    }
-    function frame() {
-      id = 0;
-      // Taken fast and released slowly: the light and the parting trail the pointer a little.
-      px += (tx - px) * 0.22;
-      py += (ty - py) * 0.22;
-      glint.style.transform = 'translate(' + px.toFixed(1) + 'px,' + py.toFixed(1) + 'px)';
-      draw();
-      if (Math.abs(tx - px) + Math.abs(ty - py) > 0.4 && !document.hidden) id = requestAnimationFrame(frame);
-    }
-    function wake() { if (!id) id = requestAnimationFrame(frame); }
-    window.addEventListener('pointermove', function (e) {
-      if (e.pointerType === 'touch') return;
-      tx = e.clientX; ty = e.clientY;
-      if (!seen) { seen = true; px = tx; py = ty; glint.style.opacity = '1'; }
-      wake();
-    }, { passive: true });
-    root.addEventListener('pointerleave', function () { seen = false; glint.style.opacity = '0'; tx = px = -999; ty = py = -999; wake(); });
-    window.addEventListener('resize', size);
-    size();
-  })();
 
   /* ---------- the sidebar indicator leans to the page under the pointer, and glides where there are no page transitions ---------- */
   (function () {
@@ -456,43 +339,6 @@
     rootEl.style.setProperty('--i', current);
     return { select: select };
   };
-
-  /* ---------- the tooltip: hover, focus and tap ---------- */
-  var tipEl = null;
-  function tipNode() {
-    if (!tipEl) {
-      tipEl = document.createElement('div');
-      tipEl.className = 'tip';
-      tipEl.setAttribute('role', 'tooltip');
-      tipEl.hidden = true;
-      document.body.appendChild(tipEl);
-    }
-    return tipEl;
-  }
-  App.tip = {
-    show: function (name, rows, x, y) {
-      var tip = tipNode(), head = document.createElement('b');
-      head.textContent = name;
-      tip.replaceChildren(head);
-      rows.forEach(function (row) {
-        var lineEl = document.createElement('div'), a = document.createElement('span'), b = document.createElement('span');
-        a.textContent = row[0];
-        b.textContent = row[1];
-        lineEl.appendChild(a);
-        lineEl.appendChild(b);
-        tip.appendChild(lineEl);
-      });
-      tip.hidden = false;
-      var w = tip.offsetWidth, h = tip.offsetHeight, vw = document.documentElement.clientWidth, vh = window.innerHeight;
-      var left = x + 14 + w > vw - 8 ? x - 14 - w : x + 14;
-      var top = y + 14 + h > vh - 8 ? y - 14 - h : y + 14;
-      tip.style.left = Math.max(8, left) + 'px';
-      tip.style.top = Math.max(8, top) + 'px';
-    },
-    hide: function () { if (tipEl) tipEl.hidden = true; }
-  };
-  window.addEventListener('scroll', function () { App.tip.hide(); }, { passive: true });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') App.tip.hide(); });
 
   // Last: the pieces that hide something until a script shows it only apply once this line has run.
   if (!App.reduced) root.classList.add('motion-ready');

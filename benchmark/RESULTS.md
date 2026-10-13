@@ -1,8 +1,8 @@
 # Benchmark results
 
-884 agent runs on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
+884 agents measured on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
 
-The charts are on the project site. This file is the same data as tables, written by `benchmark/harness/build_site.py`.
+The charts are on the project site. This file is the same data as tables, written by `benchmark/harness/build_site.py`. Read the section "Known weaknesses of the study" at the end before quoting a number. A "Correct" column is a mean score between 0 and 1 over the answers, with partial credit, not a share of fully correct runs. The no-index control of the second session had its reads altered by another tool on the test machine; its figures are shown as measured and are not set against the product's for correctness.
 
 ## Findings
 
@@ -27,7 +27,7 @@ The charts are on the project site. This file is the same data as tables, writte
 - Tier B, coder, one agent: no index used 281k tokens and $0.103 over 3 runs. Among the 31 methods run at least twice and fully correct every time, the leanest was lx ask + token-goat read at 129k tokens and $0.0309 over 2 runs, 54% fewer tokens. 5 methods ran once on this tier and answered everything; the lowest of those single runs was lx improved + Rust embeddings at 128k tokens.
 - Tier A, apex, one agent: no index used 298k tokens and $0.343 over 3 runs. Only one method was run twice on this tier and was fully correct both times: lx, as shipped after round 1 at 272k tokens and $0.164 over 2 runs, 9% fewer tokens. 32 methods ran once on this tier and answered everything; the lowest of those single runs was lx ask + token-goat read at 135k tokens.
 - The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.
-- Orchestration buys accuracy and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything.
+- In these runs orchestration came with more fully correct runs, and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything. The orchestrator is of a larger model class than the subagents, so this compares more than orchestration, and every cost is an estimate at list prices, with the cost of planning imputed from the few planning calls that were measured.
 - A cold start costs far more than a warm one. Writing the 63k start-up context to the cache costs $0.316 on Tier A against $0.0127 to read it back, 25 times as much. Subagents started together all pay the cold price; started one after another within five minutes they share the cached part.
 - token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.
 
@@ -864,7 +864,7 @@ Means per run. Hook runs, calls rewritten, notes added and calls refused are per
 
 ## Round five
 
-The Rust engine in every combination of its parts, three earlier methods run again on the same day, and a held-out set B of three more questions of the same shapes. One agent answering all three questions; light is Tier C and mid is Tier B. Hooks were on for every run of the round.
+The Rust engine in every combination of its parts, three earlier methods run again on the same day, and a held-out set B: a second set of three questions of the same three shapes, written later by the same team and not seen by the people and agents who built the engine (it is not independent). One agent answering all three questions; light is Tier C and mid is Tier B. Hooks were on for every run of the round.
 
 ### Original questions, set A
 
@@ -946,8 +946,160 @@ Whole-process wall time, median of 20 runs, release build, index already current
 - Hooks were on for every run of the round. Hook calls were recorded in 35 of 97 runs (348 calls).
 - The public control is the same-day one: A0r, S1r and S3r are the repeats of A0, S1 and S3 and are the ones the public leaderboard shows. The earlier A0, S1 and S3 runs stay in this report only.
 - Start-up context grew between the sessions: the earlier A0, S1 and S3 single-agent runs averaged 62,937 tokens (23 agents) and the repeats A0r, S1r and S3r 64,911 (15 agents), on the light and mid classes.
-- The control's file reads pass through token-goat's read compression on the test machine, which hid lines the control needed in some runs. The earlier session (A0) ran without it.
+- The control's file reads pass through token-goat's hooks on the test machine. The secret-redaction hook overwrote the two lines that call the first question's target (its name contains "api_key") with a placeholder, so the control left that caller out in four of its six original-question runs. The hook matches the file-reading tools only; the product configurations ran their lookups through the shell tool and were not touched. The earlier session (A0) ran without the hooks. The public site therefore does not set the control's fully correct counts or mean score against the product's; it compares tokens and turns only, and fully correct counts only with the first generation. See Known weaknesses of the study.
 - Control, fully correct runs: A0r light 2 of 3, mid 0 of 3; A0h light 3 of 3, mid 2 of 2; earlier A0 light 4 of 5, mid 3 of 3, top 3 of 3.
 - Memory was filled before the runs by two earlier sessions: RM, RGM, RSM and RGSM from one that answered the same three questions, RGSO and RGSOh from one that explored the repository without seeing any question.
 - Cells with fewer than three complete runs in the round: 2 of 33.
+
+
+## Saving against no index, cell by cell
+
+The highlighted configuration ("Most reliable" on the site) is PGR: graph and search. Tokens and turns of it and of the no-index control in each of the four cells where both were measured. The site quotes the lowest and the highest saving and labels any single cell it shows. It does not set the control's fully correct counts against the product's: in these runs the control's reads were altered by token-goat's secret-redaction hook (see Known weaknesses of the study).
+
+| Class | Questions | Tokens, highlighted | Tokens, no index | Saving | Turns, highlighted | Turns, no index |
+|---|---|---:|---:|---:|---:|---:|
+| light | original | 134,013 | 293,653 | 54.4% | 2.00 | 4.00 |
+| mid | original | 133,367 | 261,183 | 48.9% | 2.00 | 3.67 |
+| light | held-out | 181,055 | 360,770 | 49.8% | 2.67 | 4.67 |
+| mid | held-out | 180,119 | 250,430 | 28.1% | 2.67 | 3.50 |
+
+Range of the saving in tokens: 28.1% to 54.4% (28% to 54% on the site).
+
+Against the first generation (Our engine, first generation, with embeddings), the only comparison of fully correct counts the site makes, because it ran in the same session under the same conditions:
+
+| Class | Questions | Tokens, highlighted | Tokens, first generation | Turns, highlighted | Turns, first generation | Fully correct, highlighted | Fully correct, first generation |
+|---|---|---:|---:|---:|---:|---:|---:|
+| light | original | 134,013 | 133,923 | 2.00 | 2.00 | 3 of 3 | 3 of 3 |
+| mid | original | 133,367 | 133,129 | 2.00 | 2.00 | 3 of 3 | 3 of 3 |
+| light | held-out | 181,055 | 134,120 | 2.67 | 2.00 | 3 of 3 | 2 of 3 |
+| mid | held-out | 180,119 | 272,030 | 2.67 | 4.00 | 3 of 3 | 2 of 2 |
+
+
+## Known weaknesses of the study
+
+The method review of the study found the weaknesses below. Each has what it could change and the cheapest fix. The counts are the reviewer's, taken from the transcripts and the harness; this build does not recompute them. For scale: 112 single-agent runs in 42 cells stand behind the public leaderboard, computed by this build.
+
+### 1. The control's accuracy deficit comes from another tool, not from having no index
+
+Token-goat's secret-redaction hook overwrote the two lines where the first question's target is called with a placeholder, because the target's own name contains "api_key". Every one of the six control runs of the second session had the hook act on its reads, and four of them left that caller out; the held-out control, whose first question has another target, had no redaction and missed nothing. The hook matches only the file-reading tools, so the product configurations, which ran their lookups through the shell tool the hook does not see, were not touched. In the first session, without the hook, the control was fully correct in 10 of 11 runs across the light, mid and top classes on the original questions.
+
+- What it could change: The control's fully correct counts (7 of 11 in the second session, against 15 of 16 for the first-session control and the held-out control together), any claim that the index improves accuracy, and the control's tokens, which the hook lowered while it damaged the answers. The public site no longer sets the control's correctness against the product's.
+- Cheapest fix: Rerun the control, original and held-out, with the hooks off, in the same session as the product runs and in alternating order: about six light-class runs. Or choose a first-question target whose name does not contain "api_key".
+
+### 2. The held-out set is not an independent test
+
+It is a second draw from the same generator by the same people: the same filter, the same three shapes of question, unique function names with four to twelve callers, and job descriptions that follow the wording of the functions' own documentation. The answer key matches callers by bare name, which is how a name-based index resolves them, so the key and the index agree by construction. Functions that share a name with another function (about one in eight) are never asked about. The output formats of the tools were tuned on the first set over five rounds.
+
+- What it could change: How much the held-out result says about questions of other shapes or other repositories. It checks fitting to the first three questions, no more.
+- Cheapest fix: Pre-register a random draw stratified by duplicate-name and caller-count strata, have someone who has not seen the documentation write the concept questions, add three questions that need a function body to answer, and include targets whose name is shared.
+
+### 3. The held-out result is worse than the original one, and the headline quoted the best cell
+
+Configurations that took two turns on every original-question run needed more on the held-out questions (the first generation took three and five turns on the mid class, with two runs). The saving against the same-day control was largest in the cell the headline showed. The site now gives the range over the four cells and says that two turns is true of the original questions.
+
+- What it could change: The size of the headline saving, and the claim that two turns is a floor for any question.
+- Cheapest fix: Show all four cells, and run the third runs that are missing.
+
+### 4. Three runs per cell cannot support a claim of significance
+
+With three runs against three, the smallest exact two-sided permutation p-value is 0.10, and every product-against-control token cell of the second session sits at that floor although the ranges do not overlap. A cell holds three repeats of one bundle of three questions, so the effective sample for generalising is two bundles. Tokens equal about 65k times the turns, so a cell is three draws of a small whole number. Differences of one turn or one fully correct run are inside the spread, among them graph alone against graph and search on turns, and the memory comparisons.
+
+- What it could change: Every finding that rests on one turn or one run. The site now says "in these runs" and gives the counts.
+- Cheapest fix: Ten repeats per cell for the control and the two leading configurations on the light class, both sets (about two dollars at the table's prices), and about twenty randomly drawn questions so that the question dimension has a sample.
+
+### 5. The highlighted configuration is chosen by a rule written after the results
+
+Only configurations with three runs in each of four cells can be chosen. The control and the first generation miss it only because a third run of one cell was never started, and the memory configurations have no held-out cell, so the field is four sibling configurations. Two of them tie on fully correct runs and the token tie-break decides. Other reasonable rules choose the first generation or the code-graph configuration instead.
+
+- What it could change: Which configuration is highlighted. The site now calls it "Most reliable", states the rule and that it was set after the runs, and says that only configurations measured on both question sets were eligible.
+- Cheapest fix: Run the two missing third runs (four agents), publish the rule before the next round, or show every configuration with its interval.
+
+### 6. The benchmark cannot tell the second generation from the first
+
+On the original questions the two use the same tokens and turns and are fully correct as often. The second generation's measured advantage is speed and size, not tokens or accuracy.
+
+- What it could change: The ranking narrative. The site says the first generation matched it on tokens and turns and puts the difference under speed.
+- Cheapest fix: State the tie, or run both on a set built to need what the second generation added, such as impact analysis.
+
+### 7. The agents were told different amounts
+
+The product configurations received command descriptions of 400 to 500 characters that list the fields the grader checks, show how to batch questions and say not to verify. The control received one line naming its tools, with no hint to batch or to read only what it needs. Every prompt also said the task measures what a code lookup costs, and the start-up context carries the sponsor's own routing rules.
+
+- What it could change: The two-turn floor, partly produced by the prompt, and the control's turn count. The Study page now says the descriptions differ and were not controlled.
+- Cheapest fix: Give the control a usage note of the same length, give both sides the same "when to read" sentence, delete the sentence about measuring tokens, and rerun the control (six runs).
+
+### 8. The baseline is the weakest available and the questions suit a call graph
+
+The control has file search and read tools and no shell, so no ripgrep, no context lines around a match, no ctags or ast-grep, no language server. Two of the three questions ask for the function that encloses each call, which a plain search cannot print, so the control needs an extra dependent turn, and in several rows it names the wrong enclosing function. No question needs a function body to be read.
+
+- What it could change: How large the saving is against a competent user of ordinary tools.
+- Cheapest fix: Add a tuned-search arm and a shell arm with context lines and a syntax-aware search, and add three questions about behaviour whose answer needs a body read.
+
+### 9. The token headline is against a control the hook had made cheaper
+
+The hooked control of the second session used fewer tokens than the clean control of the first (about 19% fewer on the light class) while giving worse answers. Against the clean control the saving is larger (about 64% light and 53% mid). Within the second session the start-up context of the control and the product differ by little, so the hook is the live difference.
+
+- What it could change: The saving, upward. The site compares with the same-day control on tokens and turns and says so; the Study page gives the tokens of both controls.
+- Cheapest fix: Run control and product in one session with the hooks off, in alternating order, and report one control.
+
+### 10. A token count weighs cached re-reads like fresh text
+
+About 87% of all tokens are cache reads, which a bill weighs at a tenth. The size of the saving depends on the cache state: in dollars it is much larger with a warm cache than with a cold one, and the absolute saving on the light class is a fraction of a cent. The prices are constants typed into the analysis, and the light-class entry is about a tenth of the list price the reviewer knew of. They cannot be checked from the repository.
+
+- What it could change: Every money figure, including the orchestration cost multiple. The site now defines a token count, says most of the saving is turns, and calls the multiple an estimate.
+- Cheapest fix: Show warm and cold dollars beside tokens, check the price table against a bill, and describe the saving as about two fewer round trips.
+
+### 11. Grading is not entirely free of human choices
+
+The key for the which-function question is hand-written, and for the held-out set a person widened it to accept either of two functions. The parser has false negatives: a parameter written as name and type is read as nothing, a defensible alternative function scores a partial mark, and one missed caller is enough to make a run not fully correct. None of the recorded answers hit the parameter case.
+
+- What it could change: Whether a single run counts as fully correct. The site now says the key was read from the syntax tree and reviewed by the authors, and calls the percentage a mean score.
+- Cheapest fix: Parse parameter names with the syntax tree, publish the accepted answers before the runs, and score a defensible alternative as its own class.
+
+### 12. Memory filled with the answers is a lookup, not a result
+
+Four memory configurations were filled by a session that answered the same questions and were never run on the held-out set. The only realistic test, memory from an exploring session, was neutral or worse on tokens in most cells and may overlap the held-out targets, because the exploring notes were not compared with the questions.
+
+- What it could change: Any suggestion that memory helps. The site now says "filled with the answers" in those four names and calls them a best case.
+- Cheapest fix: Label them as an upper bound, compare the exploring notes with both question sets, and test memory on a task that spans two sessions.
+
+### 13. The speed table is not like for like
+
+It compares a first generation written in Python with a binary written in Rust, so it measures the runtime and the architecture, not an algorithm. The 130 second build of the first generation is from an earlier session and uses embeddings (12 seconds without); the query figure is the whole-process median of one call answering the original-set questions. Search alone, however fast, was often wrong on the callers question.
+
+- What it could change: The 48-times and the build-time factors. The site now labels the query as one call answering three lookups, shows the single lookup gap, and names the build.
+- Cheapest fix: Measure both engines on the same day, with and without embeddings, 20 runs each with the spread, on a larger repository.
+
+### 14. The competitor rows are not like for like
+
+Three published comparators come from the first session with one to three runs, and are driven through descriptions written by the sponsor, one of them through an awkward command-line wrapper of a tool-protocol call. 14 of 44 configurations are published, chosen by a flag.
+
+- What it could change: How the comparators compare when used as their makers intend. The leaderboard marks these rows as an earlier session and the Study page no longer says everything was measured on the same day.
+- Cheapest fix: Rerun them on the same day with at least five runs and the maker's recommended use, and publish the thirty other rows in this report.
+
+### 15. Which transcripts enter the data is decided by hand
+
+The parser takes a list of folders on the command line, with no manifest and no list of what was left out. Some labelled agents on disk are not in the data, among them a control run that never produced a structured answer. A few runs with off-policy tool use are kept. Nothing suggests a run was silently dropped, and nothing proves it.
+
+- What it could change: The control's tally, by one run, and the trust in the data.
+- Cheapest fix: Commit a manifest of the included folders, refuse any labelled transcript not in one, report off-policy runs separately, and count the control run that never answered.
+
+### 16. The orchestration claim rests on estimates and one set of briefs
+
+Only three planning calls were ever measured and the mean is charged to the other orchestrated runs; every orchestrated run of the original set reuses the same briefs; the reviewer is the top model class with tools, so the comparison mixes orchestration with model class; and the single-agent comparison pools many configurations, including weak ones.
+
+- What it could change: The cost multiple and the accuracy gap. The site now says the cost is an estimate, pooled, and that the reviewer is a larger class.
+- Cheapest fix: Compare like for like on the same configurations and questions with independent plans for each run.
+
+### Three claims the data does not support
+
+1. That the index improves accuracy (12 of 12 against 7 of 11 fully correct). The gap is the redaction artefact; the clean control was fully correct in 15 of 16 runs, and on the held-out set the control and the leading configuration were both fully correct in every run.
+2. That the highlighted configuration is better than the first generation. Tokens, turns and correct runs on the original questions are the same within noise.
+3. That the held-out result shows the engine was not fitted, or that it generalises beyond this repository and these shapes of question. The held-out set is a second draw of the same shapes, and it shows more turns. The speed factors are not like for like and the benefit of memory is unmeasured.
+
+### The claims it does support
+
+1. On this repository, for caller, definition and find-by-description questions, a one-call lookup lets light and mid agents finish in about two turns where unaided search and read tools needed three to six. The saving in tokens against the same-day control over the four cells is in the table above, and its direction does not depend on the hook.
+2. Tokens here are turns times the start-up context. The index shrinks the tool output, which is small next to one extra turn. Search without a call graph failed the callers question on the light class.
+3. Memory does not help single lookups: memory holding the answers only matches the two-turn floor, and memory from an exploring session used fewer tokens in a minority of cells.
 

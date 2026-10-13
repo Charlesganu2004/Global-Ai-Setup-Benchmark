@@ -90,6 +90,9 @@ def make_bed(tl, sr, voice):
     sc = {s["id"]: s for s in tl["scenes"]}
     cue = lambda sid, k: sc[sid]["cues"][k - 1]["start"]
     dur = tl["duration"]
+    # the second hook cue is "Again. And again.": its second half is where the picture cuts to "and again."
+    hook2 = sc["hook"]["cues"][1]
+    again = hook2["start"] + (hook2["end"] - hook2["start"]) * len("Again. ") / len(hook2["spoken"])
 
     # drone: A1 with its fifth and octave, a slow swell that opens at the collapse and settles for the close
     sw = np.interp(t, [0, cue("hook", 1), cue("mass", 1), cue("collapse", 1), cue("number", 1), cue("close", 1), dur],
@@ -99,7 +102,7 @@ def make_bed(tl, sr, voice):
     bed[:, 1] += drone * 0.5
 
     # a thump on every hard cut: the picture cuts on the same instants
-    cuts = [cue("hook", 1), cue("hook", 2), cue("hook", 3), cue("mass", 1), cue("mass", 2), cue("collapse", 1), cue("collapse", 2),
+    cuts = [cue("hook", 1), cue("hook", 2), again, cue("mass", 1), cue("mass", 2), cue("collapse", 1), cue("collapse", 2),
             cue("number", 1), cue("claim", 1), cue("close", 1)]
     strength = [0.7, 0.85, 1.0, 0.9, 0.55, 1.0, 0.9, 1.0, 1.0, 0.8]
     th = _thump(sr)
