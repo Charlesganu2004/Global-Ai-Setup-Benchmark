@@ -1,0 +1,8 @@
+[
+  {"arms": ["TP", "TPh"], "setup": "single", "tier": "C", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["TP", "TPh"], "setup": "single", "tier": "B", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["R6", "R6h", "TPG", "TPGh", "TPS", "TPSh"], "setup": "single", "tier": "C", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["T0", "TL", "TI"], "setup": "single", "tier": "C", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["TL", "TI"], "setup": "single", "tier": "B", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["R6", "R6h", "TP", "TPh"], "setup": "parallel", "tier": "C", "reps": ["r1", "r2", "r3"]}
+]

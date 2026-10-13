@@ -1,0 +1,1334 @@
+{
+  "header": {
+    "banner": "OpenAI Codex v0.162.0-alpha.17.2",
+    "workdir": "C:\\path\\to\\lxbench\\repo",
+    "model": "gpt-6-astra",
+    "provider": "openai",
+    "approval": "never",
+    "sandbox": "read-only",
+    "reasoning_effort": "medium",
+    "reasoning_summaries": "none",
+    "tokens_used": 26137
+  },
+  "harness": "codex exec",
+  "cli_version": "codex-cli 0.162.0-alpha.17.2",
+  "auth": "Logged in using ChatGPT",
+  "date": "2026-10-13",
+  "model": "gpt-6-astra",
+  "effort": "medium",
+  "requested": {
+    "model": "gpt-6-astra",
+    "effort": "medium"
+  },
+  "sandbox": "read-only",
+  "approval": "never",
+  "feature_switches_off": [
+    "hooks",
+    "multi_agent"
+  ],
+  "pgr_version": "pgr 0.1.0",
+  "prompts": {
+    "no-index": {
+      "A": "This is one run of a benchmark that measures how many tokens a code lookup costs.\nRepository under test: your working directory (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index. Stay inside it: never read, list or search any path outside the working directory.\n\nTOOL POLICY FOR THIS RUN. It replaces the local-index and read-gate rules and any token-goat gate in your global instructions. Use only what is listed here. No sub-agents, no web access, no other search or index command.\nAllowed shell commands. Each is one call of your shell tool (PowerShell); the working directory is already the repository root.\n  rg <pattern> [path...]     ripgrep, the only search command: searches file contents by regular expression; rg --files lists files\nTo see code, print a line range of a file with Get-Content <file> | Select-Object -Skip <first line minus one> -First <count>, and only when the answer needs it.\nBe exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.\n\nAnswer all three questions.\nQ1. Which functions call `_get_backend_api_key`? Give the bare name of every calling function in the repository.\nQ2. Where is the function `dispatch_command` defined (file, and the line its `def` is on), what are its parameter names, and which functions call it?\nQ3. Which function registers the git merge driver for graph.json? Give its name, its file, the line its `def` is on, and the name of the function that removes that registration again.",
+      "B": "This is one run of a benchmark that measures how many tokens a code lookup costs.\nRepository under test: your working directory (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index. Stay inside it: never read, list or search any path outside the working directory.\n\nTOOL POLICY FOR THIS RUN. It replaces the local-index and read-gate rules and any token-goat gate in your global instructions. Use only what is listed here. No sub-agents, no web access, no other search or index command.\nAllowed shell commands. Each is one call of your shell tool (PowerShell); the working directory is already the repository root.\n  rg <pattern> [path...]     ripgrep, the only search command: searches file contents by regular expression; rg --files lists files\nTo see code, print a line range of a file with Get-Content <file> | Select-Object -Skip <first line minus one> -First <count>, and only when the answer needs it.\nBe exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.\n\nAnswer all three questions.\nQ1. Which functions call `write_json_atomic`? Give the bare name of every calling function in the repository.\nQ2. Where is the function `validate_url` defined (file, and the line its `def` is on), what are its parameter names, and which functions call it?\nQ3. Which function decides whether a path should be ignored under the .graphifyignore patterns? Give its name, its file, the line its `def` is on, and the name of the function that reads the .graphifyignore files."
+    },
+    "pgr": {
+      "A": "This is one run of a benchmark that measures how many tokens a code lookup costs.\nRepository under test: your working directory (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index. Stay inside it: never read, list or search any path outside the working directory.\n\nTOOL POLICY FOR THIS RUN. It replaces the local-index and read-gate rules and any token-goat gate in your global instructions. Use only what is listed here. No sub-agents, no web access, no other search or index command.\nAllowed shell commands. Each is one call of your shell tool (PowerShell); the working directory is already the repository root.\n  pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\"\nAfter a command answers, print a line range of a file with Get-Content <file> | Select-Object -Skip <first line minus one> -First <count> only on a line range it returned, and only when the answer needs it. Use rg only when the listed commands return nothing useful.\nBe exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.\n\nAnswer all three questions.\nQ1. Which functions call `_get_backend_api_key`? Give the bare name of every calling function in the repository.\nQ2. Where is the function `dispatch_command` defined (file, and the line its `def` is on), what are its parameter names, and which functions call it?\nQ3. Which function registers the git merge driver for graph.json? Give its name, its file, the line its `def` is on, and the name of the function that removes that registration again.",
+      "B": "This is one run of a benchmark that measures how many tokens a code lookup costs.\nRepository under test: your working directory (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index. Stay inside it: never read, list or search any path outside the working directory.\n\nTOOL POLICY FOR THIS RUN. It replaces the local-index and read-gate rules and any token-goat gate in your global instructions. Use only what is listed here. No sub-agents, no web access, no other search or index command.\nAllowed shell commands. Each is one call of your shell tool (PowerShell); the working directory is already the repository root.\n  pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\"\nAfter a command answers, print a line range of a file with Get-Content <file> | Select-Object -Skip <first line minus one> -First <count> only on a line range it returned, and only when the answer needs it. Use rg only when the listed commands return nothing useful.\nBe exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.\n\nAnswer all three questions.\nQ1. Which functions call `write_json_atomic`? Give the bare name of every calling function in the repository.\nQ2. Where is the function `validate_url` defined (file, and the line its `def` is on), what are its parameter names, and which functions call it?\nQ3. Which function decides whether a path should be ignored under the .graphifyignore patterns? Give its name, its file, the line its `def` is on, and the name of the function that reads the .graphifyignore files."
+    }
+  },
+  "schemas": {
+    "A": {
+      "type": "object",
+      "properties": {
+        "q1": {
+          "type": "object",
+          "properties": {
+            "callers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "bare function names"
+            }
+          },
+          "required": [
+            "callers"
+          ],
+          "additionalProperties": false
+        },
+        "q2": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "path relative to the repository"
+            },
+            "line": {
+              "type": "integer",
+              "description": "line of the def"
+            },
+            "parameters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "parameter names only"
+            },
+            "called_by": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "bare function names"
+            }
+          },
+          "required": [
+            "file",
+            "line",
+            "parameters",
+            "called_by"
+          ],
+          "additionalProperties": false
+        },
+        "q3": {
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "description": "bare function name"
+            },
+            "file": {
+              "type": "string",
+              "description": "path relative to the repository"
+            },
+            "line": {
+              "type": "integer",
+              "description": "line of the def"
+            },
+            "removed_by": {
+              "type": "string",
+              "description": "bare name of the function that undoes it"
+            }
+          },
+          "required": [
+            "function",
+            "file",
+            "line",
+            "removed_by"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "q1",
+        "q2",
+        "q3"
+      ],
+      "additionalProperties": false
+    },
+    "B": {
+      "type": "object",
+      "properties": {
+        "q1": {
+          "type": "object",
+          "properties": {
+            "callers": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "bare function names"
+            }
+          },
+          "required": [
+            "callers"
+          ],
+          "additionalProperties": false
+        },
+        "q2": {
+          "type": "object",
+          "properties": {
+            "file": {
+              "type": "string",
+              "description": "path relative to the repository"
+            },
+            "line": {
+              "type": "integer",
+              "description": "line of the def"
+            },
+            "parameters": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "parameter names only"
+            },
+            "called_by": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "bare function names"
+            }
+          },
+          "required": [
+            "file",
+            "line",
+            "parameters",
+            "called_by"
+          ],
+          "additionalProperties": false
+        },
+        "q3": {
+          "type": "object",
+          "properties": {
+            "function": {
+              "type": "string",
+              "description": "bare function name"
+            },
+            "file": {
+              "type": "string",
+              "description": "path relative to the repository"
+            },
+            "line": {
+              "type": "integer",
+              "description": "line of the def"
+            },
+            "read_by": {
+              "type": "string",
+              "description": "bare name of the function that reads the .graphifyignore files"
+            }
+          },
+          "required": [
+            "function",
+            "file",
+            "line",
+            "read_by"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "q1",
+        "q2",
+        "q3"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "command_template": "codex exec -m <model> -c model_reasoning_effort=<effort> --disable hooks --disable multi_agent -s read-only --skip-git-repo-check --ephemeral -C C:\\path\\to\\lxbench\\repo --output-schema <schema> -o <out> --json -",
+  "environment": "PGR_NO_REFRESH=1; the folder of pgr first on PATH; the prompt on standard input",
+  "fully_correct_rule": "mean of the three question grades from bench_parse.grade, rounded to 4 places, at least 0.999",
+  "token_fields": "total_tokens = input + output; fresh_tokens = input - cached input + output (the CLI's own `tokens used`); cached input counted inside input and reasoning inside output, as the usage record reports them",
+  "limits": [
+    "Three repeats per cell support no claim of significance.",
+    "One repository (86 Python files).",
+    "Token counts come from the Codex CLI, with its own system prompt, tools and caching. They are not comparable with the main benchmark's counts: only no-index against pgr inside this file is.",
+    "The questions were written by the builders of pgr."
+  ],
+  "not_measured": [
+    "Model requests per session: the CLI events give one aggregate usage record per turn, not a request count.",
+    "Other models, other efforts, other repositories, other agent harnesses.",
+    "Orchestration, parallel sub-agents, and the pgr memory part: this file measures one agent answering three questions."
+  ],
+  "usage_limit": null,
+  "fixture": {
+    "path": "C:\\path\\to\\lxbench\\repo",
+    "description": "86 Python files, 68,316 lines",
+    "changed_by_runs": []
+  },
+  "sessions": [
+    {
+      "method": "pgr",
+      "set": "A",
+      "repeat": 1,
+      "order": 1,
+      "answer": {
+        "q1": {
+          "callers": [
+            "dispatch_command",
+            "_llm_tiebreak",
+            "extract_files_direct",
+            "_call_llm",
+            "detect_backend",
+            "_resolve_triage_backend",
+            "triage_with_opus"
+          ]
+        },
+        "q2": {
+          "file": "cli.py",
+          "line": 1064,
+          "parameters": [
+            "cmd"
+          ],
+          "called_by": [
+            "_run_cli"
+          ]
+        },
+        "q3": {
+          "function": "_register_merge_driver",
+          "file": "hooks.py",
+          "line": 736,
+          "removed_by": "_unregister_merge_driver"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 80496,
+        "cached_input_tokens": 52864,
+        "output_tokens": 221,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 80717,
+        "fresh_tokens": 27853
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 2,
+        "programs": {
+          "pgr": 2
+        },
+        "list": [
+          {
+            "command": "pgr ask callers:_get_backend_api_key about:dispatch_command \"find:function registers git merge driver for graph.json and removes registration\" ",
+            "exit_code": 0,
+            "output_chars": 1386
+          },
+          {
+            "command": "pgr ask about:_unregister_merge_driver \"find:remove graph.json merge driver registration\"",
+            "exit_code": 0,
+            "output_chars": 917
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 49.7,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "no-index",
+      "set": "A",
+      "repeat": 1,
+      "order": 2,
+      "answer": {
+        "q1": {
+          "callers": [
+            "dispatch_command",
+            "_llm_tiebreak",
+            "_resolve_triage_backend",
+            "triage_with_opus",
+            "extract_files_direct",
+            "_call_llm",
+            "detect_backend"
+          ]
+        },
+        "q2": {
+          "file": "cli.py",
+          "line": 1064,
+          "parameters": [
+            "cmd"
+          ],
+          "called_by": [
+            "_run_cli"
+          ]
+        },
+        "q3": {
+          "function": "_register_merge_driver",
+          "file": "hooks.py",
+          "line": 736,
+          "removed_by": "_unregister_merge_driver"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 117855,
+        "cached_input_tokens": 85248,
+        "output_tokens": 329,
+        "reasoning_output_tokens": 45,
+        "total_tokens": 118184,
+        "fresh_tokens": 32936
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 3,
+        "programs": {
+          "rg": 3
+        },
+        "list": [
+          {
+            "command": "rg -n '_get_backend_api_key|dispatch_command|merge.driver|merge driver' .",
+            "exit_code": 0,
+            "output_chars": 3523
+          },
+          {
+            "command": "rg -n '\"'^def |''^    def |''^async def '\"' __main__.py cli.py dedup.py prs.py llm.py",
+            "exit_code": 0,
+            "output_chars": 12473
+          },
+          {
+            "command": "rg -n '\"'^ {8,}(async )?def '\"' cli.py dedup.py prs.py llm.py __main__.py",
+            "exit_code": 0,
+            "output_chars": 544
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 33.5,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "no-index",
+      "set": "B",
+      "repeat": 1,
+      "order": 3,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_prune_graph_json_sources",
+            "dispatch_command",
+            "save_manifest",
+            "to_json",
+            "to_canvas",
+            "_save_manifest",
+            "_save_global_graph"
+          ]
+        },
+        "q2": {
+          "file": "security.py",
+          "line": 103,
+          "parameters": [
+            "url"
+          ],
+          "called_by": [
+            "ingest",
+            "redirect_request",
+            "safe_fetch",
+            "download_audio"
+          ]
+        },
+        "q3": {
+          "function": "_is_ignored",
+          "file": "detect.py",
+          "line": 1448,
+          "read_by": "_load_graphifyignore"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 119399,
+        "cached_input_tokens": 85888,
+        "output_tokens": 353,
+        "reasoning_output_tokens": 62,
+        "total_tokens": 119752,
+        "fresh_tokens": 33864
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 3,
+        "programs": {
+          "rg": 2,
+          "get-content": 1,
+          "select-object": 1
+        },
+        "list": [
+          {
+            "command": "rg -n \"write_json_atomic|validate_url|graphifyignore\" .",
+            "exit_code": 0,
+            "output_chars": 5881
+          },
+          {
+            "command": "rg -n \"''^def |''^    def |''^        def |'\"\\\\b_wja\\\\b|\\\\b_write_json_atomic\\\\b\\\" cli.py export.py global_graph.py security.py ingest.py transcribe.py detect.py\"",
+            "exit_code": 0,
+            "output_chars": 12001
+          },
+          {
+            "command": "Get-Content cli.py | Select-Object -Skip 2291 -First 55",
+            "exit_code": 0,
+            "output_chars": 2923
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 35.5,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "pgr",
+      "set": "B",
+      "repeat": 1,
+      "order": 4,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_prune_graph_json_sources",
+            "dispatch_command",
+            "save_manifest",
+            "to_json",
+            "to_canvas",
+            "_save_manifest",
+            "_save_global_graph"
+          ]
+        },
+        "q2": {
+          "file": "security.py",
+          "line": 103,
+          "parameters": [
+            "url"
+          ],
+          "called_by": [
+            "ingest",
+            "redirect_request",
+            "safe_fetch",
+            "download_audio"
+          ]
+        },
+        "q3": {
+          "function": "_is_ignored",
+          "file": "detect.py",
+          "line": 1448,
+          "read_by": "_load_graphifyignore"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 109359,
+        "cached_input_tokens": 80768,
+        "output_tokens": 368,
+        "reasoning_output_tokens": 90,
+        "total_tokens": 109727,
+        "fresh_tokens": 28959
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 3,
+        "programs": {
+          "pgr": 2,
+          "get-content": 1,
+          "select-object": 1
+        },
+        "list": [
+          {
+            "command": "pgr ask callers:write_json_atomic about:validate_url \"find:function decides whether a path should be ignored under .graphifyignore patterns\" \"find:function reads .graphifyignore files\"",
+            "exit_code": 0,
+            "output_chars": 2352
+          },
+          {
+            "command": "Get-Content detect.py | Select-Object -Skip 1240 -First 25",
+            "exit_code": 0,
+            "output_chars": 1397
+          },
+          {
+            "command": "pgr ask about:_load_graphifyignore",
+            "exit_code": 0,
+            "output_chars": 562
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 41.6,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "no-index",
+      "set": "A",
+      "repeat": 2,
+      "order": 5,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_llm_tiebreak",
+            "dispatch_command",
+            "_resolve_triage_backend",
+            "triage_with_opus",
+            "extract_files_direct",
+            "_call_llm",
+            "detect_backend"
+          ]
+        },
+        "q2": {
+          "file": "cli.py",
+          "line": 1064,
+          "parameters": [
+            "cmd"
+          ],
+          "called_by": [
+            "_run_cli"
+          ]
+        },
+        "q3": {
+          "function": "_register_merge_driver",
+          "file": "hooks.py",
+          "line": 736,
+          "removed_by": "_unregister_merge_driver"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 183445,
+        "cached_input_tokens": 140160,
+        "output_tokens": 336,
+        "reasoning_output_tokens": 9,
+        "total_tokens": 183781,
+        "fresh_tokens": 43621
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 4,
+        "programs": {
+          "rg": 4
+        },
+        "list": [
+          {
+            "command": "rg -n '_get_backend_api_key|dispatch_command|merge.driver|merge driver|graph\\\\.json' .",
+            "exit_code": 0,
+            "output_chars": 25700
+          },
+          {
+            "command": "rg -n '_get_backend_api_key|dispatch_command|\"'^def |''^    def |''^async def '\"' llm.py prs.py dedup.py __main__.py cli.py",
+            "exit_code": 0,
+            "output_chars": 13622
+          },
+          {
+            "command": "rg -n '_get_backend_api_key|dispatch_command|\"'^'\"\\\\s+def ' .",
+            "exit_code": 0,
+            "output_chars": 36239
+          },
+          {
+            "command": "rg -n '_get_backend_api_key|dispatch_command' .",
+            "exit_code": 0,
+            "output_chars": 1298
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 43.0,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "pgr",
+      "set": "A",
+      "repeat": 2,
+      "order": 6,
+      "answer": {
+        "q1": {
+          "callers": [
+            "dispatch_command",
+            "_llm_tiebreak",
+            "extract_files_direct",
+            "_call_llm",
+            "detect_backend",
+            "_resolve_triage_backend",
+            "triage_with_opus"
+          ]
+        },
+        "q2": {
+          "file": "cli.py",
+          "line": 1064,
+          "parameters": [
+            "cmd"
+          ],
+          "called_by": [
+            "_run_cli"
+          ]
+        },
+        "q3": {
+          "function": "_register_merge_driver",
+          "file": "hooks.py",
+          "line": 736,
+          "removed_by": "_unregister_merge_driver"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 53389,
+        "cached_input_tokens": 26112,
+        "output_tokens": 180,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 53569,
+        "fresh_tokens": 27457
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 1,
+        "programs": {
+          "pgr": 1
+        },
+        "list": [
+          {
+            "command": "pgr ask callers:_get_backend_api_key about:dispatch_command \"find:register git merge driver for graph.json\" \"find:remove git merge driver registration\"",
+            "exit_code": 0,
+            "output_chars": 1919
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 18.8,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "pgr",
+      "set": "B",
+      "repeat": 2,
+      "order": 7,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_prune_graph_json_sources",
+            "dispatch_command",
+            "save_manifest",
+            "to_json",
+            "to_canvas",
+            "_save_manifest",
+            "_save_global_graph"
+          ]
+        },
+        "q2": {
+          "file": "security.py",
+          "line": 103,
+          "parameters": [
+            "url"
+          ],
+          "called_by": [
+            "ingest",
+            "redirect_request",
+            "safe_fetch",
+            "download_audio"
+          ]
+        },
+        "q3": {
+          "function": "_is_ignored",
+          "file": "detect.py",
+          "line": 1448,
+          "read_by": "_load_graphifyignore"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 139429,
+        "cached_input_tokens": 110080,
+        "output_tokens": 348,
+        "reasoning_output_tokens": 25,
+        "total_tokens": 139777,
+        "fresh_tokens": 29697
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 3,
+        "programs": {
+          "pgr": 3
+        },
+        "list": [
+          {
+            "command": "pgr ask callers:write_json_atomic about:validate_url \"find:function decides whether a path should be ignored under .graphifyignore patterns\" \"find:function reads .graphifyignore files\"",
+            "exit_code": 0,
+            "output_chars": 2352
+          },
+          {
+            "command": "pgr ask about:_is_ignored about:_load_dir_own_ignore \"find:load ignore patterns from .graphifyignore files\"",
+            "exit_code": 0,
+            "output_chars": 1678
+          },
+          {
+            "command": "pgr ask about:_load_graphifyignore",
+            "exit_code": 0,
+            "output_chars": 562
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 78.0,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "no-index",
+      "set": "B",
+      "repeat": 2,
+      "order": 8,
+      "answer": {
+        "q1": {
+          "callers": [
+            "to_json",
+            "to_canvas",
+            "_prune_graph_json_sources",
+            "dispatch_command",
+            "_save_manifest",
+            "_save_global_graph",
+            "save_manifest"
+          ]
+        },
+        "q2": {
+          "file": "security.py",
+          "line": 103,
+          "parameters": [
+            "url"
+          ],
+          "called_by": [
+            "redirect_request",
+            "safe_fetch",
+            "download_audio",
+            "ingest"
+          ]
+        },
+        "q3": {
+          "function": "_is_ignored",
+          "file": "detect.py",
+          "line": 1448,
+          "read_by": "_load_graphifyignore"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 120703,
+        "cached_input_tokens": 100992,
+        "output_tokens": 373,
+        "reasoning_output_tokens": 59,
+        "total_tokens": 121076,
+        "fresh_tokens": 20084
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 4,
+        "programs": {
+          "rg": 2,
+          "get-content": 2,
+          "select-object": 2
+        },
+        "list": [
+          {
+            "command": "rg -n \"write_json_atomic|validate_url|graphifyignore\" .",
+            "exit_code": 0,
+            "output_chars": 5881
+          },
+          {
+            "command": "rg -n \"''^'\"\\\\s*(async )?def |\\\\b_wja\\\\(\\\" export.py cli.py global_graph.py detect.py security.py transcribe.py ingest.py\"",
+            "exit_code": 0,
+            "output_chars": 11629
+          },
+          {
+            "command": "Get-Content cli.py | Select-Object -Skip 4156 -First 40",
+            "exit_code": 0,
+            "output_chars": 2027
+          },
+          {
+            "command": "Get-Content cli.py | Select-Object -Skip 4287 -First 18",
+            "exit_code": 0,
+            "output_chars": 1112
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 69.9,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "pgr",
+      "set": "A",
+      "repeat": 3,
+      "order": 9,
+      "answer": {
+        "q1": {
+          "callers": [
+            "dispatch_command",
+            "_llm_tiebreak",
+            "extract_files_direct",
+            "_call_llm",
+            "detect_backend",
+            "_resolve_triage_backend",
+            "triage_with_opus"
+          ]
+        },
+        "q2": {
+          "file": "cli.py",
+          "line": 1064,
+          "parameters": [
+            "cmd"
+          ],
+          "called_by": [
+            "_run_cli"
+          ]
+        },
+        "q3": {
+          "function": "_register_merge_driver",
+          "file": "hooks.py",
+          "line": 736,
+          "removed_by": "_unregister_merge_driver"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 108019,
+        "cached_input_tokens": 80000,
+        "output_tokens": 259,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 108278,
+        "fresh_tokens": 28278
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 3,
+        "programs": {
+          "pgr": 3
+        },
+        "list": [
+          {
+            "command": "pgr ask callers:_get_backend_api_key about:dispatch_command \"find:function registers git merge driver for graph.json and removes registration\" ",
+            "exit_code": 0,
+            "output_chars": 1386
+          },
+          {
+            "command": "pgr ask about:_register_merge_driver \"find:remove graph.json merge driver registration\" ",
+            "exit_code": 0,
+            "output_chars": 959
+          },
+          {
+            "command": "pgr ask about:_unregister_merge_driver about:uninstall",
+            "exit_code": 0,
+            "output_chars": 486
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 33.9,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "no-index",
+      "set": "A",
+      "repeat": 3,
+      "order": 10,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_llm_tiebreak",
+            "dispatch_command",
+            "_resolve_triage_backend",
+            "triage_with_opus",
+            "extract_files_direct",
+            "_call_llm",
+            "detect_backend"
+          ]
+        },
+        "q2": {
+          "file": "cli.py",
+          "line": 1064,
+          "parameters": [
+            "cmd"
+          ],
+          "called_by": [
+            "_run_cli"
+          ]
+        },
+        "q3": {
+          "function": "_register_merge_driver",
+          "file": "hooks.py",
+          "line": 736,
+          "removed_by": "_unregister_merge_driver"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 85834,
+        "cached_input_tokens": 53504,
+        "output_tokens": 281,
+        "reasoning_output_tokens": 52,
+        "total_tokens": 86115,
+        "fresh_tokens": 32611
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 2,
+        "programs": {
+          "rg": 2
+        },
+        "list": [
+          {
+            "command": "rg -n \"_get_backend_api_key|dispatch_command|merge.driver|merge driver\" .",
+            "exit_code": 0,
+            "output_chars": 3523
+          },
+          {
+            "command": "rg -n \"''^ *def |''^ *async def \" dedup.py prs.py llm.py cli.py __main__.py",
+            "exit_code": 0,
+            "output_chars": 13017
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 24.8,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "no-index",
+      "set": "B",
+      "repeat": 3,
+      "order": 11,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_prune_graph_json_sources",
+            "dispatch_command",
+            "to_json",
+            "to_canvas",
+            "save_manifest",
+            "_save_manifest",
+            "_save_global_graph"
+          ]
+        },
+        "q2": {
+          "file": "security.py",
+          "line": 103,
+          "parameters": [
+            "url"
+          ],
+          "called_by": [
+            "ingest",
+            "redirect_request",
+            "safe_fetch",
+            "download_audio"
+          ]
+        },
+        "q3": {
+          "function": "_is_ignored",
+          "file": "detect.py",
+          "line": 1448,
+          "read_by": "_load_graphifyignore"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 119280,
+        "cached_input_tokens": 99840,
+        "output_tokens": 410,
+        "reasoning_output_tokens": 24,
+        "total_tokens": 119690,
+        "fresh_tokens": 19850
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 6,
+        "programs": {
+          "rg": 2,
+          "get-content": 4,
+          "select-object": 4
+        },
+        "list": [
+          {
+            "command": "rg -n \"write_json_atomic|validate_url|graphifyignore\" .",
+            "exit_code": 0,
+            "output_chars": 5881
+          },
+          {
+            "command": "rg -n \"''^def |''^    def |''^        def |'\"\\\\b_wja\\\\(|\\\\b_write_json_atomic\\\\(\\\" cli.py export.py detect.py global_graph.py ingest.py security.py transcribe.py\"",
+            "exit_code": 0,
+            "output_chars": 11541
+          },
+          {
+            "command": "Get-Content cli.py | Select-Object -Skip 4288 -First 17",
+            "exit_code": 0,
+            "output_chars": 1037
+          },
+          {
+            "command": "Get-Content detect.py | Select-Object -Skip 1447 -First 12",
+            "exit_code": 0,
+            "output_chars": 455
+          },
+          {
+            "command": "Get-Content export.py | Select-Object -Skip 404 -First 13",
+            "exit_code": 0,
+            "output_chars": 684
+          },
+          {
+            "command": "Get-Content cli.py | Select-Object -Skip 2338 -First 10",
+            "exit_code": 0,
+            "output_chars": 616
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 43.2,
+      "failure": null,
+      "warnings": []
+    },
+    {
+      "method": "pgr",
+      "set": "B",
+      "repeat": 3,
+      "order": 12,
+      "answer": {
+        "q1": {
+          "callers": [
+            "_prune_graph_json_sources",
+            "dispatch_command",
+            "save_manifest",
+            "to_json",
+            "to_canvas",
+            "_save_manifest",
+            "_save_global_graph"
+          ]
+        },
+        "q2": {
+          "file": "security.py",
+          "line": 103,
+          "parameters": [
+            "url"
+          ],
+          "called_by": [
+            "ingest",
+            "redirect_request",
+            "safe_fetch",
+            "download_audio"
+          ]
+        },
+        "q3": {
+          "function": "_is_ignored",
+          "file": "detect.py",
+          "line": 1448,
+          "read_by": "_load_graphifyignore"
+        }
+      },
+      "grades": {
+        "q1": 1.0,
+        "q2": 1.0,
+        "q3": 1.0
+      },
+      "mean_grade": 1.0,
+      "fully_correct": true,
+      "schema_errors": [],
+      "usage": {
+        "input_tokens": 166055,
+        "cached_input_tokens": 136576,
+        "output_tokens": 367,
+        "reasoning_output_tokens": 0,
+        "total_tokens": 166422,
+        "fresh_tokens": 29846
+      },
+      "turns": 1,
+      "requests": null,
+      "commands": {
+        "count": 5,
+        "programs": {
+          "pgr": 5
+        },
+        "list": [
+          {
+            "command": "pgr ask callers:write_json_atomic about:validate_url \"find:which function decides whether a path should be ignored under .graphifyignore patterns and which function reads .graphifyignore files\" ",
+            "exit_code": 0,
+            "output_chars": 1839
+          },
+          {
+            "command": "pgr ask \"find:matches graphifyignore patterns path ignore\" about:_load_dir_own_ignore about:ignored_predicate",
+            "exit_code": 0,
+            "output_chars": 1611
+          },
+          {
+            "command": "pgr ask about:_load_graphifyignore \"find:check whether path matches ignore patterns\" ",
+            "exit_code": 0,
+            "output_chars": 1222
+          },
+          {
+            "command": "pgr ask about:collect_files._ignored about:detect._ignored_for_scan",
+            "exit_code": 0,
+            "output_chars": 372
+          },
+          {
+            "command": "pgr ask about:_is_ignored",
+            "exit_code": 0,
+            "output_chars": 503
+          }
+        ]
+      },
+      "off_policy": false,
+      "off_policy_commands": [],
+      "wall_seconds": 34.4,
+      "failure": null,
+      "warnings": []
+    }
+  ],
+  "summary": {
+    "no-index": {
+      "A": {
+        "sessions": 3,
+        "with_usage": 3,
+        "mean_total_tokens": 129360.0,
+        "mean_fresh_tokens": 36389.3,
+        "mean_cached_input_tokens": 92970.7,
+        "mean_output_tokens": 315.3,
+        "mean_commands": 3.0,
+        "mean_grade": 1.0,
+        "fully_correct": 3,
+        "of": 3,
+        "off_policy_sessions": 0,
+        "failed_sessions": 0,
+        "mean_wall_seconds": 33.8
+      },
+      "B": {
+        "sessions": 3,
+        "with_usage": 3,
+        "mean_total_tokens": 120172.7,
+        "mean_fresh_tokens": 24599.3,
+        "mean_cached_input_tokens": 95573.3,
+        "mean_output_tokens": 378.7,
+        "mean_commands": 4.3,
+        "mean_grade": 1.0,
+        "fully_correct": 3,
+        "of": 3,
+        "off_policy_sessions": 0,
+        "failed_sessions": 0,
+        "mean_wall_seconds": 49.5
+      }
+    },
+    "pgr": {
+      "A": {
+        "sessions": 3,
+        "with_usage": 3,
+        "mean_total_tokens": 80854.7,
+        "mean_fresh_tokens": 27862.7,
+        "mean_cached_input_tokens": 52992.0,
+        "mean_output_tokens": 220.0,
+        "mean_commands": 2.0,
+        "mean_grade": 1.0,
+        "fully_correct": 3,
+        "of": 3,
+        "off_policy_sessions": 0,
+        "failed_sessions": 0,
+        "mean_wall_seconds": 34.1
+      },
+      "B": {
+        "sessions": 3,
+        "with_usage": 3,
+        "mean_total_tokens": 138642.0,
+        "mean_fresh_tokens": 29500.7,
+        "mean_cached_input_tokens": 109141.3,
+        "mean_output_tokens": 361.0,
+        "mean_commands": 3.7,
+        "mean_grade": 1.0,
+        "fully_correct": 3,
+        "of": 3,
+        "off_policy_sessions": 0,
+        "failed_sessions": 0,
+        "mean_wall_seconds": 51.3
+      }
+    }
+  },
+  "pgr_saving_vs_no_index": {
+    "A": {
+      "total_tokens_saved_percent": 37.5,
+      "fresh_tokens_saved_percent": 23.4,
+      "commands_saved_percent": 33.3
+    },
+    "B": {
+      "total_tokens_saved_percent": -15.4,
+      "fresh_tokens_saved_percent": -19.9,
+      "commands_saved_percent": 14.0
+    }
+  }
+}

@@ -1,0 +1,312 @@
+{
+ "about": "Set T, the demonstration set of round six. The builders wrote it to show one feature of the hub: each question needs one lookup and one note that an earlier agent filed. Made by prepare_team.py on a copy of the fixture.",
+ "pgr_version": "pgr 0.2.0",
+ "status": "pgr: repo-team | graph ready (2133 symbols, 5051 links, 0s old) | search ready (5652 chunks, embeddings) | memory 0 notes.",
+ "fixture": "C:\\path\\to\\lxbench\\repo",
+ "team_fixture": "C:\\path\\to\\lxbench\\repo-team",
+ "bank": "team-notes",
+ "roles": [
+  "scout",
+  "builder",
+  "reviewer"
+ ],
+ "questions": {
+  "q1": {
+   "task": "cli-freeze",
+   "kind": "a decision with a ticket"
+  },
+  "q2": {
+   "task": "ssrf-review",
+   "kind": "a note that has gone stale"
+  },
+  "q3": {
+   "task": "merge-driver-audit",
+   "kind": "a fact confirmed by two roles"
+  }
+ },
+ "notes": [
+  {
+   "n": 1,
+   "task": "cli-freeze",
+   "role": "builder",
+   "text": "Decision BLD-4172: dispatch_command must keep its parameter names, so the parameter cmd may not be renamed until the freeze is lifted.",
+   "outcome": "kept"
+  },
+  {
+   "n": 2,
+   "task": "cli-freeze",
+   "role": "scout",
+   "text": "_run_cli reads the command line and then calls dispatch_command with the subcommand.",
+   "outcome": "kept"
+  },
+  {
+   "n": 3,
+   "task": "cli-freeze",
+   "role": "reviewer",
+   "text": "The freeze lists parameter names only, not behaviour, so the body of dispatch_command can still be refactored.",
+   "outcome": "kept"
+  },
+  {
+   "n": 4,
+   "task": "cli-freeze",
+   "role": "scout",
+   "text": "dispatch_command is long, so changes to it are reviewed in a separate pass.",
+   "outcome": "kept"
+  },
+  {
+   "n": 5,
+   "task": "ssrf-review",
+   "role": "reviewer",
+   "text": "validate_url lowercases the hostname before it looks it up in the blocklist of cloud metadata hosts, so mixed-case spellings are blocked too.",
+   "outcome": "kept"
+  },
+  {
+   "n": 6,
+   "task": "ssrf-review",
+   "role": "scout",
+   "text": "_ip_is_blocked treats carrier-grade NAT addresses as internal, in addition to the private, reserved, loopback and link-local ranges.",
+   "outcome": "kept"
+  },
+  {
+   "n": 7,
+   "task": "ssrf-review",
+   "role": "builder",
+   "text": "safe_fetch_text only decodes the bytes that safe_fetch returns, replacing bad UTF-8, so it adds no new network path.",
+   "outcome": "kept"
+  },
+  {
+   "n": 8,
+   "task": "ssrf-review",
+   "role": "scout",
+   "text": "_resolve_and_validate resolves a host once and returns the validated address, so a second DNS answer cannot swap in a private address.",
+   "outcome": "kept"
+  },
+  {
+   "n": 9,
+   "task": "merge-driver-audit",
+   "role": "scout",
+   "text": "_register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.",
+   "outcome": "kept"
+  },
+  {
+   "n": 10,
+   "task": "merge-driver-audit",
+   "role": "builder",
+   "text": "_register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.",
+   "outcome": "reinforced"
+  },
+  {
+   "n": 11,
+   "task": "merge-driver-audit",
+   "role": "reviewer",
+   "text": "_unregister_merge_driver removes the merge-driver keys from git config and the line from .gitattributes.",
+   "outcome": "kept"
+  },
+  {
+   "n": 12,
+   "task": "merge-driver-audit",
+   "role": "builder",
+   "text": "_pinned_python returns an empty string when sys.executable is not shell-safe, and the merge driver command then falls back to the plain launcher name.",
+   "outcome": "kept"
+  },
+  {
+   "n": 13,
+   "task": "hook-installers",
+   "role": "builder",
+   "text": "BLD-4180 freezes dispatch_install_cli: its parameter cmd keeps its name and may not be renamed, whatever the installer refactor needs.",
+   "outcome": "kept"
+  },
+  {
+   "n": 14,
+   "task": "hook-installers",
+   "role": "scout",
+   "text": "_merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.",
+   "outcome": "kept"
+  },
+  {
+   "n": 15,
+   "task": "hook-installers",
+   "role": "reviewer",
+   "text": "_merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.",
+   "outcome": "reinforced"
+  },
+  {
+   "n": 16,
+   "task": "hook-installers",
+   "role": "reviewer",
+   "text": "_install_claude_hook adds the graphify PreToolUse hook to .claude/settings.json.",
+   "outcome": "kept"
+  },
+  {
+   "n": 17,
+   "task": "hook-installers",
+   "role": "scout",
+   "text": "The codex installer, _install_codex_hook, keeps its hook in .codex/hooks.json and not in a settings file.",
+   "outcome": "kept"
+  },
+  {
+   "n": 18,
+   "task": "ignore-rules",
+   "role": "scout",
+   "text": "_is_ignored decides whether a path is excluded under the .graphifyignore patterns.",
+   "outcome": "kept"
+  },
+  {
+   "n": 19,
+   "task": "ignore-rules",
+   "role": "reviewer",
+   "text": "_load_graphifyignore reads the .graphifyignore files and returns pairs of an anchor directory and a pattern.",
+   "outcome": "kept"
+  },
+  {
+   "n": 20,
+   "task": "ignore-rules",
+   "role": "builder",
+   "text": "_match_anchored_ignore_pattern keeps a star from crossing a slash when a pattern is anchored.",
+   "outcome": "kept"
+  },
+  {
+   "n": 21,
+   "task": "ignore-rules",
+   "role": "scout",
+   "text": "_parse_gitignore_line parses one raw line of a .graphifyignore file following the gitignore specification.",
+   "outcome": "kept"
+  },
+  {
+   "n": 22,
+   "task": "atomic-writes",
+   "role": "builder",
+   "text": "write_json_atomic streams the encoded JSON into the temporary file instead of building one large string first.",
+   "outcome": "kept"
+  },
+  {
+   "n": 23,
+   "task": "atomic-writes",
+   "role": "scout",
+   "text": "write_text_atomic writes UTF-8 text and delegates the swap to _atomic_replace.",
+   "outcome": "kept"
+  },
+  {
+   "n": 24,
+   "task": "atomic-writes",
+   "role": "reviewer",
+   "text": "_atomic_replace takes a write function, fills a temporary file with it and moves the finished file into place, so a reader never sees half a file.",
+   "outcome": "kept"
+  },
+  {
+   "n": 25,
+   "task": "path-guards",
+   "role": "reviewer",
+   "text": "validate_graph_path resolves the path and verifies that it stays inside the base folder.",
+   "outcome": "kept"
+  },
+  {
+   "n": 26,
+   "task": "path-guards",
+   "role": "scout",
+   "text": "validate_extraction checks an extraction JSON dict against the graphify schema.",
+   "outcome": "kept"
+  },
+  {
+   "n": 27,
+   "task": "path-guards",
+   "role": "builder",
+   "text": "validate_semantic_fragment returns the validation errors for an untrusted semantic extraction fragment.",
+   "outcome": "kept"
+  },
+  {
+   "n": 28,
+   "task": "path-guards",
+   "role": "scout",
+   "text": "load_validated_semantic_fragment rejects oversize files before it parses them.",
+   "outcome": "kept"
+  },
+  {
+   "n": 29,
+   "task": "llm-keys",
+   "role": "scout",
+   "text": "_get_backend_api_key returns the first configured API key of a backend, or an empty string.",
+   "outcome": "kept"
+  },
+  {
+   "n": 30,
+   "task": "llm-keys",
+   "role": "builder",
+   "text": "detect_backend returns the name of the backend that has an API key set, or None.",
+   "outcome": "kept"
+  },
+  {
+   "n": 31,
+   "task": "llm-keys",
+   "role": "reviewer",
+   "text": "_validate_ollama_base_url warns about an unsafe OLLAMA_BASE_URL and hard-blocks link-local and metadata addresses.",
+   "outcome": "kept"
+  }
+ ],
+ "edit": {
+  "function": "validate_url",
+  "file": "security.py",
+  "line": 121,
+  "old": "        if hostname.lower() in _BLOCKED_HOSTS:",
+  "new": "        if hostname in _BLOCKED_HOSTS:",
+  "lines_before": 461,
+  "lines_after": 461
+ },
+ "loadouts": {
+  "cli-freeze": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task cli-freeze loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task cli-freeze\n- dispatch_command is long, so changes to it are reviewed in a separate pass.  (2s ago) [scout] #n000004\n- The freeze lists parameter names only, not behaviour, so the body of dispatch_command can still be refactored.  (2s ago) [reviewer] #n000003\n- _run_cli reads the command line and then calls dispatch_command with the subcommand.  (2s ago) [scout] #n000002\n- Decision BLD-4172: dispatch_command must keep its parameter names, so the parameter cmd may not be renamed until the freeze is lifted.  (2s ago) [builder] #n000001\nloadout: 6 notes, 6 fresh, 0 stale, 0 gone, about 228 tokens",
+   "tokens": 234,
+   "sha256": "553f926d235cd4e286345eb36ab4a2720a812a166617904ec0948efe1da01eed"
+  },
+  "ssrf-review": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task ssrf-review loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task ssrf-review\n- _resolve_and_validate resolves a host once and returns the validated address, so a second DNS answer cannot swap in a private address.  (2s ago) [scout] #n000008\n- safe_fetch_text only decodes the bytes that safe_fetch returns, replacing bad UTF-8, so it adds no new network path.  (2s ago) [builder] #n000007\n- _ip_is_blocked treats carrier-grade NAT addresses as internal, in addition to the private, reserved, loopback and link-local ranges.  (2s ago) [scout] #n000006\n- validate_url lowercases the hostname before it looks it up in the blocklist of cloud metadata hosts, so mixed-case spellings are blocked too.  (2s ago, stale: code changed) [reviewer] #n000005\nloadout: 6 notes, 5 fresh, 1 stale, 0 gone, about 263 tokens\ncheck stale and gone notes against the code before relying on them",
+   "tokens": 286,
+   "sha256": "f435de7c84c98a9bbea758a7dda72f759853858a139ffd91178809241ac4f451"
+  },
+  "merge-driver-audit": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task merge-driver-audit loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task merge-driver-audit\n- _pinned_python returns an empty string when sys.executable is not shell-safe, and the merge driver command then falls back to the plain launcher name.  (2s ago) [builder] #n000011\n- _unregister_merge_driver removes the merge-driver keys from git config and the line from .gitattributes.  (2s ago) [reviewer] #n000010\nloadout: 4 notes, 4 fresh, 0 stale, 0 gone, about 175 tokens",
+   "tokens": 184,
+   "sha256": "0f086bedc9bf6da9a26b2223480d45307b8524124f864bb967fcd037cc04f68b"
+  },
+  "hook-installers": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task hook-installers loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task hook-installers\n- The codex installer, _install_codex_hook, keeps its hook in .codex/hooks.json and not in a settings file.  (2s ago) [scout] #n000015\n- _install_claude_hook adds the graphify PreToolUse hook to .claude/settings.json.  (2s ago) [reviewer] #n000014\n- BLD-4180 freezes dispatch_install_cli: its parameter cmd keeps its name and may not be renamed, whatever the installer refactor needs.  (2s ago) [builder] #n000012\nloadout: 5 notes, 5 fresh, 0 stale, 0 gone, about 199 tokens",
+   "tokens": 207,
+   "sha256": "f3df4f52ce9be636894089aece4f5d67a2436898838a54e0a11931bfb1c8e325"
+  },
+  "ignore-rules": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task ignore-rules loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task ignore-rules\n- _parse_gitignore_line parses one raw line of a .graphifyignore file following the gitignore specification.  (1s ago) [scout] #n000019\n- _match_anchored_ignore_pattern keeps a star from crossing a slash when a pattern is anchored.  (1s ago) [builder] #n000018\n- _load_graphifyignore reads the .graphifyignore files and returns pairs of an anchor directory and a pattern.  (1s ago) [reviewer] #n000017\n- _is_ignored decides whether a path is excluded under the .graphifyignore patterns.  (1s ago) [scout] #n000016\nloadout: 6 notes, 6 fresh, 0 stale, 0 gone, about 223 tokens",
+   "tokens": 231,
+   "sha256": "bfe78df47d3b594176c3f6c19a3be1292f9f376fe250ea7fedf269256a362539"
+  },
+  "atomic-writes": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task atomic-writes loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task atomic-writes\n- _atomic_replace takes a write function, fills a temporary file with it and moves the finished file into place, so a reader never sees half a file.  (1s ago) [reviewer] #n000022\n- write_text_atomic writes UTF-8 text and delegates the swap to _atomic_replace.  (1s ago) [scout] #n000021\n- write_json_atomic streams the encoded JSON into the temporary file instead of building one large string first.  (1s ago) [builder] #n000020\nloadout: 5 notes, 5 fresh, 0 stale, 0 gone, about 203 tokens",
+   "tokens": 210,
+   "sha256": "2fe77c071123a274a7e132c022f1d3b42860ee6aa8e7b46fa648049efffb5a00"
+  },
+  "path-guards": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task path-guards loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task path-guards\n- load_validated_semantic_fragment rejects oversize files before it parses them.  (1s ago) [scout] #n000026\n- validate_semantic_fragment returns the validation errors for an untrusted semantic extraction fragment.  (1s ago) [builder] #n000025\n- validate_extraction checks an extraction JSON dict against the graphify schema.  (1s ago) [scout] #n000024\n- validate_graph_path resolves the path and verifies that it stays inside the base folder.  (1s ago) [reviewer] #n000023\nloadout: 6 notes, 6 fresh, 0 stale, 0 gone, about 213 tokens",
+   "tokens": 220,
+   "sha256": "96dd8bdb2c202f4d0c2b90a94c0a0d374564972291cab534ea13ba06e4ab6d42"
+  },
+  "llm-keys": {
+   "command": "pgr --root C:\\path\\to\\lxbench\\repo-team --bank team-notes --task llm-keys loadout",
+   "output": "== core\n- _merge_driver_status reports whether the merge driver is registered, by reading both git config and .gitattributes.  (2s ago, seen 2 times) [reviewer+scout] #n000013\n- _register_merge_driver writes the graph.json union merge driver into git config and .gitattributes.  (2s ago, seen 2 times) [builder+scout] #n000009\n== task llm-keys\n- _validate_ollama_base_url warns about an unsafe OLLAMA_BASE_URL and hard-blocks link-local and metadata addresses.  (1s ago) [reviewer] #n000029\n- detect_backend returns the name of the backend that has an API key set, or None.  (1s ago) [builder] #n000028\n- _get_backend_api_key returns the first configured API key of a backend, or an empty string.  (1s ago) [scout] #n000027\nloadout: 5 notes, 5 fresh, 0 stale, 0 gone, about 188 tokens",
+   "tokens": 196,
+   "sha256": "75cc435a7ae757743e137e1b92f54afccdb023c6756abb6ba1aa4108a3dc1773"
+  }
+ },
+ "bank_files": {
+  "index.bin": "27b103e71b92d69efa3bc4849dccdd9e7bbe96e77cc2c3b4ff16b5ac34673956",
+  "notes.jsonl": "62485e47f9e2d48aa02561b87a16569b84e62da736ea7b623053f6301004e6da",
+  "notes.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "pgr.lock": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "vectors.bin": "ebd62eb71712007a58f55c7a448fada079cd715ffa39cb0d8e32a443385cbc45"
+ }
+}

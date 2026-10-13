@@ -11,8 +11,18 @@ agent in the cell are summed and the cell's final answer is graded.
 There are two question sets. Set A is the original q1, q2, q3. Set B is held out:
 three questions nobody tuned for, run by an arm id plus `h` ("RGSh" is "RGS" on
 set B). A set B answer is still stored under q1, q2, q3. Every agent row and
-every cell carries `set`, "A" or "B", and an `h` arm follows the rules of its
+every cell carries `set`, "A", "B" or "T", and an `h` arm follows the rules of its
 base arm: allowed shell words, read rules, repository paths.
+
+Round six (team work, see harness/ROUND6.md) adds the arms R6, TP, TPG, TPS, TH, TPH
+and the set T arms T0, TL, TI. Set T is a demonstration set: three questions that need
+a note an earlier agent left behind. The rows of a round six arm carry four more
+fields (`pgr_lookups`, `hub_calls`, `from_brief`, `banks`) and its cells a few more; the rows
+and cells of every earlier round are written exactly as before. A round six row or cell is
+also listed as off policy for hub use its arm's prompt does not allow (`hub:not-allowed`,
+`bank:foreign`), for a pgr call that pgr itself refused (`pgr:usage-error`: the pgr on PATH was
+too old), and for a hub cell that ran into a bank an earlier attempt had filed (`bank:rerun`,
+`bank:shared`, `bank:mixed`).
 """
 from __future__ import annotations
 
@@ -51,7 +61,31 @@ TRUTH_B = {
            # the one it uses for a single folder. Either is a correct answer.
            "read_by": frozenset({"_load_graphifyignore", "_load_dir_own_ignore"})},
 }
-TRUTHS = {"A": TRUTH, "B": TRUTH_B}
+# Set T, the demonstration set of round six. The lookup fields reuse the truth of sets A and B (the
+# same functions, graded by the same rules); the note fields come from the notes that
+# prepare_team.py files, so test_round6.py checks the two against each other.
+TRUTH_T = {
+    # a decision: the note cites a ticket and says the parameters must keep their names
+    "q1": {"ticket": "BLD-4172", "may_rename": False, "file": TRUTH["q2"]["file"], "line": TRUTH["q2"]["line"]},
+    # a stale note: a reviewer described the function, then its body changed
+    "q2": {"status": "changed", "filed_by": "reviewer", "called_by": TRUTH_B["q2"]["called_by"]},
+    # a confirmed fact: two roles filed the same sentence
+    "q3": {"function": TRUTH["q3"]["function"], "roles": ["builder", "scout"],
+           "file": TRUTH["q3"]["file"], "line": TRUTH["q3"]["line"]},
+}
+# The fields of set T that only a note can answer; the others are lookups.
+NOTE_FIELDS = {"q1.ticket", "q1.may_rename", "q2.status", "q2.filed_by", "q3.roles"}
+TRUTHS = {"A": TRUTH, "B": TRUTH_B, "T": TRUTH_T}
+
+# Round six arms. TH and TPH add the hub (`pgr handoff` and `pgr loadout`), the arms with P in
+# the name put a `pgr pack` in the prompt, T0, TL and TI ask set T.
+TEAM_ARMS = {"R6", "TP", "TPG", "TPS", "TH", "TPH", "T0", "TL", "TI"}
+SET_T_ARMS = {"T0", "TL", "TI"}
+HUB_ARMS = {"TH", "TPH"}          # the subagents file with handoff, the reviewer starts from loadout
+TEAM_BANK_ARMS = {"TL", "TI"}     # loadout and recall on the team bank
+HUB_COMMANDS = ("handoff", "loadout", "recall")
+# What pgr prints when it refuses a command line, as pgr 0.1 does for every hub command; each form ends with this hint.
+USAGE_ERROR = re.compile(r"pgr: (?:unknown (?:option|command)[^\n]*|no command given) \(try: pgr help\)")
 
 ALLOWED = {   # first word of a shell command each arm may run
     "A0": set(),
@@ -82,6 +116,8 @@ ALLOWED = {   # first word of a shell command each arm may run
     "S1": {"lx"}, "S2": {"lx"}, "S3": {"lx"}, "S4": {"lx"},
     "H0": set(), "H9": {"lx"}, "H1": {"lx"}, "H3": {"lx"}, "H5": {"token-goat"},
     "SB": {"lx"}, "HB": {"lx"},
+    # Round six: R6 starts with R and a digit, so the pgr rule in allowed_words does not see it.
+    **{arm: {"pgr"} for arm in TEAM_ARMS},
 }
 # Arms told to read code through token-goat, never the Read tool.
 NO_READ_TOOL = {"C9", "C15"}
@@ -94,7 +130,14 @@ def base_arm(arm: str) -> str:
 
 
 def question_set(arm: str) -> str:
+    if base_arm(arm) in SET_T_ARMS:
+        return "T"
     return "B" if arm.endswith("h") and len(arm) > 1 else "A"
+
+
+def is_team(arm: str) -> bool:
+    """A round six arm, in any of its forms (`TPh` is `TP` on set B)."""
+    return base_arm(arm) in TEAM_ARMS
 
 
 def allowed_words(arm: str) -> set:
@@ -134,10 +177,50 @@ def same_line(given, truth: int) -> bool:
     return str(given).strip().isdigit() and int(str(given).strip()) == truth
 
 
+def plain(value) -> str:
+    """A note field without what an answer may put around it: the case, spaces, quotes, backticks, asterisks,
+    brackets and the punctuation at either end. `BLD-4172.` and `bld-4172` are the ticket BLD-4172; the
+    decision BLD-4172 and BLD-4180 are not."""
+    return str(value or "").strip(" \t\r\n`'\"*_()[]{}<>.,;:!?").lower()
+
+
+def plain_roles(given) -> list[str] | None:
+    """The roles of an answer as sorted plain names, or None when it is not a list. One item may hold
+    several roles, joined by + (as a loadout prints them) or a comma."""
+    if not isinstance(given, list):
+        return None
+    return sorted(name for item in given for name in (plain(part) for part in re.split(r"[+,]", str(item))) if name)
+
+
+def team_fields(question: str, answer: dict) -> dict:
+    """Set T: which fields of one answer are right, by field name. A note field is right only when it is the
+    same word once the case and the decoration are taken off (see plain): the ticket, the enum word, the
+    role, and the role list by name, whatever order it came in; the boolean must be the boolean itself.
+    The lookup fields follow the rules of sets A and B: the file by name, the line as a number, the
+    callers as a set of bare names."""
+    want = TRUTH_T[question]
+    if question == "q1":
+        return {"ticket": plain(answer.get("ticket")) == want["ticket"].lower(),
+                "may_rename": answer.get("may_rename") is want["may_rename"],
+                "file": same_file(answer.get("file"), want["file"]),
+                "line": same_line(answer.get("line"), want["line"])}
+    if question == "q2":
+        return {"status": plain(answer.get("status")) == want["status"],
+                "filed_by": plain(answer.get("filed_by")) == want["filed_by"],
+                "called_by": {bare(c) for c in answer.get("called_by") or []} == want["called_by"]}
+    return {"function": bare(answer.get("function")) == want["function"],
+            "roles": plain_roles(answer.get("roles")) == want["roles"],
+            "file": same_file(answer.get("file"), want["file"]),
+            "line": same_line(answer.get("line"), want["line"])}
+
+
 def grade(question: str, answer, which: str = "A") -> float | None:
-    """Score one answer against the truth of question set `which` ("A" or "B")."""
+    """Score one answer against the truth of question set `which` ("A", "B" or "T")."""
     if not isinstance(answer, dict):
         return None
+    if which == "T":
+        fields = team_fields(question, answer)
+        return sum(fields.values()) / len(fields)
     truth = TRUTHS[which]
     if question == "q1":
         return f1(answer.get("callers"), truth["q1"])
@@ -163,9 +246,164 @@ def first_word(command: str) -> str:
         part = part.strip().lstrip("&").strip()
         if not part or re.match(r"(?i)(set-location|cd|push-location|pop-location)\b", part):
             continue
+        # A quoted text piped into a program ('a finding' | pgr handoff -) runs the program after the pipe.
+        piped = re.match(r"""(?:"[^"]*"|'[^']*')\s*\|\s*(\S.*)""", part, re.S)
+        if piped:
+            part = piped.group(1).strip()
         word = part.split()[0].strip("\"'")
         return pathlib.PureWindowsPath(word).stem.lower() if ("\\" in word or "/" in word) else word.lower()
     return ""
+
+
+def statements(command: str) -> list[str]:
+    """The statements of one shell call, split at `;`, a line end or `&&` outside quotes, so that a
+    finding handed to `pgr handoff` may contain a semicolon."""
+    parts, current, quote, at = [], [], "", 0
+    while at < len(command):
+        char = command[at]
+        if quote:
+            current.append(char)
+            quote = "" if char == quote else quote
+        elif char in "\"'":
+            current.append(char)
+            quote = char
+        elif char in ";\n" or command.startswith("&&", at):
+            parts.append("".join(current))
+            current = []
+            at += 1 if char == "&" else 0
+        else:
+            current.append(char)
+        at += 1
+    parts.append("".join(current))
+    return [part.strip() for part in parts if part.strip()]
+
+
+def words(statement: str) -> list[str]:
+    """The words of one statement with their quotes taken off; a quoted text is one word."""
+    found, current, quote, started = [], [], "", False
+    for char in statement:
+        if quote:
+            if char == quote:
+                quote = ""
+            else:
+                current.append(char)
+        elif char in "\"'":
+            quote, started = char, True
+        elif char.isspace():
+            if current or started:
+                found.append("".join(current))
+            current, started = [], False
+        else:
+            current.append(char)
+    if current or started:
+        found.append("".join(current))
+    return found
+
+
+# The pgr flags that go before the command and take a value.
+PGR_GLOBAL = {"--root", "--engines", "--bank", "--task", "--from"}
+
+
+def pipe_segments(statement: str) -> list[str]:
+    """The parts of a statement on either side of a pipe, split outside quotes, so that a finding that holds
+    a bar is not cut."""
+    parts, current, quote = [], [], ""
+    for char in statement:
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "\"'":
+            quote = char
+        elif char == "|":
+            parts.append("".join(current))
+            current = []
+            continue
+        current.append(char)
+    parts.append("".join(current))
+    return [part.strip() for part in parts if part.strip()]
+
+
+def pgr_call(statement: str) -> tuple[str, str] | None:
+    """(command, bank) of a statement that runs pgr, else None. The command is the first word after
+    pgr's own flags ("ask", "loadout", ...), empty for `pgr --version`; the bank is the --bank value.
+    Either side of a pipe may be the pgr call: `pgr ask x | Select-Object -First 5` and
+    `'a finding' | pgr handoff -` both run pgr."""
+    for segment in pipe_segments(statement):
+        found = [word for word in words(segment) if word != "&"]
+        if not found:
+            continue
+        head = found[0].lstrip("&")
+        stem = pathlib.PureWindowsPath(head).stem.lower() if ("\\" in head or "/" in head) else head.lower().removesuffix(".exe")
+        if stem != "pgr":
+            continue
+        bank, at = "", 1
+        while at < len(found) and found[at].startswith("--"):
+            flag, equals, value = found[at].partition("=")
+            step = 1 if equals or flag not in PGR_GLOBAL else 2
+            if flag == "--bank":
+                bank = value if equals else (found[at + 1] if at + 1 < len(found) else "")
+            at += step
+        return (found[at] if at < len(found) else ""), bank
+    return None
+
+
+def team_counts(commands: list[str], row: dict, refusals: list[bool] | None = None) -> dict:
+    """What a round six agent did with the engine, from the shell calls it made. `refusals` says, for each
+    call, whether pgr answered it with a usage error: such a call did nothing, so it is counted nowhere.
+
+    pgr_lookups: pgr statements that look something up (ask, about, find, ...).
+    hub_calls:   pgr statements of the hub, by command: handoff, loadout, recall.
+    from_brief:  it answered and made no lookup at all. Filing a finding with handoff is not a lookup, so
+                 an agent that only filed one is still answering from its brief; any other tool call
+                 (a pgr lookup, loadout, recall, Read, Grep) is.
+    banks:       every --bank value its pgr statements used.
+    """
+    hub = {name: 0 for name in HUB_COMMANDS}
+    lookups, filing, banks = 0, 0, set()
+    for number, command in enumerate(commands):
+        refused = bool(refusals and refusals[number])
+        kinds = []
+        for statement in statements(command):
+            call = pgr_call(statement)
+            if call is None:
+                kinds.append("nav" if re.match(r"(?i)(set-location|cd|push-location|pop-location)\b", statement) else "other")
+                continue
+            sub, bank = call
+            if not refused:
+                banks.update([bank] if bank else [])
+                if sub in hub:
+                    hub[sub] += 1
+                elif sub:
+                    lookups += 1
+            kinds.append("handoff" if sub == "handoff" else "other")
+        # A call that only files a finding (beside the Set-Location prefix) is not a lookup.
+        filing += "handoff" in kinds and all(kind in ("nav", "handoff") for kind in kinds)
+    return {"pgr_lookups": lookups, "hub_calls": hub,
+            "from_brief": row["answer"] is not None and row["tool_calls"] - filing == 0,
+            "banks": sorted(banks)}
+
+
+def refused_calls(commands: list[str], refusals: list[bool]) -> int:
+    """How many shell calls that run pgr got a usage error back."""
+    return sum(1 for command, refused in zip(commands, refusals)
+               if refused and any(pgr_call(statement) for statement in statements(command)))
+
+
+def hub_policy(arm: str, setup: str, tier: str, role: str, rep: str, row: dict) -> list[str]:
+    """Hub use that the arm's prompt does not allow. The prompts list, for TH and TPH, a worker's handoff and
+    the reviewer's loadout on the cell's own bank (r6-TAG-ARM-SETUP-TIER-REP, lower case, the arm as written
+    with its h); for TL and TI, loadout and recall on the team bank; for every other round six arm, no hub
+    command and no bank at all."""
+    base = base_arm(arm)
+    if base in HUB_ARMS:
+        allowed = {"handoff"} if role.startswith("w-") else {"loadout"} if role == "verify" else set()
+        own = f"-{arm}-{setup}-{tier}-{rep}".lower()
+        foreign = [bank for bank in row["banks"] if not (bank.startswith("r6-") and bank.endswith(own))]
+    elif base in TEAM_BANK_ARMS:
+        allowed, foreign = {"loadout", "recall"}, []
+    else:
+        allowed, foreign = set(), list(row["banks"])
+    found = ["hub:not-allowed"] if any(count and name not in allowed for name, count in row["hub_calls"].items()) else []
+    return found + (["bank:foreign"] if foreign else [])
 
 
 def family(model: str) -> str:
@@ -211,6 +449,7 @@ def count_hook_row(note: dict, hooks: dict) -> None:
 
 def read_agent(path: pathlib.Path) -> dict:
     usage, calls, results, stamps, model = {}, {}, {}, [], ""
+    refused = set()     # ids of the tool calls whose result was a pgr usage error
     hooks = dict(hook_calls=0, hook_rewrites=0, hook_denials=0, hook_notes=0, hook_redactions=0)
     for line in path.open(encoding="utf-8", errors="replace"):
         try:
@@ -245,6 +484,8 @@ def read_agent(path: pathlib.Path) -> dict:
                     text = body if isinstance(body, str) else "".join(
                         piece.get("text", "") for piece in body or [] if isinstance(piece, dict))
                     results[part.get("tool_use_id")] = len(text)
+                    if USAGE_ERROR.search(text):
+                        refused.add(part.get("tool_use_id"))
                     # Places where a hook put a marker in place of source text it took for a secret.
                     hooks["hook_redactions"] += text.count(REDACTED)
                     if REFUSED.match(text) and ("[tg]" in text or "token-goat" in text):
@@ -290,7 +531,7 @@ def read_agent(path: pathlib.Path) -> dict:
         total["cache_write"] += write
         total["largest_prompt"] = max(total["largest_prompt"], prompt)
 
-    tools, shell, answer, returned = {}, {}, None, 0
+    tools, shell, answer, returned, commands, refusals = {}, {}, None, 0, [], []
     for call_id, (name, given) in calls.items():
         if "structuredoutput" in name.lower().replace("_", ""):
             answer = given
@@ -301,6 +542,8 @@ def read_agent(path: pathlib.Path) -> dict:
         if isinstance(command, str):
             word = first_word(command)
             shell[word] = shell.get(word, 0) + 1
+            commands.append(command)
+            refusals.append(call_id in refused)
 
     seconds = None
     if len(stamps) > 1:
@@ -309,10 +552,10 @@ def read_agent(path: pathlib.Path) -> dict:
     # The class of model, never its version: opus, sonnet or haiku.
     return dict(total, model=kind, requests=len(usage), tools=tools, shell=shell,
                 tool_calls=sum(tools.values()), tool_output_chars=returned,
-                answer=answer, seconds=seconds, began=min(stamps) if stamps else "", **hooks)
+                answer=answer, seconds=seconds, began=min(stamps) if stamps else "", commands=commands, refusals=refusals, **hooks)
 
 
-HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb|-mem-orient|-mem)?)[\\/]*")
+HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb|-mem-orient|-mem|-team)?)[\\/]*")
 
 
 def portable(value):
@@ -344,8 +587,9 @@ def off_policy(arm: str, row: dict, setup: str = "", role: str = "") -> list[str
     return found
 
 
-def main() -> int:
-    out, folders = pathlib.Path(sys.argv[1]), [pathlib.Path(p) for p in sys.argv[2:]]
+def read_folders(folders: list[pathlib.Path]) -> list[dict]:
+    """Every agent the transcript folders hold, read, priced and graded. A round that was stopped and resumed
+    leaves two transcripts under one label; only the later one is kept."""
     agents = []
     for folder in folders:
         for meta in sorted(folder.glob("agent-*.meta.json")):
@@ -358,14 +602,20 @@ def main() -> int:
                 continue
             arm, setup, tier, role, rep = bits
             row = read_agent(log)
-            # The callers this agent's own answer to question 1 left out: None when it was not asked.
+            commands, refusals = row.pop("commands"), row.pop("refusals")
+            # The callers this agent's own answer to question 1 left out: None when it was not asked
+            # (and for set T, whose first question is not about callers).
             own = row["answer"] if isinstance(row["answer"], dict) else None
             asked = (own or {}).get("q1") if role in ("all", "verify") else own if role in ("q1", "w-q1") else None
             which = question_set(arm)
             row["missed_callers"] = (sorted(TRUTHS[which]["q1"] - {bare(c) for c in asked.get("callers") or []})
-                                     if isinstance(asked, dict) else None)
+                                     if isinstance(asked, dict) and which != "T" else None)
             row.update(arm=arm, setup=setup, tier=tier, role=role, rep=rep, run=folder.name, set=which,
                        off_policy=off_policy(arm, row, setup, role), answer=portable(row["answer"]))
+            if is_team(arm):
+                row.update(team_counts(commands, row, refusals))
+                flags = hub_policy(arm, setup, tier, role, rep, row) + (["pgr:usage-error"] if refused_calls(commands, refusals) else [])
+                row["off_policy"] = sorted(set(row["off_policy"]) | set(flags))
             agents.append(row)
 
     # A round that was stopped and resumed runs most of its agents a second time
@@ -382,14 +632,63 @@ def main() -> int:
     for rows in twins.values():
         if len(rows) > 1:
             kept = max(rows, key=lambda r: r["began"])
-            superseded += [r for r in rows if r is not kept]
+            earlier = [r for r in rows if r is not kept]
+            superseded += earlier
+            # An earlier attempt that filed findings left them in the bank that the kept one files into again:
+            # the reviewer then reads notes of two attempts, and the cell is not a clean one.
+            if any(r.get("hub_calls", {}).get("handoff") for r in earlier):
+                kept["off_policy"] = sorted(set(kept["off_policy"]) | {"bank:rerun"})
     if superseded:
         agents = [row for row in agents if not any(row is gone for gone in superseded)]
         print(f"left out {len(superseded)} earlier transcripts of agents that a resumed round ran again "
               f"({sum(r['answer'] is None for r in superseded)} of them cut off before answering)")
     for row in agents:
         del row["began"]
+    return agents
 
+
+def team_cell(rows: list[dict], final: dict, which: str) -> dict:
+    """The extra fields of a round six cell, counted over the agents that looked something up or answered
+    (the planner, and the planner imputed from earlier rounds, are left out): the share that answered from
+    its brief, the pgr lookups and hub calls, the banks used. On set T also how many of the note fields and
+    of the lookup fields of the final answers are right."""
+    asking = [row for row in rows if not row.get("imputed") and row["role"] != "plan"]
+    out = {"from_brief_share": round(sum(bool(row.get("from_brief")) for row in asking) / len(asking), 4) if asking else None,
+           "pgr_lookups": sum(row.get("pgr_lookups", 0) for row in asking),
+           "hub_calls": {name: sum(row.get("hub_calls", {}).get(name, 0) for row in asking) for name in HUB_COMMANDS},
+           "banks": sorted({bank for row in asking for bank in row.get("banks", [])})}
+    if which == "T":
+        count = {"note": [0, 0], "lookup": [0, 0]}
+        for q in ("q1", "q2", "q3"):
+            answer = final.get(q)
+            for field, right in team_fields(q, answer if isinstance(answer, dict) else {}).items():
+                kind = "note" if f"{q}.{field}" in NOTE_FIELDS else "lookup"
+                count[kind][0] += right
+                count[kind][1] += 1
+        out["note_fields"] = {"right": count["note"][0], "of": count["note"][1]}
+        out["lookup_fields"] = {"right": count["lookup"][0], "of": count["lookup"][1]}
+    return out
+
+
+def flag_banks(table: list[dict]) -> None:
+    """A hub cell writes to a bank of its own (named r6-...). Two cells that share one, or a cell that used
+    more than one, could have read notes it should not have seen: it is listed as off policy."""
+    owners: dict[str, list[dict]] = {}
+    for cell in table:
+        own = [bank for bank in cell.get("banks", []) if bank.startswith("r6-")]
+        for bank in own:
+            owners.setdefault(bank, []).append(cell)
+        if len(own) > 1:
+            cell["off_policy"] = sorted(set(cell["off_policy"]) | {"bank:mixed"})
+    for cells in owners.values():
+        if len(cells) > 1:
+            for cell in cells:
+                cell["off_policy"] = sorted(set(cell["off_policy"]) | {"bank:shared"})
+
+
+def build_cells(agents: list[dict]) -> list[dict]:
+    """Group agents into cells (arm, setup, tier, rep): the tokens of every agent in the cell are summed and the
+    cell's final answer is graded. Reads only what the agent rows hold, so it can be run again on stored rows."""
     # The planning prompt is identical for every method and tier, so it was run
     # a few times and its briefs reused. A cell that reused them is charged the
     # mean of the planning calls that were measured. That holds for set A only:
@@ -398,7 +697,9 @@ def main() -> int:
               "tool_calls", "tool_output_chars", "start", "start_cached", "reread", "added",
               "cost_warm", "cost_cold", "hook_calls", "hook_rewrites", "hook_denials", "hook_notes",
               "hook_redactions")
-    plans = [row for row in agents if row["role"] == "plan" and row["set"] == "A"]
+    # Round six plans are left out of the mean, so that the cells of earlier rounds keep their numbers
+    # when the stored rows are parsed together with a later round.
+    plans = [row for row in agents if row["role"] == "plan" and row["set"] == "A" and not is_team(row["arm"])]
     mean_plan = None
     if plans:
         mean_plan = {field: sum(row[field] for row in plans) / len(plans) for field in SUMMED}
@@ -472,8 +773,17 @@ def main() -> int:
             cell["broken"] = sum(1 for q in scores if right(workers[q]) and not right(scores[q]))
             cell["still_wrong"] = sum(1 for q in scores if not right(workers[q]) and not right(scores[q]))
             cell["reviewer"] = family((by_role.get("verify") or {}).get("model") or "")
+        if is_team(arm):
+            cell.update(team_cell(rows, final, which))
         table.append(cell)
+    flag_banks(table)
+    return table
 
+
+def main() -> int:
+    out, folders = pathlib.Path(sys.argv[1]), [pathlib.Path(p) for p in sys.argv[2:]]
+    agents = read_folders(folders)
+    table = build_cells(agents)
     out.write_text(json.dumps({"agents": agents, "cells": table}, indent=1), encoding="utf-8")
     print(f"{len(agents)} agents in {len(table)} cells -> {out}")
     print(f"{'cell':<22}{'ok':>3}{'req':>5}{'tools':>6}{'input':>8}{'cache wr':>10}{'cache rd':>10}{'output':>8}"

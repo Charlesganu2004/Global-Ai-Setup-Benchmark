@@ -167,6 +167,44 @@ const REPO_MEM_ORIENT = (args && args.repoMemOrient) || 'C:\\path\\to\\lxbench\\
 for (const arm of ['RM', 'RGM', 'RSM', 'RGSM']) REPO_OF[arm] = REPO_MEM
 REPO_OF.RGSO = REPO_MEM_ORIENT
 
+// Sixth round: team work (see benchmark/harness/ROUND6.md). R6 is RGS run again with the same
+// commands and the same policy text, so that every comparison inside the round is same-day. The
+// arms with P in the name also get the output of `pgr pack` for each question in the prompt:
+// it costs no model call, so the packs are computed before the run (prepare_packs.py) and passed
+// in args.packs[variant][set][q], variant gs (graph and search), g or s. TH and TPH add the hub:
+// the subagents file what they found with `pgr handoff` and the reviewer starts from `pgr loadout`.
+// T0, TL and TI ask set T, a demonstration set that the builders wrote to show one feature: its
+// answers need a note that an earlier agent left behind (prepare_team.py files the notes).
+const REPO_TEAM = (args && args.repoTeam) || 'C:\\path\\to\\lxbench\\repo-team'
+const NAME_RULE = /^[A-Za-z0-9._-]{1,64}$/
+const validName = name => NAME_RULE.test(name) && name !== '.' && name !== '..'
+const TEAM_BANK = (args && args.teamBank) || 'team-notes'
+if (!validName(TEAM_BANK)) throw new Error(`args.teamBank ${JSON.stringify(TEAM_BANK)} is not a valid bank name (1 to 64 characters of A-Z a-z 0-9 . _ -)`)
+const HUB_TASK = 'lookups'
+// How the hub prints a note: the recall line with the roles that filed it before the id.
+const PGR_HUB_NOTE = 'one per line as: - text  (age ago) [roles] #id, where roles are the roles that filed it joined by +. A note ends its brackets with "stale: code changed" when code it names has changed since, and "gone: code removed" when that code no longer exists'
+// The finding is shown in single quotes: PowerShell rewrites a backtick inside double quotes, which would cut the first letter off a name.
+const hubHandoff = (bank, task) => `pgr --bank ${bank} --task ${task} --from scout handoff '<finding>'      files what you found as notes in the shared note bank, for the reviewer. Prints "kept <id>" for each note filed and a last line "handoff ${task}: N notes from scout, K name code"`
+const hubLoadout = (bank, task) => `pgr --bank ${bank} --task ${task} loadout      what the subagents filed for this task, ${PGR_HUB_NOTE}. A last line counts the notes. Prints "no notes" when nothing was filed`
+const HUB_WORKER_RULE = 'Before you return, file what you found for the reviewer in one call: one sentence per finding, each naming the function and its path:line.'
+const HUB_REVIEWER_RULE = 'Start with the loadout: it shows what the subagents filed, each note checked against the code.'
+const PGR_TEAM_LOADOUT = `pgr --bank ${TEAM_BANK} --task NAME loadout      the notes the team filed for the task NAME, ${PGR_HUB_NOTE}. A last line counts the notes. Prints "no notes" when there are none`
+const PGR_TEAM_RECALL = `pgr --bank ${TEAM_BANK} recall "<words>"      notes of the team bank that match some words, most relevant first, ${PGR_NOTE}. Prints "no notes" when none match`
+ARMS.R6 = ARMS.RGS
+ARMS.TP = [PGR_ASK]
+ARMS.TPG = PGR_G
+ARMS.TPS = [PGR_S]
+ARMS.TH = [PGR_ASK]
+ARMS.TPH = [PGR_ASK]
+ARMS.T0 = [PGR_ASK]
+ARMS.TL = [PGR_ASK, PGR_TEAM_LOADOUT, PGR_TEAM_RECALL]
+ARMS.TI = [PGR_ASK, PGR_TEAM_LOADOUT, PGR_TEAM_RECALL]
+for (const arm of ['T0', 'TL', 'TI']) REPO_OF[arm] = REPO_TEAM
+// What an arm adds to R6: the variant of pack in its prompts, the hub, the set it asks.
+const PACK_OF = { TP: 'gs', TPG: 'g', TPS: 's', TPH: 'gs' }
+const HUB = { TH: true, TPH: true }
+const SET_T = { T0: true, TL: true, TI: true }
+
 // Held-out questions. The builders of pgr saw questions q1 to q3 (set A), so a
 // second set B exists that nobody tuned for. An arm id plus "h" runs that arm's
 // method on set B: "RGSh" is "RGS" on set B, "A0h" is "A0" on set B. Policy text,
@@ -180,7 +218,14 @@ const baseArm = id => {
   if (!hasArm(id.slice(0, -1))) throw new Error(`arm ${id}: there is no arm ${id.slice(0, -1)} to run again or to run on the held-out questions`)
   return id.slice(0, -1)
 }
-const setOf = c => (/h$/.test(c.arm) && !hasArm(c.arm) ? 'B' : 'A')
+// Set T has no held-out version: its arms ask their own questions, and an id ending in h would not mean set B.
+const setOf = c => {
+  if (SET_T[baseArm(c.arm)]) {
+    if (/h$/.test(c.arm) && !hasArm(c.arm)) throw new Error(`arm ${c.arm}: set T has no held-out set`)
+    return 'T'
+  }
+  return /h$/.test(c.arm) && !hasArm(c.arm) ? 'B' : 'A'
+}
 
 // Ways of running the reviewer at the end of an orchestrated run. The setup
 // name picks one: who reviews, and whether the reviewer may look anything up.
@@ -191,12 +236,13 @@ const REVIEW = {
   'orch-low': { who: TIER.C, tools: true },      // cheapest tier reviews
 }
 
-function policy(armId) {
+// hub is null for every arm without the hub; for TH and TPH it is {bank, task, role}, role worker or reviewer.
+function policy(armId, hub) {
   const arm = baseArm(armId)
   const repo = REPO_OF[arm] || REPO
   const lines = [
     'This is one run of a benchmark that measures how many tokens a code lookup costs.',
-    `Repository under test: ${repo} (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index.`,
+    `Repository under test: ${repo} (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index.${hub ? ' The hub commands write to a note bank outside the repository; that is allowed.' : ''}`,
     '',
     'TOOL POLICY FOR THIS RUN. It replaces the local-index and read-gate rules (section 6) and any token-goat gate in your global instructions. Use only what is listed here. No Agent tool, no web tools, no other search or index command.',
   ]
@@ -207,9 +253,11 @@ function policy(armId) {
       ? `Allowed shell commands. Run each as one call of the Bash tool (not PowerShell) that starts with:  cd ${posix(repo)} &&`
       : `Allowed shell commands. Run each as one PowerShell call that starts with:  Set-Location ${repo};`)
     for (const command of ARMS[arm]) lines.push('  ' + command)
+    if (hub) lines.push('  ' + (hub.role === 'reviewer' ? hubLoadout(hub.bank, hub.task) : hubHandoff(hub.bank, hub.task)))
     lines.push(READ_VIA_TOKEN_GOAT[arm]
       ? 'To see code, use token-goat read on a symbol a command returned, and only when the answer needs it. Do not use the Read tool. Use Grep only when the listed commands return nothing useful.'
       : 'After a command answers, use the Read tool only on a line range it returned, and only when the answer needs it. Use Grep only when the listed commands return nothing useful.')
+    if (hub) lines.push(hub.role === 'reviewer' ? HUB_REVIEWER_RULE : HUB_WORKER_RULE)
   }
   lines.push('Be exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.')
   return lines.join('\n')
@@ -268,6 +316,50 @@ const S_B = {
   },
 }
 const ALL_B = { type: 'object', properties: { q1: S_B.q1, q2: S_B.q2, q3: S_B.q3 }, required: ['q1', 'q2', 'q3'] }
+// Set T, a demonstration set that the builders wrote to show one feature of the hub: each question
+// needs one lookup and one note that an earlier agent filed under the named task (prepare_team.py
+// files them). A run that cannot see the notes may answer unknown; it is graded wrong on that field.
+// The first question's lookup is the function of set A's second question, the second question's is
+// set B's second question, the third question's is set A's third question, so the lookup fields are
+// graded by the rules of those sets.
+const Q_T = {
+  q1: 'Task `cli-freeze`: the team recorded a decision about `dispatch_command`. Which ticket does the decision cite, may the parameters of the function be renamed (true or false), and in which file is it defined and on which line is its `def`? Where you cannot find something out, say so: the word unknown for the ticket, and leave the true or false out.',
+  q2: 'Task `ssrf-review`: one note of this task describes what `validate_url` does. Is that note still current, or has the code of the function changed since the note was filed (current, changed, or unknown if you cannot tell)? Which role filed it? And which functions call `validate_url`? Give the bare name of every caller.',
+  q3: 'Task `merge-driver-audit`: two roles filed the same fact about the function that registers the git merge driver for graph.json. Give the name of that function, the two roles that filed the fact (sorted; an empty list if you cannot tell), its file and the line its `def` is on.',
+}
+const S_T = {
+  q1: {
+    type: 'object',
+    properties: {
+      ticket: { type: 'string', description: 'the ticket id the decision cites, exactly as written; the word unknown if you cannot tell' },
+      // Left out, not null, when the agent cannot tell: a plain boolean is the one schema shape every runtime accepts.
+      may_rename: { type: 'boolean', description: 'true if the parameters may be renamed, false if they may not; leave this field out if you cannot tell' },
+      file: { type: 'string', description: 'path relative to the repository' },
+      line: { type: 'integer', description: 'line of the def' },
+    },
+    required: ['ticket', 'file', 'line'],
+  },
+  q2: {
+    type: 'object',
+    properties: {
+      status: { type: 'string', enum: ['current', 'changed', 'unknown'], description: 'changed if the code of the function changed since the note was filed, current if it did not, unknown if you cannot tell' },
+      filed_by: { type: 'string', description: 'the role that filed the note (scout, builder or reviewer); the word unknown if you cannot tell' },
+      called_by: NAMES,
+    },
+    required: ['status', 'filed_by', 'called_by'],
+  },
+  q3: {
+    type: 'object',
+    properties: {
+      function: { type: 'string', description: 'bare function name' },
+      roles: { type: 'array', items: { type: 'string' }, description: 'the roles that filed the fact (scout, builder or reviewer), sorted; empty if you cannot tell' },
+      file: { type: 'string', description: 'path relative to the repository' },
+      line: { type: 'integer', description: 'line of the def' },
+    },
+    required: ['function', 'roles', 'file', 'line'],
+  },
+}
+const ALL_T = { type: 'object', properties: { q1: S_T.q1, q2: S_T.q2, q3: S_T.q3 }, required: ['q1', 'q2', 'q3'] }
 const BRIEFS = {
   type: 'object',
   properties: { q1: { type: 'string' }, q2: { type: 'string' }, q3: { type: 'string' } },
@@ -280,16 +372,162 @@ const listedOf = questions => KEYS.map(k => `${k.toUpperCase()}. ${questions[k]}
 const SETS = {
   A: { Q, S, ALL, listed: listedOf(Q) },
   B: { Q: Q_B, S: S_B, ALL: ALL_B, listed: listedOf(Q_B) },
+  T: { Q: Q_T, S: S_T, ALL: ALL_T, listed: listedOf(Q_T) },
 }
 const tag = (c, role) => `${c.arm}|${c.setup}|${c.tier}|${role}|${c.rep || REP}`
 // The planning prompt is the same for every method and tier, so it is measured
 // a few times (cells marked ownPlan) and its briefs are reused everywhere else.
 const SHARED_BRIEFS = args && args.briefs
 
+// Round six: what a prompt holds besides the policy and the questions.
+const PACKS = (args && args.packs) || {}
+const LOADOUTS = (args && args.loadouts) || {}
+const RUN_TAG = args && args.runTag
+const RUN_TAG_RULE = /^[a-z0-9][a-z0-9._-]{0,23}$/
+// The packs and loadouts reach this script through args, which the orchestrating model has to type out as a
+// tool argument, so a text could be cut or changed on the way. args.sums holds the SHA-256 of each text as
+// prepare_packs.py and prepare_team.py recorded it, keyed by place (packs/VARIANT/SET/Q and loadouts/Q), and
+// check() computes it again. A script cannot import a hash, so this one is written out;
+// check_round6_prompts.js compares it with node's on a set of texts.
+const SUMS = (args && args.sums) || {}
+const K256 = [
+  0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+  0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+  0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+  0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+  0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+  0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+  0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+  0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+]
+// The bytes of a text in UTF-8, as the files that prepare_packs.py and prepare_team.py hash were written.
+function utf8Bytes(text) {
+  const bytes = []
+  for (let i = 0; i < text.length; i++) {
+    let c = text.charCodeAt(i)
+    if (c >= 0xd800 && c <= 0xdbff && i + 1 < text.length) {
+      const d = text.charCodeAt(i + 1)
+      if (d >= 0xdc00 && d <= 0xdfff) { c = 0x10000 + ((c - 0xd800) << 10) + (d - 0xdc00); i += 1 }
+    }
+    if (c < 0x80) bytes.push(c)
+    else if (c < 0x800) bytes.push(0xc0 | (c >> 6), 0x80 | (c & 63))
+    else if (c < 0x10000) bytes.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+    else bytes.push(0xf0 | (c >> 18), 0x80 | ((c >> 12) & 63), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63))
+  }
+  return bytes
+}
+function sha256Hex(bytes) {
+  const h = [0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a, 0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19]
+  const padded = bytes.concat([0x80])
+  while (padded.length % 64 !== 56) padded.push(0)
+  // The length in bits, as 64 bits, high word first.
+  for (const word of [Math.floor(bytes.length / 0x20000000), (bytes.length * 8) >>> 0]) padded.push((word >>> 24) & 255, (word >>> 16) & 255, (word >>> 8) & 255, word & 255)
+  const w = new Array(64)
+  for (let offset = 0; offset < padded.length; offset += 64) {
+    for (let t = 0; t < 16; t++) w[t] = (padded[offset + 4 * t] << 24) | (padded[offset + 4 * t + 1] << 16) | (padded[offset + 4 * t + 2] << 8) | padded[offset + 4 * t + 3]
+    for (let t = 16; t < 64; t++) {
+      const x = w[t - 15]
+      const y = w[t - 2]
+      const s0 = ((x >>> 7) | (x << 25)) ^ ((x >>> 18) | (x << 14)) ^ (x >>> 3)
+      const s1 = ((y >>> 17) | (y << 15)) ^ ((y >>> 19) | (y << 13)) ^ (y >>> 10)
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0
+    }
+    let [a, b, c, d, e, f, g, k] = h
+    for (let t = 0; t < 64; t++) {
+      const big1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7))
+      const choose = (e & f) ^ (~e & g)
+      const first = (k + big1 + choose + K256[t] + w[t]) | 0
+      const big0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10))
+      const majority = (a & b) ^ (a & c) ^ (b & c)
+      const second = (big0 + majority) | 0
+      k = g; g = f; f = e; e = (d + first) | 0; d = c; c = b; b = a; a = (first + second) | 0
+    }
+    const mixed = [a, b, c, d, e, f, g, k]
+    for (let i = 0; i < 8; i++) h[i] = (h[i] + mixed[i]) | 0
+  }
+  return h.map(word => (word >>> 0).toString(16).padStart(8, '0')).join('')
+}
+const sha256Text = text => sha256Hex(utf8Bytes(text))
+// What a text measures, once per place: its SHA-256 and its estimated tokens (four bytes to a token).
+const measured = {}
+const measure = (key, text) => {
+  if (!measured[key]) {
+    const bytes = utf8Bytes(text)
+    measured[key] = { sum: sha256Hex(bytes), tokens: Math.ceil(bytes.length / 4) }
+  }
+  return measured[key]
+}
+const packOf = c => PACK_OF[baseArm(c.arm)] || null
+const PACK_LEAD = 'Context looked up for you before you started (the harness ran pgr pack on the question; '
+const packBlock = (c, k, labelled) => {
+  const pack = PACKS[packOf(c)][setOf(c)][k]
+  return `${labelled ? k.toUpperCase() + '. ' : ''}${PACK_LEAD}${pack.tokens} tokens). It may be all you need. Anything it does not show you may look up under the tool policy.\n${pack.output}`
+}
+const LOAD_LEAD = 'Notes filed earlier for the task of this question (the harness ran pgr loadout for the task '
+const loadBlock = (c, k, labelled) => {
+  const load = LOADOUTS[k]
+  return `${labelled ? k.toUpperCase() + '. ' : ''}${LOAD_LEAD}${load.task} before you started; ${load.tokens} tokens). They may be all you need from the notes; look up the code itself under the tool policy.\n${load.output}`
+}
+// The blocks that follow the question or questions in a prompt, one per question and labelled Q1, Q2,
+// Q3 when there are several; nothing for an arm that has no pack and no loadout in its prompts.
+const context = (c, keys) => {
+  const make = packOf(c) ? packBlock : baseArm(c.arm) === 'TI' ? loadBlock : null
+  return make ? '\n\n' + keys.map(k => make(c, k, keys.length > 1)).join('\n\n') : ''
+}
+// The bank of one hub cell is new for every cell and repeat, so that no run can read another run's notes.
+const bankOf = c => {
+  if (typeof RUN_TAG !== 'string' || !RUN_TAG_RULE.test(RUN_TAG)) throw new Error('args.runTag is required for the hub arms: 1 to 24 characters of a-z 0-9 . _ -, starting with a letter or a digit')
+  const name = ['r6', RUN_TAG, c.arm, c.setup, c.tier, c.rep || REP].join('-').toLowerCase()
+  if (!validName(name)) throw new Error(`bank name ${JSON.stringify(name)} is not valid (1 to 64 characters of A-Z a-z 0-9 . _ -): shorten args.runTag or the repeat name`)
+  return name
+}
+const hubOf = (c, role) => (HUB[baseArm(c.arm)] ? { bank: bankOf(c), task: HUB_TASK, role } : null)
+// Everything a cell needs that the harness has to bring, checked before any agent starts.
+const banksSeen = {}
+function check(c) {
+  const arm = baseArm(c.arm)
+  const set = setOf(c)
+  const where = tag(c, 'all')
+  // A text and its token count against the checksum that was recorded for its place.
+  const proven = (key, text, tokens, what) => {
+    const want = SUMS[key]
+    if (typeof want !== 'string' || !/^[0-9a-f]{64}$/.test(want)) throw new Error(`cell ${where}: args.sums has no checksum for ${what} (${key}); write the args again with round6_args.py`)
+    const seen = measure(key, text)
+    if (seen.sum !== want) throw new Error(`cell ${where}: ${what} does not match its checksum in args.sums (${key}): the text was cut or changed on the way; write the args again with round6_args.py and pass the file as it is`)
+    if (seen.tokens !== tokens) throw new Error(`cell ${where}: the tokens of ${what} (${tokens}) are not the estimate (${seen.tokens}) of its text`)
+  }
+  if (SET_T[arm]) {
+    if (c.setup !== 'single') throw new Error(`cell ${where}: set T is asked of one agent only (setup single)`)
+    if (!(args && args.repoTeam)) throw new Error(`cell ${where}: set T needs args.repoTeam, the copy of the fixture that prepare_team.py made`)
+  }
+  if (HUB[arm] && (String(c.setup).indexOf('orch') !== 0 || c.setup === 'orch-notools')) throw new Error(`cell ${where}: the hub arms run orchestrated, with a reviewer that may use tools`)
+  if (PACK_OF[arm]) {
+    for (const k of KEYS) {
+      const pack = PACKS[PACK_OF[arm]] && PACKS[PACK_OF[arm]][set] && PACKS[PACK_OF[arm]][set][k]
+      if (!pack || typeof pack.output !== 'string' || !pack.output || !Number.isInteger(pack.tokens)) throw new Error(`cell ${where}: no pack for variant ${PACK_OF[arm]}, set ${set}, ${k} in args.packs (run prepare_packs.py)`)
+      if (pack.question !== SETS[set].Q[k]) throw new Error(`cell ${where}: the pack for variant ${PACK_OF[arm]}, set ${set}, ${k} was made for another question text than this script asks (run prepare_packs.py again)`)
+      proven(`packs/${PACK_OF[arm]}/${set}/${k}`, pack.output, pack.tokens, `the pack for variant ${PACK_OF[arm]}, set ${set}, ${k}`)
+    }
+  }
+  if (arm === 'TI') {
+    for (const k of KEYS) {
+      const load = LOADOUTS[k]
+      if (!load || typeof load.task !== 'string' || typeof load.output !== 'string' || !load.output || !Number.isInteger(load.tokens)) throw new Error(`cell ${where}: no loadout for ${k} in args.loadouts (run prepare_team.py)`)
+      if (Q_T[k].indexOf('`' + load.task + '`') < 0) throw new Error(`cell ${where}: the loadout for ${k} is for task ${load.task}, which the question does not name`)
+      proven(`loadouts/${k}`, load.output, load.tokens, `the loadout for ${k}`)
+    }
+  }
+  if (HUB[arm]) {
+    const bank = bankOf(c)
+    if (banksSeen[bank]) throw new Error(`cell ${where}: bank ${bank} belongs to another cell; every hub cell and repeat needs a bank of its own`)
+    banksSeen[bank] = true
+  }
+}
+
 async function single(c) {
   const set = SETS[setOf(c)]
   const answer = await agent(
-    `${policy(c.arm)}\n\nAnswer all three questions.\n${set.listed}`,
+    `${policy(c.arm)}\n\nAnswer all three questions.\n${set.listed}${context(c, KEYS)}`,
     { label: tag(c, 'all'), phase: 'Single', schema: set.ALL, ...TIER[c.tier] })
   return { ...c, set: setOf(c), answer }
 }
@@ -297,7 +535,7 @@ async function single(c) {
 async function fanOut(c) {
   const set = SETS[setOf(c)]
   const got = await parallel(KEYS.map(k => () => agent(
-    `${policy(c.arm)}\n\nAnswer this question.\n${set.Q[k]}`,
+    `${policy(c.arm)}\n\nAnswer this question.\n${set.Q[k]}${context(c, [k])}`,
     { label: tag(c, k), phase: 'Parallel', schema: set.S[k], ...TIER[c.tier] })))
   return { ...c, set: setOf(c), answer: { q1: got[0], q2: got[1], q3: got[2] } }
 }
@@ -311,13 +549,13 @@ async function orchestrated(c) {
   if (!plan) return { ...c, set: setOf(c), answer: null, failed: 'plan' }
   const workers = await parallel(KEYS.map(k => () => agent(
     // The reused briefs name the main fixture; an arm on the other copy is pointed at its own.
-    `${policy(c.arm)}\n\nBrief from the orchestrator:\n${plan[k].split(REPO).join(REPO_OF[baseArm(c.arm)] || REPO)}`,
+    `${policy(c.arm, hubOf(c, 'worker'))}\n\nBrief from the orchestrator:\n${plan[k].split(REPO).join(REPO_OF[baseArm(c.arm)] || REPO)}${context(c, [k])}`,
     { label: tag(c, 'w-' + k), phase: 'Orchestrated', schema: set.S[k], ...TIER[c.tier] })))
   const reported = { q1: workers[0], q2: workers[1], q3: workers[2] }
   const review = REVIEW[c.setup]
   const answer = await agent(
     review.tools
-      ? `${policy(c.arm)}\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question; their answers are below as JSON, with null for a subagent that returned nothing. Check each answer under the tool policy with as few calls as it takes, correct anything wrong or missing, and return the final answers for all three questions.\n\n${set.listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`
+      ? `${policy(c.arm, hubOf(c, 'reviewer'))}\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question; their answers are below as JSON, with null for a subagent that returned nothing. Check each answer under the tool policy with as few calls as it takes, correct anything wrong or missing, and return the final answers for all three questions.\n\n${set.listed}${context(c, KEYS)}\n\nSubagent answers:\n${JSON.stringify(reported)}`
       : `This is one run of a benchmark that measures how many tokens a code lookup costs.\n\nYou are the orchestrator and lead reviewer of this run. Three subagents each answered one question about a repository; their answers are below as JSON, with null for a subagent that returned nothing. Call no tool except the structured output: you cannot look anything up. Check each answer against its question for what can be seen from the answer alone (a missing field, an answer to a different question, a list that plainly cannot be complete), correct only what you can correct that way, and return the final answers for all three questions.\n\n${set.listed}\n\nSubagent answers:\n${JSON.stringify(reported)}`,
     { label: tag(c, 'verify'), phase: 'Orchestrated', schema: set.ALL, ...review.who })
   return { ...c, set: setOf(c), workers: reported, answer }
@@ -327,7 +565,10 @@ const RUN = { single, parallel: fanOut }
 for (const name of Object.keys(REVIEW)) RUN[name] = orchestrated
 // A held-out id with no base arm fails here, before any agent starts.
 for (const c of CELLS) baseArm(c.arm)
+// A missing pack, loadout, run tag or team fixture also fails here, before any agent starts.
+for (const c of CELLS) check(c)
 log(`${CELLS.length} cells, repeat ${REP}`)
 if (CELLS.some(c => setOf(c) === 'B')) log(`${CELLS.filter(c => setOf(c) === 'B').length} of them on the held-out question set B`)
+if (CELLS.some(c => setOf(c) === 'T')) log(`${CELLS.filter(c => setOf(c) === 'T').length} of them on set T, the demonstration set`)
 const done = await parallel(CELLS.map(c => () => RUN[c.setup](c)))
 return { rep: REP, cells: done }

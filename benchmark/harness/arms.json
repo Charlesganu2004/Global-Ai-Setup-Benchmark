@@ -39,6 +39,11 @@
    "id": "rerun",
    "name": "Earlier methods, run again",
    "detail": "Three earlier methods measured again on the day of the fifth round, so that the Rust engine is compared with runs made under the same instructions and the same client setup."
+  },
+  {
+   "id": "team",
+   "name": "Team work",
+   "detail": "Round 6: the Rust engine in team setups, with and without a pack of looked-up context in each prompt and a note hub for the subagents and the reviewer, and a small demonstration set (T) whose answers need a note that an earlier agent left behind."
   }
  ],
  "commands": {
@@ -73,7 +78,11 @@
   "pgr_find": "pgr find \"<description>\"     search by meaning and by words together, prints each hit as the definition it sits in: name path:first-last signature, then its doc line when it has one",
   "pgr_recall": "pgr recall \"<question>\"      notes kept from earlier work in this repository, most relevant first, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. Prints \"no notes\" when none match",
   "pgr_ask": "pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\"",
-  "pgr_ask_memory": "pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\" When notes kept from earlier work bear on the questions, up to four follow under a closing \"== memory\" line, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists."
+  "pgr_ask_memory": "pgr ask <kind>:<what>...     several questions in one call, each answer under its own \"== kind:what\" header. Kinds: about (definition, signature, doc line, callers and what it calls together), callers, def, affected, and find (search by meaning; quote the whole argument). Example: pgr ask about:parse_config callers:load \"find:where tokens expire\" When notes kept from earlier work bear on the questions, up to four follow under a closing \"== memory\" line, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists.",
+  "pgr_hub_handoff": "pgr --bank BANK --task TASK --from scout handoff '<finding>'      files what you found as notes in the shared note bank, for the reviewer. Prints \"kept <id>\" for each note filed and a last line \"handoff TASK: N notes from scout, K name code\"",
+  "pgr_hub_loadout": "pgr --bank BANK --task TASK loadout      what the subagents filed for this task, one per line as: - text  (age ago) [roles] #id, where roles are the roles that filed it joined by +. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. A last line counts the notes. Prints \"no notes\" when nothing was filed",
+  "pgr_team_loadout": "pgr --bank team-notes --task NAME loadout      the notes the team filed for the task NAME, one per line as: - text  (age ago) [roles] #id, where roles are the roles that filed it joined by +. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. A last line counts the notes. Prints \"no notes\" when there are none",
+  "pgr_team_recall": "pgr --bank team-notes recall \"<words>\"      notes of the team bank that match some words, most relevant first, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. Prints \"no notes\" when none match"
  },
  "arms": [
   {
@@ -856,6 +865,161 @@
     "lx_ask"
    ],
    "index": "Rust embeddings"
+  },
+  {
+   "id": "R6",
+   "group": "team",
+   "name": "pgr, graph and search in one call, round six",
+   "detail": "RGS run again in round six, with the same commands and the same policy text, so that every comparison inside the round is same-day.",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TP",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack in the prompt",
+   "detail": "R6 plus, in every prompt, the output of pgr pack on the question, computed by the harness before the agent starts (it costs no model call) and put in the prompt (engines graph and search).",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPG",
+   "group": "team",
+   "name": "pgr, code graph only, with a graph pack",
+   "detail": "The agent has the commands of RG; its prompt holds the output of pgr pack on the question, computed by the harness before the agent starts (it costs no model call) and put in the prompt, built with the graph engine only.",
+   "uses": [
+    "pgr_about",
+    "pgr_affected"
+   ]
+  },
+  {
+   "id": "TPS",
+   "group": "team",
+   "name": "pgr, search only, with a search pack",
+   "detail": "The agent has the command of RS; its prompt holds the output of pgr pack on the question, computed by the harness before the agent starts (it costs no model call) and put in the prompt, built with the search engine only.",
+   "uses": [
+    "pgr_find"
+   ]
+  },
+  {
+   "id": "TH",
+   "group": "team",
+   "name": "pgr, graph and search, with the hub",
+   "detail": "R6 plus the note hub: the subagents file what they found with pgr handoff and the reviewer starts from pgr loadout, in a note bank that is new for every cell and repeat. Orchestrated runs only.",
+   "uses": [
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout"
+   ]
+  },
+  {
+   "id": "TPH",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack and the hub",
+   "detail": "TP plus the note hub: the subagents file what they found with pgr handoff and the reviewer starts from pgr loadout, in a note bank that is new for every cell and repeat. Orchestrated runs only.",
+   "uses": [
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout"
+   ]
+  },
+  {
+   "id": "T0",
+   "group": "team",
+   "name": "Demonstration set T, no notes",
+   "detail": "Set T is a demonstration set that the builders wrote to show one feature: each question needs one lookup and one note that an earlier agent filed. Asked with the commands of R6, no hub command and no note: the floor, because the notes cannot be known.",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TL",
+   "group": "team",
+   "name": "Demonstration set T, the agent loads the notes",
+   "detail": "Set T is a demonstration set that the builders wrote to show one feature: each question needs one lookup and one note that an earlier agent filed. The commands of R6 plus pgr loadout and pgr recall on the team's note bank.",
+   "uses": [
+    "pgr_ask",
+    "pgr_team_loadout",
+    "pgr_team_recall"
+   ]
+  },
+  {
+   "id": "TI",
+   "group": "team",
+   "name": "Demonstration set T, the loadout is in the prompt",
+   "detail": "Set T is a demonstration set that the builders wrote to show one feature: each question needs one lookup and one note that an earlier agent filed. As TL, and the loadout of each question's task is already in the prompt.",
+   "uses": [
+    "pgr_ask",
+    "pgr_team_loadout",
+    "pgr_team_recall"
+   ]
+  },
+  {
+   "id": "R6h",
+   "group": "team",
+   "name": "pgr, graph and search in one call, round six, held-out questions",
+   "base": "R6",
+   "detail": "The same method as R6 on three questions nobody tuned for.",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPh",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack in the prompt, held-out questions",
+   "base": "TP",
+   "detail": "The same method as TP on three questions nobody tuned for.",
+   "uses": [
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPGh",
+   "group": "team",
+   "name": "pgr, code graph only, with a graph pack, held-out questions",
+   "base": "TPG",
+   "detail": "The same method as TPG on three questions nobody tuned for.",
+   "uses": [
+    "pgr_about",
+    "pgr_affected"
+   ]
+  },
+  {
+   "id": "TPSh",
+   "group": "team",
+   "name": "pgr, search only, with a search pack, held-out questions",
+   "base": "TPS",
+   "detail": "The same method as TPS on three questions nobody tuned for.",
+   "uses": [
+    "pgr_find"
+   ]
+  },
+  {
+   "id": "THh",
+   "group": "team",
+   "name": "pgr, graph and search, with the hub, held-out questions",
+   "base": "TH",
+   "detail": "The same method as TH on three questions nobody tuned for.",
+   "uses": [
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout"
+   ]
+  },
+  {
+   "id": "TPHh",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack and the hub, held-out questions",
+   "base": "TPH",
+   "detail": "The same method as TPH on three questions nobody tuned for.",
+   "uses": [
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout"
+   ]
   }
  ],
  "tiers": [
@@ -930,5 +1094,30 @@
    "truth": "_register_merge_driver, hooks.py, line 736, removed by _unregister_merge_driver",
    "graded": "four checks, a quarter each"
   }
- ]
+ ],
+ "demonstration_set": {
+  "id": "T",
+  "name": "Set T, the demonstration set",
+  "detail": "Written by the builders to show one feature of the hub, not a test nobody tuned for. The notes are filed by benchmark/harness/prepare_team.py on a copy of the fixture; the lookup part of each question uses a function whose truth sets A and B already hold.",
+  "questions": [
+   {
+    "id": "q1",
+    "kind": "a decision",
+    "truth": "ticket BLD-4172, the parameters may not be renamed, cli.py line 1064",
+    "graded": "four checks, a quarter each; the ticket and the boolean come from the note, the file and the line from the code"
+   },
+   {
+    "id": "q2",
+    "kind": "a stale note",
+    "truth": "the code of the function has changed since the note was filed, the note was filed by the reviewer, the function is called by download_audio, ingest, redirect_request, safe_fetch",
+    "graded": "three checks, a third each; the status and the role come from the note, the callers from the code"
+   },
+   {
+    "id": "q3",
+    "kind": "a confirmed fact",
+    "truth": "_register_merge_driver, filed by builder and scout, hooks.py line 736",
+    "graded": "four checks, a quarter each; the roles come from the notes, the rest from the code"
+   }
+  ]
+ }
 }
