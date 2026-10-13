@@ -170,7 +170,8 @@ def main():
         alone = tmp / "alone"
         alone.mkdir()
         copy = alone / exe_name
-        shutil.copyfile(pgr, copy)
+        # copy, not copyfile: the copy has to keep the permission to run it (Linux and macOS).
+        shutil.copy(pgr, copy)
         code, status, _e = run([str(copy), "status"], stranger_env(tmp / "lxr-home"), str(repo))
         check(code == 0 and "embeddings" in status.lower(), "the copy, with nothing else around it, says embeddings")
         # A different index home: the index is built again with the copy, without a model folder anywhere.

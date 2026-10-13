@@ -15,7 +15,7 @@
 # cannot alter a wheel unnoticed. Do not replace this with a cache or an artifact from
 # another run: the files would then be unverified.
 #
-# NOT YET RUN. See packaging/README.md for what to check on the first run.
+# First run on 2026-10-13. See packaging/README.md for what each run should be checked for.
 name: wheels
 
 on:
@@ -53,9 +53,10 @@ jobs:
         with:
           target: ${{ matrix.target }}
           manylinux: auto
-          # The build runs in a container that has the checkout at /io. The variable has to be
-          # given to the container; it names the folder that stage.py filled.
-          docker-options: -e PGR_EMBED_MODEL_DIR=/io/packaging/stage/model
+          # The build runs in a container that sees the checkout under the same path as the
+          # runner does. The variable has to be given to the container; it names the folder
+          # that stage.py filled.
+          docker-options: -e PGR_EMBED_MODEL_DIR=${{ github.workspace }}/packaging/stage/model
           args: --release --strip --locked --out dist --manifest-path rust/crates/lxr/Cargo.toml
       - name: Check the wheel
         run: python -I packaging/verify_wheel.py dist/peterganurusty-*.whl
