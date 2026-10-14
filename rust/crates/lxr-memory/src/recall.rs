@@ -15,7 +15,7 @@ use crate::dates::{parse_span, unix_now, Span, DAY};
 use crate::entities::ENTITY_CAP;
 use crate::graph::LinkKind;
 use crate::store::build_bm25;
-use crate::{CodeView, Kind, Note, RecallOpts, Recalled, Reflection, MEANING_FLOOR};
+use crate::{is_foreign, CodeView, Kind, Note, RecallOpts, Recalled, Reflection, MEANING_FLOOR};
 use lxr_core::est_tokens;
 use lxr_text::{code_tokens, rrf, Embedder};
 use std::collections::HashMap;
@@ -144,17 +144,19 @@ pub(crate) fn recall(
         score: f32,
         stale: bool,
         gone: bool,
+        other: bool,
     }
     let judge_and_score = |slot: u32, base: f32| -> Option<Candidate> {
         let note = core.note_at(slot)?;
         let (stale, gone) = judge(note, code);
+        let other = other_repository(note, code);
         let mut score = base;
         if gone {
             score *= GONE_FACTOR;
         } else if stale {
             score *= STALE_FACTOR;
         }
-        Some(Candidate { slot, score, stale, gone })
+        Some(Candidate { slot, score, stale, gone, other })
     };
 
     let mut directives: Vec<Candidate> = Vec::new();
@@ -221,7 +223,14 @@ pub(crate) fn recall(
         .chain(ranked)
         .filter_map(|candidate| {
             let note = core.note_at(candidate.slot)?;
-            Some(Recalled { note: note.clone(), score: candidate.score, stale: candidate.stale, gone: candidate.gone, via: via_names(candidate.slot) })
+            Some(Recalled {
+                note: note.clone(),
+                score: candidate.score,
+                stale: candidate.stale,
+                gone: candidate.gone,
+                other: candidate.other,
+                via: via_names(candidate.slot),
+            })
         })
         .collect()
 }
@@ -493,13 +502,13 @@ pub(crate) fn proximity(t: i64, window: Span) -> f32 {
 }
 
 /// Asks the code view about each anchor: `(stale, gone)`. A view that knows no code judges
-/// nothing.
+/// nothing, and an anchor made in another repository than the one the view reads is not judged.
 pub(crate) fn judge(note: &Note, code: &dyn CodeView) -> (bool, bool) {
     if !code.knows_code() || note.anchors.is_empty() {
         return (false, false);
     }
     let (mut stale, mut gone) = (false, false);
-    for anchor in &note.anchors {
+    for anchor in note.anchors.iter().filter(|anchor| !is_foreign(anchor, code)) {
         match code.current_hash(anchor) {
             None => gone = true,
             Some(hash) if hash != anchor.hash => stale = true,
@@ -507,6 +516,12 @@ pub(crate) fn judge(note: &Note, code: &dyn CodeView) -> (bool, bool) {
         }
     }
     (stale, gone)
+}
+
+/// True when the note names code and every anchor was made in another repository than the one
+/// the view reads. A view that knows no code judges nothing, so no note is of another repository.
+pub(crate) fn other_repository(note: &Note, code: &dyn CodeView) -> bool {
+    code.knows_code() && !note.anchors.is_empty() && note.anchors.iter().all(|anchor| is_foreign(anchor, code))
 }
 
 #[cfg(test)]
@@ -584,7 +599,7 @@ mod tests {
     }
 
     fn anchored(quals: &[&str]) -> Note {
-        let anchors = quals.iter().map(|q| Anchor { path: "a.rs".into(), qual: (*q).into(), hash: 7 }).collect();
+        let anchors = quals.iter().map(|q| Anchor { path: "a.rs".into(), qual: (*q).into(), hash: 7, repo: String::new() }).collect();
         Note { anchors, ..Note::default() }
     }
 

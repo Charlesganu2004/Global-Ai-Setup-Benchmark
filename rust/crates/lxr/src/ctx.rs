@@ -11,7 +11,7 @@ use crate::index::{graph_path, load_graph, open_search, search_path, BANK_LOCK_F
 use crate::model;
 use crate::names::{self, Kind as Name, DEFAULT_ROLE};
 use crate::oslock::OsLock;
-use lxr_core::{find_root, index_dir, index_home};
+use lxr_core::{find_root, index_dir, index_home, repo_identity};
 use lxr_graph::{Graph, NodeKind};
 use lxr_memory::{Anchor, Bank, CodeView, NoCode};
 use lxr_rag::SearchIndex;
@@ -96,12 +96,15 @@ impl Engines {
 pub struct GraphSlot {
     path: PathBuf,
     gen: Generation,
+    /// The key of the repository the graph is of (its index folder's name): the notes this view
+    /// anchors carry it, and the notes it judges are those that carry it or none.
+    repo: String,
     cell: OnceCell<Option<Graph>>,
 }
 
 impl GraphSlot {
-    fn new(path: PathBuf, gen: Generation) -> GraphSlot {
-        GraphSlot { path, gen, cell: OnceCell::new() }
+    fn new(path: PathBuf, gen: Generation, repo: String) -> GraphSlot {
+        GraphSlot { path, gen, repo, cell: OnceCell::new() }
     }
 
     /// The graph, read from disk on the first call. `None` when it cannot be read, when it
@@ -113,6 +116,10 @@ impl GraphSlot {
 
 /// The code as the memory bank sees it, built on the graph.
 impl CodeView for GraphSlot {
+    fn repo(&self) -> &str {
+        &self.repo
+    }
+
     fn anchor(&self, word: &str) -> Option<Anchor> {
         if word.chars().count() < 2 {
             return None;
@@ -126,7 +133,7 @@ impl CodeView for GraphSlot {
         if !matches!(node.kind, NodeKind::Symbol(_)) {
             return None;
         }
-        Some(Anchor { path: graph.path_of(found[0]).to_string(), qual: node.qual.clone(), hash: node.hash })
+        Some(Anchor { path: graph.path_of(found[0]).to_string(), qual: node.qual.clone(), hash: node.hash, repo: self.repo.clone() })
     }
 
     fn current_hash(&self, anchor: &Anchor) -> Option<u64> {
@@ -302,7 +309,7 @@ impl Ctx {
         };
         let no_refresh = std::env::var("PGR_NO_REFRESH").map(|v| !v.is_empty() && v != "0").unwrap_or(false);
         Ok(Ctx {
-            graph: GraphSlot::new(graph_path(&dir), Generation::default()),
+            graph: GraphSlot::new(graph_path(&dir), Generation::default(), repo_identity(&root)),
             search: SearchSlot::new(search_path(&dir), Generation::default()),
             embed: EmbedSlot { cell: OnceCell::new() },
             flag_task: names.task,
@@ -440,7 +447,7 @@ impl Ctx {
     /// Makes new, empty slots that check their files against `gen`.
     fn reset(&mut self, gen: Generation) {
         self.gen = gen;
-        self.graph = GraphSlot::new(graph_path(&self.dir), gen);
+        self.graph = GraphSlot::new(graph_path(&self.dir), gen, repo_identity(&self.root));
         self.search = SearchSlot::new(search_path(&self.dir), gen);
     }
 

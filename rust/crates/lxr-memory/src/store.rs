@@ -19,7 +19,7 @@ pub(crate) const INDEX_FILE: &str = "index.bin";
 
 /// Marks the first and last field of a snapshot, so that a file of another kind, a cut file
 /// and a file of an older layout are all refused.
-pub(crate) const MAGIC: u64 = 0x4c58_524d_454d_0003;
+pub(crate) const MAGIC: u64 = 0x4c58_524d_454d_0004;
 
 /// The words of a note that the keyword search indexes: text, context, tags and entities.
 pub(crate) fn note_tokens(note: &Note) -> Vec<String> {

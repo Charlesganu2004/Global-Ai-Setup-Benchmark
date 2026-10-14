@@ -229,7 +229,7 @@ fn pack_names_the_definitions_and_shares_the_budget_between_its_sections() {
     let with_memory = env.run(&["pack", task]);
     assert!(with_memory.out.contains("== memory\n- load_config reads the settings file"), "{}", with_memory.out);
 
-    for budget in [90usize, 300, 800] {
+    for budget in [120usize, 300, 800] {
         let run = env.run(&["pack", task, "--budget", &budget.to_string()]);
         // The names take up to half. The sections after them share what is left in turn, whole
         // groups of lines within their share; only a first group that is too long alone is cut

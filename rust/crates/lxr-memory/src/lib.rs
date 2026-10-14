@@ -119,10 +119,20 @@ pub struct Anchor {
     pub qual: String,
     /// Hash of the definition's source lines when the note was written.
     pub hash: u64,
+    /// The key of the repository the note was made in, so that a bank shared by several
+    /// repositories does not judge a note against code it was not about. Empty on a note from
+    /// before banks were shared: such an anchor counts as made in the repository that reads it.
+    #[serde(default)]
+    pub repo: String,
 }
 
 /// What the bank asks about the code a note mentions.
 pub trait CodeView {
+    /// The key of the repository this view reads. Empty for a view that has none, which judges
+    /// every anchor, whatever repository it was made in.
+    fn repo(&self) -> &str {
+        ""
+    }
     /// The definition a word names, when exactly one does.
     fn anchor(&self, word: &str) -> Option<Anchor>;
     /// That definition's hash now, or `None` when it is gone.
@@ -341,6 +351,9 @@ pub struct Recalled {
     pub stale: bool,
     /// An anchor's definition no longer exists.
     pub gone: bool,
+    /// Every anchor was made in another repository than the one that reads, so the note is
+    /// not judged: it is neither stale nor gone.
+    pub other: bool,
     /// The strategies that found it: `meaning`, `words`, `links`, `time`.
     pub via: Vec<&'static str>,
 }
@@ -374,9 +387,22 @@ pub struct BankStats {
 /// Asks the code view about each definition a note names: `(stale, gone)`. `stale` when one has
 /// changed since the note was written, `gone` when one no longer exists. A note that names no
 /// code, and a view that knows no code, give `(false, false)`. This is the judgement a recall
-/// passes on every note it returns, for a caller that lists notes without recalling them.
+/// passes on every note it returns, for a caller that lists notes without recalling them. An
+/// anchor made in another repository than the one the view reads is not judged.
 pub fn judge_note(note: &Note, code: &dyn CodeView) -> (bool, bool) {
     recall::judge(note, code)
+}
+
+/// True when the note names code and every definition it names was made in another repository
+/// than the one the view reads: the note is not judged, so it is neither stale nor gone.
+pub fn other_repository(note: &Note, code: &dyn CodeView) -> bool {
+    recall::other_repository(note, code)
+}
+
+/// True when the anchor was made in another repository than the one the view reads. An anchor
+/// without a repository, or a view without one, never is.
+pub fn is_foreign(anchor: &Anchor, code: &dyn CodeView) -> bool {
+    !anchor.repo.is_empty() && !code.repo().is_empty() && anchor.repo != code.repo()
 }
 
 /// The entities the rules find in a text, without the ones a caller passes with it. For

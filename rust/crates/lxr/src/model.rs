@@ -5,7 +5,8 @@
 //! `lxr_text::Embedder::locate` looks: the folder a pip wheel installs next to the program,
 //! `~/.local-index/models`, and the Hugging Face cache. The first place that has a model is
 //! the one used; a model that is there but cannot be opened means no embeddings, as it
-//! always did, and the later places are not tried.
+//! always did, and the later places are not tried. The variable `PGR_NO_MODEL` (set to anything
+//! but nothing or `0`) takes all of them away: the program behaves as if there were no model.
 
 use lxr_text::Embedder;
 use std::path::PathBuf;
@@ -77,8 +78,18 @@ pub fn choose(env: Option<PathBuf>, embedded: bool, installed: impl FnOnce() -> 
     installed().map(Source::Folder)
 }
 
-/// The place the model is taken from on this run, if there is one.
+/// True when `PGR_NO_MODEL` is set to anything but nothing or `0`: the program then behaves as if
+/// no embedding model existed, whether it is on disk or compiled in. The index is built by words
+/// alone, and a query answers by words alone.
+fn switched_off() -> bool {
+    std::env::var("PGR_NO_MODEL").map(|v| !v.is_empty() && v != "0").unwrap_or(false)
+}
+
+/// The place the model is taken from on this run, if there is one. None when `PGR_NO_MODEL` is set.
 pub fn source() -> Option<Source> {
+    if switched_off() {
+        return None;
+    }
     choose(Embedder::locate_env(), embedded::present(), Embedder::locate)
 }
 

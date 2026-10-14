@@ -115,7 +115,7 @@ fn anchors_name_the_definitions_a_note_talks_about() {
     let mut bank = open(&dir);
     let id = bank.retain("parse_config is called by load_all.", &retain_at(NOW), &code, None).unwrap()[0].id.clone();
     let anchors = &bank.get(&id).unwrap().anchors;
-    assert_eq!(anchors, &vec![Anchor { path: "src/config.rs".into(), qual: "parse_config".into(), hash: 42 }]);
+    assert_eq!(anchors, &vec![Anchor { path: "src/config.rs".into(), qual: "parse_config".into(), hash: 42, repo: String::new() }]);
     let none = add(&mut bank, "load_all is plain.", NOW);
     assert!(bank.get(&none[0].id).unwrap().anchors.is_empty());
 }
@@ -275,8 +275,27 @@ fn an_observation_text_is_cut_to_600_characters() {
         add(&mut bank, &format!("parse_config case{n} {}", "word ".repeat(55)), NOW + n);
     }
     let obs = observations(&bank);
-    assert_eq!(obs[0].text.chars().count(), 600);
+    // At most 600 characters, and the cut falls after a whole word: here a space follows the 600th.
+    let count = obs[0].text.chars().count();
+    assert!((595..=600).contains(&count), "{count}");
+    assert!(obs[0].text.ends_with(" word"), "{}", obs[0].text);
     assert!(obs[0].text.starts_with("parse_config: parse_config case0 word"));
+}
+
+#[test]
+fn an_observation_text_is_never_cut_inside_a_word() {
+    // Eight lengths of the first word move the cut over every place inside a word of eight characters.
+    for pad in 0..8 {
+        let dir = TempDir::new(&format!("observation-words-{pad}"));
+        let mut bank = open(&dir);
+        for n in 0..3 {
+            add(&mut bank, &format!("parse_config case{n} {}{}", "x".repeat(pad), " wordsix".repeat(80)), NOW + n);
+        }
+        let obs = observations(&bank);
+        let text = &obs[0].text;
+        assert!(text.chars().count() <= 600, "{pad}: {text}");
+        assert_eq!(text.split_whitespace().last(), Some("wordsix"), "{pad}: {text}");
+    }
 }
 
 #[test]
@@ -1650,4 +1669,68 @@ fn judging_a_note_gives_stale_for_a_changed_definition_and_gone_for_a_removed_on
     assert_eq!(judged(&bank, &both, &code), (true, true));
     assert_eq!(judged(&bank, &plain, &code), (false, false), "a note that names no code is never judged");
     assert_eq!(judged(&bank, &both, &NoCode), (false, false), "a view that knows no code judges nothing");
+}
+
+#[test]
+fn an_anchor_made_in_another_repository_is_not_judged() {
+    let dir = TempDir::new("foreign");
+    let mut bank = open(&dir);
+    let here = FakeCode::in_repo("here");
+    here.define("parse_config", "src/config.rs", 42);
+    let there = FakeCode::in_repo("there");
+    there.define("parse_config", "src/config.rs", 99);
+    let done = bank.retain("parse_config reads the settings file.", &retain_at(NOW), &here, None).unwrap();
+    assert_eq!(bank.get(&done[0].id).unwrap().anchors[0].repo, "here");
+    let note = bank.get(&done[0].id).unwrap().clone();
+
+    // The repository the note was made in judges it, and another repository does not, even when its
+    // copy of the definition differs or is missing.
+    assert_eq!((judge_note(&note, &here), other_repository(&note, &here)), ((false, false), false));
+    assert_eq!((judge_note(&note, &there), other_repository(&note, &there)), ((false, false), true));
+    there.remove("parse_config");
+    assert_eq!((judge_note(&note, &there), other_repository(&note, &there)), ((false, false), true));
+    here.define("parse_config", "src/config.rs", 43);
+    assert_eq!(judge_note(&note, &here), (true, false));
+    let found = bank.recall("parse_config", &recall_at(NOW), &there, None);
+    assert!(found[0].other && !found[0].stale && !found[0].gone);
+
+    // A note from before banks were shared has no repository: the reader's repository judges it.
+    let mut old = note.clone();
+    old.anchors[0].repo.clear();
+    assert_eq!((judge_note(&old, &there), other_repository(&old, &there)), ((false, true), false));
+    // A view that knows no code judges nothing.
+    assert_eq!(judge_note(&note, &NoCode), (false, false));
+    assert!(!other_repository(&note, &NoCode));
+    // A note with an anchor of each repository is judged by the anchors that are the reader's.
+    let mut mixed = note.clone();
+    mixed.anchors.push(Anchor { path: "a.rs".into(), qual: "helper".into(), hash: 1, repo: "there".into() });
+    assert!(!other_repository(&mixed, &here) && !other_repository(&mixed, &there));
+    assert_eq!(judge_note(&mixed, &here), (true, false));
+}
+
+#[test]
+fn a_repeat_from_another_repository_leaves_the_hash_of_its_anchors_alone() {
+    let dir = TempDir::new("foreign-repeat");
+    let mut bank = open(&dir);
+    let here = FakeCode::in_repo("here");
+    here.define("parse_config", "src/config.rs", 42);
+    let done = bank.retain("parse_config reads the settings file.", &retain_at(NOW), &here, None).unwrap();
+    let there = FakeCode::in_repo("there");
+    there.define("parse_config", "src/config.rs", 99);
+    bank.retain("parse_config reads the settings file.", &retain_at(NOW + DAY), &there, None).unwrap();
+    assert_eq!(bank.get(&done[0].id).unwrap().anchors[0].hash, 42);
+}
+
+#[test]
+fn a_fact_repeated_inside_one_call_is_one_sighting_and_is_reported_once() {
+    let dir = TempDir::new("one-call");
+    let mut bank = open(&dir);
+    let done = add(&mut bank, "The loader reads the config file.\nthe loader reads the CONFIG file\nThe loader reads the config file.", NOW);
+    assert_eq!(done.len(), 1);
+    assert_eq!((done[0].outcome, bank.get(&done[0].id).unwrap().proof_count), (RetainOutcome::Added, 1));
+    // The next call sights it once, however often it repeats the fact.
+    let next = add(&mut bank, "The loader reads the config file.\nThe loader reads the config file.", NOW + DAY);
+    assert_eq!(next.len(), 1);
+    assert_eq!((next[0].outcome, bank.get(&done[0].id).unwrap().proof_count), (RetainOutcome::Reinforced, 2));
+    assert_eq!(bank.get(&done[0].id).unwrap().history.len(), 1);
 }

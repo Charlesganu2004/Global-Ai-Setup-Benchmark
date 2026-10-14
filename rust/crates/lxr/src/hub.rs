@@ -9,9 +9,10 @@
 //!   an anchor when it names code in a spelling the entity rules of the bank know, and exactly
 //!   one definition has the name: a name in backticks, `snake_case`, `camelCase`, or a dotted name
 //!   such as `Store.reload`. A plain word such as `main`, a call form such as `slugify()` and the
-//!   form `app/util.py::slugify` are not checked. The anchors are judged against the
-//!   repository of the one who reads, so in a bank shared by repositories a note about code that
-//!   the reader's repository does not hold reads as gone.
+//!   form `app/util.py::slugify` are not checked. An anchor records the repository the note was
+//!   made in (a note from before that counts as made in the repository that reads it). In a bank
+//!   shared by repositories a note whose anchors all belong to another repository than the
+//!   reader's is not judged: it reads `other repository`, between fresh and stale.
 //! - L1 notes: what `retain` and `handoff` keep.
 //! - L2 task: the notes filed for one task, tagged `task:NAME`.
 //! - L3 core: directives, and notes confirmed by repetition or by more than one role.
@@ -25,7 +26,7 @@ use crate::ctx::Ctx;
 use crate::fail::{Fail, Res};
 use crate::{localtime, memcmd};
 use lxr_core::est_tokens;
-use lxr_memory::{judge_note, Bank, Budget, CodeView, Kind, Note, RecallOpts};
+use lxr_memory::{judge_note, other_repository, Bank, Budget, CodeView, Kind, Note, RecallOpts};
 use lxr_text::Embedder;
 use std::collections::HashSet;
 use std::io::Read;
@@ -42,6 +43,18 @@ const CONFIRMED_ROLES: usize = 2;
 const RELATED_NOTES: usize = 4;
 /// The line that follows a loadout that has notes the code has moved away from.
 const CHECK_LINE: &str = "check stale and gone notes against the code before relying on them";
+/// The least budget a loadout or a pack works with: a smaller one is raised to it.
+pub const MIN_BUDGET: usize = 120;
+
+/// The budget a loadout or a pack works with: `budget`, or `MIN_BUDGET` when that is less, which
+/// is said once on standard error.
+pub fn floor_budget(budget: usize) -> usize {
+    if budget >= MIN_BUDGET {
+        return budget;
+    }
+    crate::say(&format!("pgr: budget raised to {MIN_BUDGET}"));
+    MIN_BUDGET
+}
 
 /// The text on standard input, for `pgr handoff -`.
 fn read_stdin() -> Res<String> {
@@ -75,30 +88,30 @@ pub fn handoff(ctx: &mut Ctx, args: &HandoffArgs, out: &mut String) -> Res<()> {
     // to the older note: this is how a fact becomes confirmed by a second role.
     let kept = memcmd::keep(ctx, &text, &memcmd::retain_opts(&retain))?;
     memcmd::kept_lines(&kept, out);
-    // A fact that repeats inside the text reinforces the note it made: that note is counted once.
-    let mut seen: HashSet<&str> = HashSet::new();
-    let (notes, naming_code) = kept
-        .iter()
-        .filter(|k| seen.insert(k.id.as_str()))
-        .fold((0usize, 0usize), |(notes, naming_code), k| (notes + 1, naming_code + usize::from(k.anchored)));
-    ln!(out, "handoff {task}: {notes} notes from {role}, {naming_code} name code");
+    // A fact that repeats inside the text is one sighting of one note, and is reported once.
+    let naming_code = kept.iter().filter(|k| k.anchored).count();
+    ln!(out, "handoff {task}: {} notes from {role}, {naming_code} name code", kept.len());
     Ok(())
 }
 
-/// Whether the code a note names is as it was when the note was written.
+/// Whether the code a note names is as it was when the note was written. The order is the order
+/// of a layer: a note of another repository is not judged, and sorts after fresh and before stale.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum State {
     Fresh,
+    Other,
     Stale,
     Gone,
 }
 
 impl State {
-    fn of(stale: bool, gone: bool) -> State {
+    fn of(stale: bool, gone: bool, other: bool) -> State {
         if gone {
             State::Gone
         } else if stale {
             State::Stale
+        } else if other {
+            State::Other
         } else {
             State::Fresh
         }
@@ -110,8 +123,7 @@ struct Entry {
     id: String,
     state: State,
     line: String,
-    /// What the line costs in the budget. It does not depend on the age in the line, so that an
-    /// age that gains a character (`9s`, `10s`) cannot move the place where a layer is cut.
+    /// What the line costs in the budget, as it is printed, age included.
     cost: usize,
 }
 
@@ -147,23 +159,17 @@ fn filed_for(note: &Note, task: &str) -> bool {
 }
 
 /// A note as a layer prints it, with the roles before the id.
-fn entry(note: &Note, stale: bool, gone: bool, now: i64) -> Entry {
+fn entry(note: &Note, stale: bool, gone: bool, other: bool, now: i64) -> Entry {
     let roles = roles_of(note);
     let suffix = if roles.is_empty() { String::new() } else { format!(" [{}]", roles.join("+")) };
-    // The cost is of the line as it reads at the moment the note was written (an age of `0s`).
-    let at_birth = memcmd::line_with(note, stale, gone, memcmd::written(note), &suffix);
-    Entry {
-        id: note.id.clone(),
-        state: State::of(stale, gone),
-        line: memcmd::line_with(note, stale, gone, now, &suffix),
-        cost: cost(&at_birth),
-    }
+    let line = memcmd::line_with(note, stale, gone, other, now, &suffix);
+    Entry { id: note.id.clone(), state: State::of(stale, gone, other), cost: cost(&line), line }
 }
 
 /// The entry of a note judged against the code now.
 fn judged(note: &Note, code: &dyn CodeView, now: i64) -> Entry {
     let (stale, gone) = judge_note(note, code);
-    entry(note, stale, gone, now)
+    entry(note, stale, gone, other_repository(note, code), now)
 }
 
 /// What a line costs in the budget: its tokens and its line break.
@@ -194,11 +200,13 @@ impl Layer {
 }
 
 /// Cuts a layer to `tokens`: its title, then the notes in order while they fit, then `  +K more`
-/// for the notes that did not. A note is never cut in the middle. A note that does not fit is
-/// left out and counted in the `+K more` line, and the notes after it are still tried, so one long
-/// note cannot hide the ones behind it; the notes that are printed keep their order. When the
-/// budget has room for the title and the `+K more` line and no note, that is all the layer prints;
-/// when it has not even that, the layer prints nothing, so that it never costs more than its share.
+/// for the notes that did not. A note is never cut in the middle, and the order of priority is
+/// never traded for length: the layer ends at the first note that does not fit. The one exception
+/// is a note that could not be printed even as the only note of the layer (its title, the note and
+/// the count of the others are more than `tokens`): it is left out and counted, and the notes after
+/// it go on, so that one note that is too long cannot hide the ones behind it. When the budget has
+/// room for the title and the `+K more` line and no note, that is all the layer prints; when it
+/// has not even that, the layer prints nothing, so that it never costs more than its share.
 fn fit(title: &str, entries: Vec<Entry>, tokens: usize) -> Layer {
     let total = entries.len();
     let mut lines = vec![title.to_string()];
@@ -211,8 +219,14 @@ fn fit(title: &str, entries: Vec<Entry>, tokens: usize) -> Layer {
         let left_out = skipped + (total - i - 1);
         let reserve = if left_out > 0 { cost(&more_line(left_out)) } else { 0 };
         if used + entry.cost + reserve > tokens {
-            skipped += 1;
-            continue;
+            let others = if total > 1 { cost(&more_line(total - 1)) } else { 0 };
+            if cost(title) + entry.cost + others > tokens {
+                skipped += 1;
+                continue;
+            }
+            // The layer ends here: this note and all that follow are counted.
+            skipped += total - i;
+            break;
         }
         used += entry.cost;
         lines.push(entry.line.clone());
@@ -238,6 +252,8 @@ pub struct Loadout {
     pub fresh: usize,
     pub stale: usize,
     pub gone: usize,
+    /// Notes about the code of another repository, which are not judged.
+    pub unchecked: usize,
     /// Tokens the lines cost, line breaks included.
     pub tokens: usize,
 }
@@ -256,9 +272,11 @@ pub struct Want<'a> {
 /// Chooses the layers for a task and cuts them to the budget. The core layer (directives, then
 /// the confirmed notes) takes at most a third. The task layer, when there is a task, takes every
 /// note filed for the task that the core layer did not print: fresh ones first, then stale, then
-/// gone, the newest first in each. The related layer, when it is wanted and the query has words,
-/// takes at most four notes a recall for the words finds among the others, within a third; the
-/// task layer gets what the other two do not use, never less than a third.
+/// gone, the newest first in each (a note of another repository comes after the fresh ones and
+/// before the stale ones). The related layer, when it is wanted and the query has words, takes at
+/// most four notes a recall for the words finds among the others, within a third, and never a digest
+/// the bank built when the task layer is printed, since the notes it covers are there; the task
+/// layer gets what the other two do not use, never less than a third.
 fn choose(bank: &Bank, code: &dyn CodeView, embedder: Option<&Embedder>, now: i64, want: &Want) -> Loadout {
     let Want { task, query, budget, related } = *want;
     let third = (budget / 3).max(1);
@@ -282,6 +300,7 @@ fn choose(bank: &Bank, code: &dyn CodeView, embedder: Option<&Embedder>, now: i6
     // A stable sort: the notes keep their order, newest first, inside each state.
     for_task.sort_by_key(|e| e.state as u8);
     let filed: HashSet<String> = for_task.iter().map(|e| e.id.clone()).collect();
+    let task_printed = !for_task.is_empty();
 
     let related = if related && !query.is_empty() {
         let opts = RecallOpts {
@@ -296,9 +315,9 @@ fn choose(bank: &Bank, code: &dyn CodeView, embedder: Option<&Embedder>, now: i6
         let found = bank.recall(query, &opts, code, embedder);
         let entries: Vec<Entry> = found
             .iter()
-            .filter(|r| !taken.contains(&r.note.id) && !filed.contains(&r.note.id))
+            .filter(|r| !taken.contains(&r.note.id) && !filed.contains(&r.note.id) && !(task_printed && is_digest(&r.note)))
             .take(RELATED_NOTES)
-            .map(|r| entry(&r.note, r.stale, r.gone, now))
+            .map(|r| entry(&r.note, r.stale, r.gone, r.other, now))
             .collect();
         (!entries.is_empty()).then(|| fit("== related", entries, third)).filter(Layer::prints)
     } else {
@@ -318,6 +337,7 @@ fn choose(bank: &Bank, code: &dyn CodeView, embedder: Option<&Embedder>, now: i6
         for shown in &layer.shown {
             match shown.state {
                 State::Fresh => loadout.fresh += 1,
+                State::Other => loadout.unchecked += 1,
                 State::Stale => loadout.stale += 1,
                 State::Gone => loadout.gone += 1,
             }
@@ -346,7 +366,7 @@ pub fn loadout(ctx: &mut Ctx, args: &LoadoutArgs, out: &mut String) -> Res<()> {
     let task = ctx.task(args.task.as_deref())?;
     // The loadout is the same for every caller, but a role name is refused wherever it comes from.
     ctx.role(None)?;
-    let chosen = load(ctx, &Want { task: task.as_deref(), query: &args.query, budget: args.budget, related: true })?;
+    let chosen = load(ctx, &Want { task: task.as_deref(), query: &args.query, budget: floor_budget(args.budget), related: true })?;
     if chosen.lines.is_empty() {
         ln!(out, "no notes");
         return Ok(());
@@ -354,9 +374,11 @@ pub fn loadout(ctx: &mut Ctx, args: &LoadoutArgs, out: &mut String) -> Res<()> {
     for line in &chosen.lines {
         ln!(out, "{line}");
     }
+    // The count of notes that were not judged is printed only when there are some.
+    let unchecked = if chosen.unchecked > 0 { format!("{} unchecked, ", chosen.unchecked) } else { String::new() };
     ln!(
         out,
-        "loadout: {} notes, {} fresh, {} stale, {} gone, about {} tokens",
+        "loadout: {} notes, {} fresh, {} stale, {} gone, {unchecked}about {} tokens",
         chosen.notes,
         chosen.fresh,
         chosen.stale,
@@ -425,9 +447,9 @@ mod tests {
     #[test]
     fn the_line_has_the_roles_before_the_id() {
         let note = tagged("n000007", &["from:scout", "from:reviewer"], 3);
-        let line = entry(&note, true, false, 0).line;
+        let line = entry(&note, true, false, false, 0).line;
         assert!(line.starts_with("- text of n000007  (") && line.ends_with("seen 3 times, stale: code changed) [reviewer+scout] #n000007"), "{line}");
-        let plain = entry(&tagged("n000008", &[], 1), false, false, 0).line;
+        let plain = entry(&tagged("n000008", &[], 1), false, false, false, 0).line;
         assert!(plain.ends_with(") #n000008") && !plain.contains('['), "{plain}");
     }
 
@@ -500,15 +522,52 @@ mod tests {
     }
 
     #[test]
-    fn a_line_costs_the_same_at_every_age() {
-        // "9s ago" and "10s ago" are one character apart, and the line is three characters short
-        // of a token boundary at the first: an age that grows must not move the cut of a layer.
+    fn a_line_is_costed_as_it_is_printed_at_every_age() {
         let note = Note { id: "n000001".to_string(), text: "abc".to_string(), created_at: 1000, ..Note::default() };
-        let costs: Vec<usize> = [0, 9, 10, 89, 90, 5_399, 5_400, 172_799, 172_800, 9_000_000]
-            .iter()
-            .map(|age| entry(&note, false, false, 1000 + age).cost)
-            .collect();
-        assert!(costs.windows(2).all(|pair| pair[0] == pair[1]), "{costs:?}");
+        for age in [0, 9, 10, 89, 90, 5_399, 5_400, 172_799, 172_800, 9_000_000] {
+            let entry = entry(&note, false, false, false, 1000 + age);
+            assert_eq!(entry.cost, cost(&entry.line), "age {age}: {}", entry.line);
+        }
+    }
+
+    #[test]
+    fn a_note_of_another_repository_sorts_between_fresh_and_stale() {
+        let order = [State::Fresh, State::Other, State::Stale, State::Gone].map(|s| s as u8);
+        assert!(order.windows(2).all(|pair| pair[0] < pair[1]), "{order:?}");
+        assert_eq!(State::of(false, false, true), State::Other);
+        assert_eq!(State::of(true, false, true), State::Stale);
+        assert_eq!(State::of(false, true, true), State::Gone);
+        let line = entry(&tagged("n000009", &["from:scout"], 1), false, false, true, 0).line;
+        assert!(line.contains(", other repository) [scout] #n000009"), "{line}");
+    }
+
+    #[test]
+    fn a_layer_ends_at_the_first_note_that_does_not_fit_even_when_a_later_one_would() {
+        let each = cost(&entries(1)[0].line);
+        // Room for the title, two notes of the usual size, the short note and a count: the short note
+        // at the end would fit in what is left, but the long one comes first and does not fit.
+        let list = vec![entries(1).remove(0), entries(2).remove(1), sized("long", 12), sized("short", 1)];
+        let budget = cost("== core") + 2 * each + cost(&sized("short", 1).line) + cost("  +1 more");
+        let layer = fit("== core", list, budget);
+        assert_eq!(layer.shown.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["n0", "n1"]);
+        assert_eq!(layer.lines.last().unwrap(), "  +2 more");
+        assert!(layer.used <= budget);
+    }
+
+    #[test]
+    fn a_note_too_big_for_the_layer_alone_is_skipped_and_the_notes_after_it_go_on() {
+        let list = vec![sized("a", 1), sized("big", 500), sized("b", 1), sized("c", 1)];
+        let layer = fit("== core", list, 60);
+        assert_eq!(layer.shown.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["a", "b", "c"]);
+        assert_eq!(layer.lines.last().unwrap(), "  +1 more");
+        // The first note that is too big is skipped, the next that merely does not fit ends the layer.
+        let each = cost(&sized("x", 6).line);
+        let list = vec![sized("big", 500), sized("a", 6), sized("b", 6), sized("c", 6), sized("d", 1)];
+        let budget = cost("== core") + 2 * each + cost("  +3 more");
+        let layer = fit("== core", list, budget);
+        assert_eq!(layer.shown.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), ["a", "b"]);
+        assert_eq!(layer.lines.last().unwrap(), "  +3 more");
+        assert!(layer.used <= budget);
     }
 
     #[test]

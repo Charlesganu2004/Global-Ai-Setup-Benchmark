@@ -409,7 +409,7 @@ fn a_small_budget_cuts_a_layer_and_counts_the_notes_left_out() {
     let total = ids(&layer(&wide, "== task t1")).len();
     assert!(total >= 8, "{wide}");
     assert!(!wide.contains(" more"), "{wide}");
-    let budget = 70;
+    let budget = 120;
     let text = loadout(&env, &["--task", "t1", "loadout", "--budget", &budget.to_string()]);
     let task = layer(&text, "== task t1");
     let shown = ids(&task).len();
@@ -430,7 +430,7 @@ fn the_core_layer_takes_at_most_a_third_and_the_task_layer_the_rest() {
         expect(&env.run(&["retain", &format!("Rule {i}: never skip the review of change number {i}."), "--kind", "directive"]), &format!("kept n{:06}\n", i + 1));
     }
     handoff(&env, "t1", "scout", "The nightly job finishes before six o'clock.");
-    let budget = 90;
+    let budget = 120;
     let text = loadout(&env, &["--task", "t1", "loadout", "--budget", &budget.to_string()]);
     let core = layer(&text, "== core");
     let shown = ids(&core).len();
@@ -473,7 +473,7 @@ fn the_related_layer_stays_within_a_third_of_the_budget() {
     for i in 0..6 {
         keep(&env, &format!("Slugify handles input number {i} by lowercasing it first, then joining the words."));
     }
-    let budget = 90;
+    let budget = 120;
     let text = loadout(&env, &["loadout", "slugify", "--budget", &budget.to_string()]);
     let related = layer(&text, "== related");
     assert!(!related.is_empty(), "{text}");
@@ -599,11 +599,15 @@ fn a_name_with_two_definitions_is_skipped_and_at_most_four_names_get_a_block() {
 #[test]
 fn names_are_cut_to_half_the_budget_at_a_line_end_with_a_count_of_the_lines_left() {
     let env = project();
-    let full = about(&env, "load_config");
+    // A definition that many functions call, so that its block is far longer than half the budget.
+    let callers: String = (0..14).map(|i| format!("\n\ndef user_{i}():\n    return hub_call()\n")).collect();
+    env.write("app/hub.py", &format!("def hub_call():\n    return 1\n{callers}"));
+    assert_eq!(env.run(&["refresh"]).code, 0);
+    let full = about(&env, "hub_call");
     let total = full.lines().count();
-    assert!(total >= 4, "{full}");
-    let budget = 30;
-    let run = env.run(&["pack", "look at `load_config`", "--budget", &budget.to_string()]);
+    assert!(total >= 16 && (full.len() + 3) / 4 > 120, "{full}");
+    let budget = 120;
+    let run = env.run(&["pack", "look at `hub_call`", "--budget", &budget.to_string()]);
     assert_eq!(run.code, 0, "{}", run.err);
     let names = section(&run.out, "names");
     let (more, kept) = names[1..].split_last().unwrap();
@@ -611,7 +615,7 @@ fn names_are_cut_to_half_the_budget_at_a_line_end_with_a_count_of_the_lines_left
     assert_eq!(*more, format!("  +{} more lines", total - kept.len()), "{}", run.out);
     assert!(names[1..].iter().map(|l| cost(l)).sum::<usize>() <= budget / 2, "{}", run.out);
     // With room for it all, nothing is cut.
-    let wide = env.run(&["pack", "look at `load_config`", "--budget", "800"]);
+    let wide = env.run(&["pack", "look at `hub_call`", "--budget", "2000"]);
     assert!(wide.out.starts_with(&format!("== names\n{full}")) && !wide.out.contains("more lines"), "{}", wide.out);
 }
 
@@ -619,7 +623,7 @@ fn names_are_cut_to_half_the_budget_at_a_line_end_with_a_count_of_the_lines_left
 fn the_budget_is_shared_names_up_to_half_and_the_rest_in_turn_with_the_unused_share_passed_on() {
     let env = project();
     let task = "change how `load_config` reads the settings file and what read_text returns";
-    for budget in [60usize, 120, 300, 800, 2000] {
+    for budget in [120usize, 300, 800, 2000] {
         let run = env.run(&["pack", task, "--budget", &budget.to_string()]);
         assert_eq!(run.code, 0, "{}", run.err);
         let mut spent = 0usize;
@@ -641,12 +645,12 @@ fn the_budget_is_shared_names_up_to_half_and_the_rest_in_turn_with_the_unused_sh
     }
     // Only the graph engine is on: names and graph. Nothing else is waiting, so the graph section
     // gets everything the names do not use and not a third of it.
-    let run = env.run(&["--engines", "graph", "pack", "change how load_config reads the settings file", "--budget", "90"]);
+    let run = env.run(&["--engines", "graph", "pack", "change how load_config reads the settings file", "--budget", "120"]);
     assert!(run.out.starts_with("== names\n") && !run.out.contains("== find") && !run.out.contains("== memory"), "{}", run.out);
     let names: usize = section(&run.out, "names")[1..].iter().map(|l| cost(l)).sum();
     let graph = section(&run.out, "graph");
     let spent: usize = graph[1..].iter().map(|l| cost(l)).sum();
-    assert!(spent > 90 / 3 && spent <= 90 - names + 1, "the graph section spent {spent} tokens after {names} for the names: {}", run.out);
+    assert!(spent > 120 / 3 && spent <= 120 - names + 1, "the graph section spent {spent} tokens after {names} for the names: {}", run.out);
 }
 
 #[test]
@@ -988,17 +992,31 @@ fn a_task_layer_with_no_core_above_it_gets_the_whole_budget() {
 fn a_fact_repeated_inside_one_handoff_is_one_note_in_the_closing_line() {
     let env = project();
     let run = env.run_stdin(&["--task", "t1", "--from", "scout", "handoff", "-"], &"retrying the connection to the cache server\n".repeat(3));
-    expect(
-        &run,
-        "kept n000001\nreinforced n000001 (seen 3 times)\nreinforced n000001 (seen 3 times)\nhandoff t1: 1 notes from scout, 0 name code\n",
-    );
+    // The fact written three times in one call is one sighting: the note is seen once, and no
+    // line says that it was reinforced.
+    expect(&run, "kept n000001\nhandoff t1: 1 notes from scout, 0 name code\n");
+    assert_eq!(notes_in(&env)["n000001"]["proof_count"], 1);
+    expect(&env.run(&["--task", "other-task", "loadout"]), "no notes\n");
     let run = env.run_stdin(&["--task", "t1", "--from", "scout", "handoff", "-"], &"load_config reads the settings file.\n".repeat(2));
     let closing = run.out.lines().last().unwrap().to_string();
     assert_eq!(closing, "handoff t1: 1 notes from scout, 1 name code", "{}", run.out);
+    // A second call is a second sighting.
+    let again = env.run_stdin(&["--task", "t1", "--from", "scout", "handoff", "-"], "retrying the connection to the cache server\n");
+    expect(&again, "reinforced n000001 (seen 2 times)\nhandoff t1: 1 notes from scout, 0 name code\n");
 }
 
 #[test]
-fn a_loadout_never_costs_more_than_its_budget_and_a_budget_with_room_for_nothing_prints_no_notes() {
+fn a_fact_repeated_inside_one_retain_call_is_one_sighting() {
+    let env = project();
+    expect(&env.run(&["retain", "The queue holds one hundred jobs.\nthe queue holds one hundred jobs\nThe queue holds one hundred jobs."]), "kept n000001\n");
+    assert_eq!(notes_in(&env)["n000001"]["proof_count"], 1);
+    // A note that was there before is reinforced once by the call, however often the call repeats it.
+    expect(&env.run(&["retain", "The queue holds one hundred jobs.\nThe queue holds one hundred jobs."]), "reinforced n000001 (seen 2 times)\n");
+    assert_eq!(notes_in(&env)["n000001"]["proof_count"], 2);
+}
+
+#[test]
+fn a_loadout_never_costs_more_than_its_budget_and_a_small_budget_is_raised_to_120() {
     let env = project();
     for i in 0..5 {
         let rule = format!("Rule {i}: never skip the review of change number {i}.");
@@ -1010,16 +1028,16 @@ fn a_loadout_never_costs_more_than_its_budget_and_a_budget_with_room_for_nothing
     for i in 0..4 {
         keep(&env, &format!("Cache number {i} is emptied by the nightly job."));
     }
-    for budget in 1..=60usize {
+    for budget in (120..=240usize).step_by(3) {
         let run = env.run(&["--task", "t1", "loadout", "cache", "--budget", &budget.to_string()]);
         assert_eq!(run.code, 0, "{}", run.err);
-        if run.out == "no notes\n" {
-            continue;
-        }
         let tokens = tokens_of(&run.out);
         assert!(tokens <= budget, "budget {budget} printed {tokens} tokens: {}", run.out);
     }
-    expect(&env.run(&["--task", "t1", "loadout", "cache", "--budget", "1"]), "no notes\n");
+    // A budget under 120 is raised to it, so that no budget is left with room for nothing.
+    let small = env.run(&["--task", "t1", "loadout", "cache", "--budget", "1"]);
+    let floor = env.run(&["--task", "t1", "loadout", "cache", "--budget", "120"]);
+    assert_eq!((no_age(&small.out), small.err.as_str()), (no_age(&floor.out), "pgr: budget raised to 120\n"));
 }
 
 #[test]
@@ -1053,32 +1071,289 @@ fn a_bank_name_must_also_be_a_folder_name_of_its_own_on_every_system() {
     assert_eq!(env.run(&["--task", "x.", "--from", "nul", "loadout"]).code, 0);
 }
 
-#[test]
-fn a_shared_bank_judges_each_note_against_the_repository_of_the_reader() {
-    let env = project();
-    let fact = "load_config hands the text of the file to parse_text.";
-    let filed = env.run(&["--bank", "team", "--task", "t1", "--from", "scout", "handoff", fact]);
-    assert_eq!(filed.code, 0, "{}", filed.err);
+// ---- the second review ----
 
-    // A second checkout of the same project reads the note as fresh while its code is the same,
-    // and as stale once its copy of the function has changed.
-    let clone = env.base.join("clone");
-    for (rel, text) in [("app/core.py", common::CORE_PY), ("app/cli.py", common::CLI_PY), ("app/util.py", common::UTIL_PY)] {
-        fs::create_dir_all(clone.join(rel).parent().unwrap()).unwrap();
-        fs::write(clone.join(rel), text).unwrap();
-    }
-    let read = |root: &PathBuf| no_age(&env.run_at(root, &["--bank", "team", "--task", "t1", "loadout"], &[]).out);
-    let same = read(&clone);
-    assert!(same.contains(&format!("- {fact}  (<age> ago) [scout] #n000001\n")), "{same}");
-    assert!(same.contains("loadout: 1 notes, 1 fresh, 0 stale, 0 gone,") && !same.contains("check stale"), "{same}");
-    fs::write(clone.join("app/core.py"), common::CORE_PY.replace("key.strip()", "key.strip().lower()")).unwrap();
-    let edited = read(&clone);
-    assert!(edited.contains("stale: code changed") && edited.contains("1 stale"), "{edited}");
-
-    // A repository that does not hold the code at all reads the note as gone: the code is not there.
+/// A second repository beside the project, with a function the project does not have.
+fn second_repository(env: &Env) -> PathBuf {
     let other = env.base.join("proj2");
     fs::create_dir_all(&other).unwrap();
-    fs::write(other.join("tool.py"), "def run():\n    \"\"\"Run it.\"\"\"\n    return 1\n").unwrap();
-    let elsewhere = read(&other);
-    assert!(elsewhere.contains("gone: code removed") && elsewhere.contains("0 fresh, 0 stale, 1 gone"), "{elsewhere}");
+    fs::write(other.join("tool.py"), "def run_tool():\n    \"\"\"Run it.\"\"\"\n    return 1\n").unwrap();
+    other
+}
+
+/// Files a handoff to the bank `team` from the repository at `root`.
+fn file_from(env: &Env, root: &PathBuf, text: &str) {
+    let run = env.run_at(root, &["--bank", "team", "--task", "t1", "--from", "scout", "handoff", text], &[]);
+    assert_eq!(run.code, 0, "{}", run.err);
+}
+
+/// What `loadout --task t1` of the bank `team` prints in the repository at `root`, with the ages replaced.
+fn team_loadout(env: &Env, root: &PathBuf) -> String {
+    let run = env.run_at(root, &["--bank", "team", "--task", "t1", "loadout"], &[]);
+    assert_eq!(run.code, 0, "{}", run.err);
+    no_age(&run.out)
+}
+
+/// Rewrites the log of a bank without the repository of any anchor, as a bank of an older version had
+/// it, and drops the cache files so that the log is read again.
+fn strip_repository(dir: &PathBuf) {
+    let log = dir.join("notes.jsonl");
+    let lines: Vec<String> = fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut note: Value = serde_json::from_str(line).unwrap();
+            if let Some(anchors) = note.get_mut("anchors").and_then(Value::as_array_mut) {
+                for anchor in anchors {
+                    anchor.as_object_mut().unwrap().remove("repo");
+                }
+            }
+            note.to_string()
+        })
+        .collect();
+    fs::write(&log, lines.join("\n") + "\n").unwrap();
+    for cache in ["index.bin", "vectors.bin"] {
+        let _ = fs::remove_file(dir.join(cache));
+    }
+}
+
+#[test]
+fn a_note_about_code_of_another_repository_is_not_judged_and_sorts_between_fresh_and_stale() {
+    let env = project();
+    let other = second_repository(&env);
+    file_from(&env, &env.proj, "load_config hands the text of the file to parse_text.");
+    file_from(&env, &other, "run_tool returns one for every caller.");
+    file_from(&env, &other, "The nightly job finishes before six o'clock.");
+    // Every anchor carries the repository the note was made in, and the two repositories differ.
+    let dir = env.home.join("banks").join("team");
+    let repos: Vec<String> = fs::read_to_string(dir.join("notes.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter(|note| note["id"] == "n000001" || note["id"] == "n000002")
+        .map(|note| note["anchors"][0]["repo"].as_str().unwrap_or("").to_string())
+        .collect();
+    assert!(repos.len() == 2 && !repos[0].is_empty() && !repos[1].is_empty() && repos[0] != repos[1], "{repos:?}");
+
+    // The second repository changes the function its own note is about.
+    fs::write(other.join("tool.py"), "def run_tool():\n    \"\"\"Run it.\"\"\"\n    return 2\n").unwrap();
+    let seen = team_loadout(&env, &other);
+    let task = layer(&seen, "== task t1");
+    assert_eq!(ids(&task), ["n000003", "n000001", "n000002"].map(String::from), "{seen}");
+    assert!(task[2].ends_with("(<age> ago, other repository) [scout] #n000001"), "{seen}");
+    assert!(task[3].ends_with("(<age> ago, stale: code changed) [scout] #n000002"), "{seen}");
+    assert!(seen.contains("loadout: 3 notes, 1 fresh, 1 stale, 0 gone, 1 unchecked, about "), "{seen}");
+    assert!(seen.contains("check stale and gone notes"), "{seen}");
+
+    // The project reads the note of the other repository as not judged, not as gone, and has nothing to check.
+    let seen = team_loadout(&env, &env.proj);
+    assert_eq!(ids(&layer(&seen, "== task t1")), ["n000003", "n000001", "n000002"].map(String::from), "{seen}");
+    assert!(seen.contains("(<age> ago, other repository) [scout] #n000002"), "{seen}");
+    assert!(seen.contains("loadout: 3 notes, 2 fresh, 0 stale, 0 gone, 1 unchecked, about ") && !seen.contains("check stale"), "{seen}");
+    for command in ["recall", "reflect"] {
+        let run = env.run(&["--bank", "team", command, "run_tool"]);
+        assert_eq!(run.code, 0, "{}", run.err);
+        assert!(run.out.contains(", other repository)"), "{command}: {}", run.out);
+        assert!(!run.out.contains("gone: code removed"), "{command}: {}", run.out);
+    }
+
+    // A note from before the bank recorded the repository counts as made in the repository that reads it.
+    strip_repository(&dir);
+    let seen = team_loadout(&env, &env.proj);
+    assert!(seen.contains("gone: code removed") && !seen.contains("other repository"), "{seen}");
+    assert!(seen.contains("loadout: 3 notes, 2 fresh, 0 stale, 1 gone, about "), "{seen}");
+}
+
+/// A linked worktree of the project, made as git makes one: its `.git` is a file that points into
+/// the `.git` folder of the project, whose `worktrees/wt` folder names that folder as the common one.
+fn linked_worktree(env: &Env) -> PathBuf {
+    let admin = env.proj.join(".git").join("worktrees").join("wt");
+    fs::create_dir_all(&admin).unwrap();
+    fs::write(admin.join("commondir"), "../..\n").unwrap();
+    let wt = env.base.join("wt");
+    for rel in ["app/core.py", "app/cli.py", "app/util.py"] {
+        fs::create_dir_all(wt.join(rel).parent().unwrap()).unwrap();
+        fs::copy(env.proj.join(rel), wt.join(rel)).unwrap();
+    }
+    fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
+    wt
+}
+
+#[test]
+fn a_worktree_of_the_project_is_the_same_repository_for_the_notes() {
+    let env = project();
+    let wt = linked_worktree(&env);
+    file_from(&env, &env.proj, "load_config hands the text of the file to parse_text.");
+    // The worktree changes the function the note is about. It is the repository the note was made in,
+    // so the note is judged there, and the same holds the other way round.
+    let core = fs::read_to_string(wt.join("app/core.py")).unwrap();
+    fs::write(wt.join("app/core.py"), core.replace("def load_config(path):", "def load_config(path, strict=False):")).unwrap();
+    let seen = team_loadout(&env, &wt);
+    assert!(seen.contains("(<age> ago, stale: code changed) [scout] #n000001"), "{seen}");
+    assert!(!seen.contains("other repository") && seen.contains("check stale and gone notes"), "{seen}");
+    // A note made in the worktree is stamped like one made in the project, and the project judges it.
+    file_from(&env, &wt, "parse_text returns the lines it was given in a list.");
+    let seen = team_loadout(&env, &env.proj);
+    assert!(!seen.contains("other repository"), "{seen}");
+    let repos: Vec<String> = fs::read_to_string(env.home.join("banks").join("team").join("notes.jsonl"))
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .filter_map(|note| note["anchors"][0]["repo"].as_str().map(String::from))
+        .collect();
+    assert!(repos.len() >= 2 && repos.iter().all(|r| r == &repos[0]), "{repos:?}");
+    // A clone is another repository: it has a `.git` folder of its own.
+    let clone = env.base.join("clone");
+    fs::create_dir_all(clone.join(".git")).unwrap();
+    fs::create_dir_all(clone.join("app")).unwrap();
+    fs::copy(env.proj.join("app/core.py"), clone.join("app/core.py")).unwrap();
+    let seen = team_loadout(&env, &clone);
+    assert!(seen.contains(", other repository) [scout] #n000001"), "{seen}");
+}
+
+#[test]
+fn pack_and_loadout_print_a_digest_and_a_long_signature_cut_after_a_whole_word() {
+    let env = project();
+    let args: Vec<String> = (1..=14).map(|n| format!("argument_number_{n}")).collect();
+    env.write("app/long.py", &format!("def a_function_with_a_long_name({}):\n    return 1\n", args.join(", ")));
+    // The signature is cut to 240 characters by the index; the cut goes back to the end of an argument.
+    let run = env.run(&["pack", "refactor a_function_with_a_long_name"]);
+    assert_eq!(run.code, 0, "{}", run.err);
+    let names = layer(&run.out, "== names");
+    assert!(names[1].ends_with(",..."), "{}", run.out);
+    // A digest of the bank is cut to 600 characters, after a whole word too.
+    for n in 0..3 {
+        let details: Vec<String> = (1..=30).map(|i| format!("detail{i}")).collect();
+        handoff(&env, "t1", "scout", &format!("parse_text case{n} {}", details.join(" ")));
+    }
+    for args in [vec!["pack", "parse_text detail11"], vec!["loadout", "parse_text detail11", "--budget", "900"]] {
+        let run = env.run(&args);
+        assert_eq!(run.code, 0, "{}", run.err);
+        let seen = no_age(&run.out);
+        let digest = seen.lines().find(|l| l.starts_with("- parse_text: ")).unwrap_or_else(|| panic!("no digest: {seen}"));
+        let text = digest.split("  (<age>").next().unwrap();
+        let last = text.split_whitespace().last().unwrap();
+        assert!(last.starts_with("detail") && last[6..].chars().all(|c| c.is_ascii_digit()), "{args:?}: {text}");
+    }
+}
+
+#[test]
+fn a_budget_under_120_tokens_is_raised_to_120_and_said_once() {
+    let env = project();
+    handoff(&env, "t1", "scout", "The exporter writes csv files.");
+    let wide = env.run(&["--task", "t1", "loadout", "--budget", "120"]);
+    assert!(!wide.err.contains("budget raised"), "{}", wide.err);
+    let pack = env.run(&["pack", "load_config", "--budget", "120"]);
+    assert!(!pack.err.contains("budget raised"), "{}", pack.err);
+    for budget in ["1", "50", "119"] {
+        let run = env.run(&["--task", "t1", "loadout", "--budget", budget]);
+        assert_eq!((no_age(&run.out), run.err.as_str()), (no_age(&wide.out), "pgr: budget raised to 120\n"), "loadout {budget}");
+        let run = env.run(&["pack", "load_config", "--budget", budget]);
+        assert_eq!((no_age(&run.out), run.err.as_str()), (no_age(&pack.out), "pgr: budget raised to 120\n"), "pack {budget}");
+    }
+    let tools = talk(&env, &[], &[call(1, "loadout", json!({"task": "t1", "budget": 5})), call(2, "pack", json!({"task": "load_config", "budget": 5}))]);
+    assert!(tools.iter().all(|answer| answer.get("error").is_none() && answer["result"]["isError"] != true), "{tools:?}");
+}
+
+#[test]
+fn a_cut_layer_ends_at_the_first_note_that_does_not_fit_so_the_order_of_priority_holds() {
+    let env = project();
+    for i in 0..10 {
+        let words = (0..22).map(|k| format!("word{i}x{k}")).collect::<Vec<_>>().join(" ");
+        let text = if i % 2 == 0 { format!("Short note {i}.") } else { format!("Long note {i}: {words}") };
+        handoff(&env, "t1", "scout", &text);
+    }
+    let wide = loadout(&env, &["--task", "t1", "loadout", "--budget", "5000"]);
+    let order = ids(&layer(&wide, "== task t1"));
+    assert_eq!(order.len(), 10, "{wide}");
+    let mut cut = 0;
+    for budget in (150..=700).step_by(10) {
+        let text = loadout(&env, &["--task", "t1", "loadout", "--budget", &budget.to_string()]);
+        let task = layer(&text, "== task t1");
+        let shown = ids(&task);
+        assert_eq!(shown, order[..shown.len()].to_vec(), "budget {budget}: {text}");
+        if shown.len() < order.len() {
+            assert_eq!(task.last().unwrap(), &format!("  +{} more", order.len() - shown.len()), "budget {budget}: {text}");
+            cut += 1;
+        }
+    }
+    assert!(cut > 3, "the budgets cut the layer {cut} times");
+}
+
+#[test]
+fn a_digest_the_bank_built_is_not_in_the_related_layer_when_the_task_layer_is_printed() {
+    let env = project();
+    for fact in [
+        "load_config reads the configuration file at the path it is given.",
+        "load_config hands the text on to parse_text and returns the settings.",
+        "load_config is called by main and by Store.reload.",
+        "load_config raises no error when the file is empty.",
+    ] {
+        handoff(&env, "t3", "scout", fact);
+    }
+    assert!(env.run(&["memory", "stats"]).out.contains("observation 1"));
+    let text = loadout(&env, &["--task", "t3", "loadout", "load_config"]);
+    assert_eq!(ids(&layer(&text, "== task t3")).len(), 4, "{text}");
+    assert!(layer(&text, "== related").is_empty(), "the facts are printed once, not again as a digest: {text}");
+    assert!(text.contains("loadout: 4 notes, 4 fresh, 0 stale, 0 gone, about "), "{text}");
+}
+
+/// Sets every time in the log of the bank of the project back by `seconds`, and drops the cache files.
+fn age_notes(env: &Env, seconds: i64) {
+    let dir = bank_dir(env);
+    let log = dir.join("notes.jsonl");
+    let lines: Vec<String> = fs::read_to_string(&log)
+        .unwrap()
+        .lines()
+        .map(|line| {
+            let mut note: Value = serde_json::from_str(line).unwrap();
+            for key in ["created_at", "updated_at", "mentioned_at"] {
+                if let Some(time) = note[key].as_i64() {
+                    note[key] = json!(time - seconds);
+                }
+            }
+            note.to_string()
+        })
+        .collect();
+    fs::write(&log, lines.join("\n") + "\n").unwrap();
+    for cache in ["index.bin", "vectors.bin"] {
+        let _ = fs::remove_file(dir.join(cache));
+    }
+}
+
+#[test]
+fn a_line_is_costed_as_it_is_printed_so_the_figure_is_true_at_every_age() {
+    let env = project();
+    for i in 0..40 {
+        handoff(&env, "t1", "agent", &format!("Step {i} of the migration touches table number {i} only and nothing else before it stops."));
+    }
+    // The notes are set back by this much more at each step: now, 45 days, 400 days.
+    for (seconds, age) in [(0, "s ago"), (45 * 86_400, "45d ago"), (355 * 86_400, "400d ago")] {
+        if seconds > 0 {
+            age_notes(&env, seconds);
+        }
+        for budget in [120, 300, 600] {
+            let run = env.run(&["--task", "t1", "loadout", "--budget", &budget.to_string()]);
+            assert_eq!(run.code, 0, "{}", run.err);
+            assert!(run.out.contains(age), "{}", run.out);
+            let lines: Vec<&str> = run.out.lines().collect();
+            let closing = lines.iter().position(|l| l.starts_with("loadout:")).unwrap();
+            let spent: usize = lines[..closing].iter().map(|l| cost(l)).sum();
+            assert_eq!(spent, tokens_of(&run.out), "the figure is what the printed lines cost ({age}, {budget}): {}", run.out);
+            assert!(spent <= budget, "{spent} tokens of {budget} ({age}): {}", run.out);
+        }
+    }
+}
+
+#[test]
+fn two_names_with_a_slash_between_them_get_a_block_each() {
+    let env = project();
+    let run = env.run(&["pack", "refactor load_config/parse_text to share a reader"]);
+    assert_eq!(run.code, 0, "{}", run.err);
+    let expected = format!("== names\n{}{}", about(&env, "load_config"), about(&env, "parse_text"));
+    assert!(run.out.starts_with(&expected), "{}", run.out);
+    // A path with a definition after it is still found as one name.
+    let run = env.run(&["pack", "look at app/core.py::load_config and app/util.py::slugify"]);
+    let names = section(&run.out, "names").join("\n");
+    assert!(names.contains("load_config app/core.py:4-6") && names.contains("slugify app/util.py:"), "{}", run.out);
 }

@@ -7,7 +7,7 @@ use crate::log::{forget_line, id_for, note_line, replay};
 use crate::split::{collapse, split_facts, whole};
 use crate::store::{build_bm25, load_snapshot, save_snapshot, Parts, VecStore, INDEX_FILE, LOG_FILE, VECTORS_FILE};
 use crate::{
-    Anchor, BankStats, CodeView, Kind, Note, RecallOpts, Recalled, Reflection, RetainOpts, RetainOutcome, Retained, Strategies,
+    is_foreign, Anchor, BankStats, CodeView, Kind, Note, RecallOpts, Recalled, Reflection, RetainOpts, RetainOutcome, Retained, Strategies,
     LINK_THRESHOLD, NEAR_DUPLICATE,
 };
 use lxr_core::hash64;
@@ -675,6 +675,19 @@ fn normalise(text: &str) -> String {
     lower.trim_matches(|c: char| c.is_whitespace() || SENTENCE_MARKS.contains(&c)).to_string()
 }
 
+/// The text cut to at most `max` characters, after a whole word: a cut inside a word goes back to
+/// the end of the word before it. A text with no space before the cut is cut where it runs out.
+fn cut_to_word(text: &str, max: usize) -> String {
+    let Some((at, _)) = text.char_indices().nth(max) else { return text.to_string() };
+    let head = &text[..at];
+    let inside_a_word = !head.ends_with(char::is_whitespace) && !text[at..].starts_with(char::is_whitespace);
+    let head = match head.rfind(char::is_whitespace) {
+        Some(space) if inside_a_word => &head[..space],
+        _ => head,
+    };
+    head.trim_end().to_string()
+}
+
 /// True for the kinds that get temporal and semantic links.
 pub(crate) fn linkable(kind: Kind) -> bool {
     matches!(kind, Kind::World | Kind::Experience)
@@ -788,6 +801,9 @@ struct Batch<'a> {
     modified: Vec<u32>,
     /// The note made from the fact before this one.
     prev: Option<(String, u32)>,
+    /// The notes this call made or reinforced: a fact written again in the same call is not
+    /// another sighting of them.
+    sighted: BTreeSet<u32>,
 }
 
 impl Core {
@@ -965,10 +981,11 @@ impl Core {
             self.sync_embedder(derived, embedder);
         }
         let mut batch =
-            Batch { opts, now: opts.now.unwrap_or_else(unix_now), lines: Vec::new(), touched: Vec::new(), modified: Vec::new(), prev: None };
+            Batch { opts, now: opts.now.unwrap_or_else(unix_now), lines: Vec::new(), touched: Vec::new(), modified: Vec::new(), prev: None, sighted: BTreeSet::new() };
         let mut results = Vec::with_capacity(facts.len());
         for fact in &facts {
-            results.push(self.retain_fact(derived, fact, &mut batch, code, embedder)?);
+            // A fact the call already made or reinforced gives nothing to report.
+            results.extend(self.retain_fact(derived, fact, &mut batch, code, embedder)?);
         }
         let mut modified = std::mem::take(&mut batch.modified);
         modified.sort_unstable();
@@ -989,15 +1006,14 @@ impl Core {
         batch: &mut Batch,
         code: &dyn CodeView,
         embedder: Option<&Embedder>,
-    ) -> io::Result<Retained> {
+    ) -> io::Result<Option<Retained>> {
         let (opts, now) = (batch.opts, batch.now);
         let kind = opts.kind;
         let norm = normalise(fact);
         let key = (kind.index() as u8, hash64(norm.as_bytes()));
         if let Some(&slot) = self.dup.get(&key) {
             if self.note_at(slot).is_some_and(|n| n.kind == kind && normalise(&n.text) == norm) {
-                let id = self.reinforce(derived, slot, batch, "same text", code);
-                return self.finish_repeat(id?, slot, batch);
+                return self.repeat(derived, slot, batch, "same text", code);
             }
         }
 
@@ -1086,8 +1102,7 @@ impl Core {
         });
         if let Some(&(slot, cosine)) = repeat {
             let how = format!("near duplicate, cosine {cosine:.2}");
-            let id = self.reinforce(derived, slot, batch, &how, code);
-            return self.finish_repeat(id?, slot, batch);
+            return self.repeat(derived, slot, batch, &how, code);
         }
 
         // A new note.
@@ -1145,12 +1160,23 @@ impl Core {
             batch.touched.extend(ids.iter().map(|&e| (e, tags_key.clone())));
         }
         batch.prev = Some((id.clone(), slot));
-        Ok(Retained { id, outcome: RetainOutcome::Added })
+        batch.sighted.insert(slot);
+        Ok(Some(Retained { id, outcome: RetainOutcome::Added }))
     }
 
-    fn finish_repeat(&mut self, id: String, slot: u32, batch: &mut Batch) -> io::Result<Retained> {
+    /// A fact that repeats an older note is a sighting of it: the note is reinforced. A note this
+    /// call has already made or reinforced is not sighted again, since a fact written twice in one
+    /// call is one sighting, and that repeat has nothing to report.
+    fn repeat(&mut self, derived: &mut Derived, slot: u32, batch: &mut Batch, how: &str, code: &dyn CodeView) -> io::Result<Option<Retained>> {
+        let again = !batch.sighted.insert(slot);
+        let id = if again {
+            let gone = || io::Error::new(io::ErrorKind::NotFound, "the note to reinforce is gone");
+            self.note_at(slot).map(|note| note.id.clone()).ok_or_else(gone)?
+        } else {
+            self.reinforce(derived, slot, batch, how, code)?
+        };
         batch.prev = Some((id.clone(), slot));
-        Ok(Retained { id, outcome: RetainOutcome::Reinforced })
+        Ok((!again).then_some(Retained { id, outcome: RetainOutcome::Reinforced }))
     }
 
     /// True when the code view knows `name` and the entity `known` as two definitions of their
@@ -1176,7 +1202,8 @@ impl Core {
         note.proof_count = note.proof_count.saturating_add(1);
         note.updated_at = batch.now;
         if code.knows_code() {
-            for anchor in &mut note.anchors {
+            // The anchors of another repository are not this code's to bring up to date.
+            for anchor in note.anchors.iter_mut().filter(|anchor| !is_foreign(anchor, code)) {
                 if let Some(hash) = code.current_hash(anchor) {
                     anchor.hash = hash;
                 }
@@ -1258,7 +1285,8 @@ impl Core {
         };
         self.drop_note(derived, slot);
         let opts = RetainOpts::default();
-        let mut batch = Batch { opts: &opts, now, lines: vec![forget_line(id, now)?], touched: Vec::new(), modified: Vec::new(), prev: None };
+        let mut batch =
+            Batch { opts: &opts, now, lines: vec![forget_line(id, now)?], touched: Vec::new(), modified: Vec::new(), prev: None, sighted: BTreeSet::new() };
         if matches!(kind, Kind::World | Kind::Experience) {
             batch.touched.extend(ids.into_iter().map(|e| (e, tags_key.clone())));
         }
@@ -1420,7 +1448,7 @@ impl Core {
             text.push_str(&member.text);
             chars += 1 + member.text.chars().count();
         }
-        let text: String = text.chars().take(OBSERVATION_CHARS).collect();
+        let text = cut_to_word(&text, OBSERVATION_CHARS);
         let mut anchors: Vec<Anchor> = Vec::new();
         for anchor in notes.iter().flat_map(|n| n.anchors.iter()) {
             if anchors.len() >= 2 * ANCHOR_LIMIT {

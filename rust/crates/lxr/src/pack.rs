@@ -15,6 +15,7 @@ use crate::{findcmd, graphcmd, memcmd};
 use lxr_core::est_tokens;
 use lxr_graph::Graph;
 use lxr_rag::Mode;
+use std::collections::{HashSet, VecDeque};
 
 /// Hits asked of the search before they are cut to the section's share.
 const HITS_ASKED: usize = 8;
@@ -22,9 +23,13 @@ const HITS_ASKED: usize = 8;
 const NOTES_ASKED: usize = 6;
 /// The most definitions the names section describes.
 const MAX_NAMES: usize = 4;
+/// The most names of a task text that are looked up in the graph, however long the text is.
+const MAX_LOOKUPS: usize = 64;
 
-/// Cuts a line to at most `bytes` bytes of UTF-8, at a character boundary.
-fn cut_bytes(line: String, bytes: usize) -> String {
+/// Cuts a line to at most `bytes` bytes of UTF-8, after a whole word: at a character boundary, and
+/// back to the end of the last word that fits when the cut would fall inside one. A first word
+/// that does not fit leaves nothing.
+fn cut_words(line: String, bytes: usize) -> String {
     if line.len() <= bytes {
         return line;
     }
@@ -32,7 +37,28 @@ fn cut_bytes(line: String, bytes: usize) -> String {
     while !line.is_char_boundary(at) {
         at -= 1;
     }
-    line[..at].to_string()
+    let head = &line[..at];
+    let inside_a_word = !line[at..].starts_with(char::is_whitespace);
+    let head = match head.rfind(char::is_whitespace) {
+        Some(space) if inside_a_word => &head[..space],
+        None if inside_a_word => "",
+        _ => head,
+    };
+    head.trim_end().to_string()
+}
+
+/// A line the index cut to size ends in `...`. When that cut left half a word, the line goes back to
+/// the end of the word before it, so that pack prints no half word. A line whose last word ends in
+/// punctuation, or that holds no other word, is left as it is.
+fn whole_words(line: &str) -> String {
+    let Some(head) = line.strip_suffix("...") else { return line.to_string() };
+    if !head.ends_with(|c: char| c.is_alphanumeric() || c == '_') {
+        return line.to_string();
+    }
+    match head.rfind(char::is_whitespace).map(|space| head[..space].trim_end()) {
+        Some(kept) if !kept.is_empty() => format!("{kept}..."),
+        _ => line.to_string(),
+    }
 }
 
 /// What a line costs in the budget: its tokens and its line break.
@@ -47,8 +73,8 @@ fn cost_of(lines: &[String]) -> usize {
 
 /// Keeps whole groups of lines while they fit in `tokens`. When even the first group is
 /// too long, its first line is kept as far as `tokens` allow (four bytes to a token, as
-/// `est_tokens` counts them) and the section holds nothing else. A line of which not even one
-/// character fits is left out.
+/// `est_tokens` counts them), up to the end of a word, and the section holds nothing else. A line
+/// of which not even the first word fits is left out.
 fn fit_groups(groups: Vec<Vec<String>>, tokens: usize) -> Vec<String> {
     let mut kept: Vec<String> = Vec::new();
     let mut used = 0usize;
@@ -57,7 +83,7 @@ fn fit_groups(groups: Vec<Vec<String>>, tokens: usize) -> Vec<String> {
         if kept.is_empty() {
             if cost > tokens {
                 let room = tokens.saturating_mul(4);
-                kept.extend(group.into_iter().take(1).map(|l| cut_bytes(l, room)).filter(|l| !l.is_empty()));
+                kept.extend(group.into_iter().take(1).map(|l| cut_words(l, room)).filter(|l| !l.is_empty()));
                 break;
             }
         } else if used + cost > tokens {
@@ -96,25 +122,42 @@ fn looks_like_code(word: &str) -> bool {
     word.contains(['_', '.']) || word.contains("::") || word.chars().skip(1).any(char::is_uppercase)
 }
 
-/// The code names in a task text, in the order they first appear, each once. A name is a run of
-/// text between backticks; or a word that looks like code (see `looks_like_code`); or a word
-/// directly followed by `(`. The punctuation at the ends of a name is dropped.
-fn code_names(text: &str) -> Vec<String> {
-    let mut names: Vec<String> = Vec::new();
-    let mut push = |raw: &str| {
+/// The names found in a task text: in the order they first appear, each once, and no more than
+/// `MAX_LOOKUPS`, since no more are looked up.
+#[derive(Default)]
+struct Names {
+    list: Vec<String>,
+    seen: HashSet<String>,
+}
+
+impl Names {
+    fn full(&self) -> bool {
+        self.list.len() >= MAX_LOOKUPS
+    }
+
+    /// Adds a name, without the punctuation at its ends, unless it is empty, known or one too many.
+    fn push(&mut self, raw: &str) {
         let name = trim_punctuation(raw);
-        if !name.is_empty() && !names.iter().any(|n| n == name) {
-            names.push(name.to_string());
+        if !self.full() && !name.is_empty() && self.seen.insert(name.to_string()) {
+            self.list.push(name.to_string());
         }
-    };
+    }
+}
+
+/// The code names in a task text, in the order they first appear, each once, at most
+/// `MAX_LOOKUPS`. A name is a run of text between backticks; or a word that looks like code (see
+/// `looks_like_code`); or a word directly followed by `(`. The punctuation at the ends of a name
+/// is dropped.
+fn code_names(text: &str) -> Vec<String> {
+    let mut names = Names::default();
     let mut at = 0;
-    while at < text.len() {
+    while at < text.len() && !names.full() {
         let Some(c) = text[at..].chars().next() else { break };
         if c == '`' {
             if let Some(length) = text[at + 1..].find('`') {
                 let run = &text[at + 1..at + 1 + length];
                 // `name(args)` names the function and not its arguments.
-                push(run.split('(').next().unwrap_or(run));
+                names.push(run.split('(').next().unwrap_or(run));
                 at += length + 2;
                 continue;
             }
@@ -123,14 +166,14 @@ fn code_names(text: &str) -> Vec<String> {
             let length = rest.find(|ch: char| !name_char(ch)).unwrap_or(rest.len());
             let word = &rest[..length];
             if rest[length..].starts_with('(') || looks_like_code(trim_punctuation(word)) {
-                push(word);
+                names.push(word);
             }
             at += length;
             continue;
         }
         at += c.len_utf8();
     }
-    names
+    names.list
 }
 
 /// The block `pgr about` prints for one definition a task text names.
@@ -142,14 +185,26 @@ struct Block {
 }
 
 /// The blocks of the first definitions the task text names. A name counts when `Graph::find` gives
-/// exactly one definition for it, and a definition counts once however it was spelled.
+/// exactly one definition for it, and a definition counts once however it was spelled. A word with
+/// a `/` and no `::` that names no definition is two names written together
+/// (`load_config/parse_text`): its parts are tried in its place. At most `MAX_LOOKUPS` names are
+/// looked up, the parts included.
 fn named_blocks(graph: &Graph, task: &str) -> Vec<Block> {
     let mut blocks: Vec<Block> = Vec::new();
-    for name in code_names(task) {
-        if blocks.len() == MAX_NAMES {
+    let mut queue: VecDeque<String> = code_names(task).into();
+    let mut lookups = 0;
+    while let Some(name) = queue.pop_front() {
+        if blocks.len() == MAX_NAMES || lookups == MAX_LOOKUPS {
             break;
         }
+        lookups += 1;
         let found = graph.find(&name);
+        if found.is_empty() && name.contains('/') && !name.contains("::") {
+            for part in name.split('/').rev().map(trim_punctuation).filter(|part| !part.is_empty()) {
+                queue.push_front(part.to_string());
+            }
+            continue;
+        }
         let [node] = found[..] else { continue };
         if blocks.iter().any(|b| b.node == node) {
             continue;
@@ -160,7 +215,7 @@ fn named_blocks(graph: &Graph, task: &str) -> Vec<Block> {
         blocks.push(Block {
             node,
             span: (graph.path_of(node).to_string(), definition.start, definition.end),
-            lines: text.lines().map(str::to_string).collect(),
+            lines: text.lines().map(whole_words).collect(),
         });
     }
     blocks
@@ -213,6 +268,7 @@ pub fn run(ctx: &mut Ctx, task: &str, budget: usize, for_task: Option<&str>) -> 
     let for_task = ctx.task(for_task)?;
     // The answer is the same for every caller, but a role name is refused wherever it comes from.
     ctx.role(None)?;
+    let budget = hub::floor_budget(budget);
     let graph_on = ctx.engines.is_on(Engine::Graph);
     let search_on = ctx.engines.is_on(Engine::Search);
     if graph_on || search_on {
@@ -298,22 +354,65 @@ mod tests {
 
     #[test]
     fn a_cut_line_is_cut_in_bytes_and_not_in_characters() {
-        let kept = fit_groups(vec![vec!["数".repeat(100)]], 10);
+        let kept = fit_groups(vec![vec!["数数数 ".repeat(40)]], 10);
         assert_eq!(kept.len(), 1);
         assert!(est_tokens(&kept[0]) <= 10, "{} tokens", est_tokens(&kept[0]));
+        assert!(kept[0].split(' ').all(|word| word == "数数数"), "{:?}", kept[0]);
     }
 
     #[test]
-    fn a_one_token_share_keeps_at_most_four_bytes() {
-        let kept = fit_groups(vec![vec!["x".repeat(100)]], 1);
-        assert!(kept.iter().all(|l| l.len() <= 4), "{kept:?}");
+    fn a_one_token_share_keeps_at_most_four_bytes_and_only_whole_words() {
+        let kept = fit_groups(vec![vec!["ab cdefgh".to_string()]], 1);
+        assert_eq!(kept, ["ab"]);
+        // A first word that does not fit leaves nothing.
+        assert!(fit_groups(vec![vec!["x".repeat(100)]], 1).is_empty());
     }
 
     #[test]
     fn the_first_group_is_cut_when_it_alone_is_too_long() {
-        let kept = fit_groups(vec![vec!["x".repeat(500), "y".repeat(10)]], 10);
+        let kept = fit_groups(vec![vec!["xxxxxxx ".repeat(60), "y".repeat(10)]], 10);
         assert_eq!(kept.len(), 1);
-        assert_eq!(kept[0].len(), 40);
+        assert_eq!(kept[0].len(), 39);
+        assert!(!kept[0].ends_with(' '));
+    }
+
+    #[test]
+    fn a_line_is_never_cut_inside_a_word() {
+        let line = "alpha beta gamma delta epsilon".to_string();
+        for bytes in 0..=line.len() {
+            let cut = cut_words(line.clone(), bytes);
+            assert!(cut.len() <= bytes, "{bytes}: {cut:?}");
+            assert!(cut.is_empty() || line.split(' ').any(|word| cut.split(' ').last() == Some(word)), "{bytes}: {cut:?}");
+        }
+        assert_eq!(cut_words(line.clone(), 10), "alpha beta");
+        assert_eq!(cut_words(line.clone(), 11), "alpha beta");
+        assert_eq!(cut_words(line.clone(), 4), "");
+        assert_eq!(cut_words(line.clone(), 5), "alpha");
+    }
+
+    #[test]
+    fn a_line_the_index_cut_inside_a_word_goes_back_to_the_word_before() {
+        // Half a word goes, whatever stands before it.
+        assert_eq!(whole_words("f app/a.py:1-2 (alpha, beta, gam..."), "f app/a.py:1-2 (alpha, beta,...");
+        assert_eq!(whole_words("  Return the first configured API k..."), "  Return the first configured API...");
+        // A cut that left a word, a mark or a space behind it is whole, and so is a line never cut.
+        assert_eq!(whole_words("f app/a.py:1-2 (alpha, beta,..."), "f app/a.py:1-2 (alpha, beta,...");
+        assert_eq!(whole_words("f app/a.py:1-2 (alpha, ..."), "f app/a.py:1-2 (alpha, ...");
+        assert_eq!(whole_words("  0 callers"), "  0 callers");
+        // A line with no word before the cut keeps what it has.
+        assert_eq!(whole_words("  conf..."), "  conf...");
+        assert_eq!(whole_words("conf..."), "conf...");
+    }
+
+    #[test]
+    fn at_most_64_distinct_names_are_kept_in_the_order_they_appear() {
+        let text = (0..1000).map(|i| format!("name_{i}")).collect::<Vec<_>>().join(" ");
+        let names = code_names(&text);
+        assert_eq!(names.len(), MAX_LOOKUPS);
+        assert_eq!((names[0].as_str(), names[63].as_str()), ("name_0", "name_63"));
+        // A name written again is not another name, so it takes no place from the others.
+        let again = (0..200).map(|i| format!("name_{} name_{}", i % 10, i)).collect::<Vec<_>>().join(" ");
+        assert_eq!(code_names(&again).len(), MAX_LOOKUPS);
     }
 
     #[test]

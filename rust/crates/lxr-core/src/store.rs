@@ -49,6 +49,31 @@ pub fn repo_key(root: &Path) -> String {
     format!("{}-{:012x}", name, hash64(full.as_bytes()) & 0xffff_ffff_ffff)
 }
 
+/// The name of the repository a checkout belongs to, for what checkouts of one repository share
+/// (the notes of a shared bank). It is [`repo_key`] of the checkout, except in a linked git
+/// worktree, where it is that of the checkout whose `.git` folder the worktree points into, so
+/// that the worktrees of one repository are one repository. A clone has a `.git` folder of its
+/// own and is another repository.
+pub fn repo_identity(root: &Path) -> String {
+    repo_key(&owner_checkout(root).unwrap_or_else(|| root.to_path_buf()))
+}
+
+/// The checkout that owns the `.git` folder a linked worktree points into: the parent of that
+/// folder, or the folder itself when it is not named `.git` (a bare repository). `None` when
+/// `root` is not a linked worktree, or git's own files do not say where its owner is.
+fn owner_checkout(root: &Path) -> Option<PathBuf> {
+    let link = fs::read_to_string(root.join(".git")).ok()?;
+    let gitdir = link.lines().find_map(|line| line.strip_prefix("gitdir:"))?.trim();
+    let gitdir = root.join(gitdir);
+    let common = fs::read_to_string(gitdir.join("commondir")).ok()?;
+    let common = plain(&fs::canonicalize(gitdir.join(common.trim())).ok()?);
+    if common.file_name()? == ".git" {
+        common.parent().map(Path::to_path_buf)
+    } else {
+        Some(common)
+    }
+}
+
 /// The folder that holds the index of the repository rooted at `root`.
 pub fn index_dir(root: &Path) -> PathBuf {
     index_home().join(repo_key(root))
@@ -132,6 +157,28 @@ mod tests {
         let b = repo_key(Path::new("/two/project"));
         assert!(a.starts_with("project-") && b.starts_with("project-"));
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn a_linked_worktree_is_named_after_the_checkout_that_owns_its_git_folder() {
+        let base = std::env::temp_dir().join(format!("lxr-core-worktree-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&base);
+        let (main, wt, clone) = (base.join("main"), base.join("wt"), base.join("clone"));
+        let admin = main.join(".git").join("worktrees").join("wt");
+        for dir in [&admin, &wt, &clone.join(".git")] {
+            fs::create_dir_all(dir).unwrap();
+        }
+        // Git writes the way back to the common folder relative to the administrative one.
+        fs::write(admin.join("commondir"), "../..\n").unwrap();
+        fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
+        assert_eq!(repo_identity(&wt), repo_key(&main));
+        assert_eq!(repo_identity(&main), repo_key(&main));
+        assert_eq!(repo_identity(&clone), repo_key(&clone));
+        assert_ne!(repo_identity(&clone), repo_identity(&main));
+        // A `.git` file that points nowhere leaves the checkout named after itself.
+        fs::write(wt.join(".git"), "gitdir: nowhere\n").unwrap();
+        assert_eq!(repo_identity(&wt), repo_key(&wt));
+        fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]

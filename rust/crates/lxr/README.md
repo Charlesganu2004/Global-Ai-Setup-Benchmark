@@ -36,6 +36,11 @@ The program is about 40 MB then. `packaging\build-wheel.ps1` does this for the p
 `tests\embedded_model.rs` exists only in such a build:
 `cargo.ps1 test -p lxr --features embedded-model --test embedded_model`, with the variable set.
 Without the feature nothing changes. The search order at run time is in `src/model.rs`.
+`PGR_NO_MODEL=1` makes the program behave exactly as if no model existed, also when one is
+compiled in: `refresh` builds no vectors (the status line says `words only`), and `find`, `ask` and
+`pack` use words only. A query never rebuilds the index because of it. The tests of that switch find
+the model on disk through `LXR_MODEL_DIR`; the build with the model compiled in needs the model
+folder to be built at all, so the switch is tested with the model found on disk.
 
 ## Commands on one screen
 
@@ -76,6 +81,7 @@ goes to standard error. Dates are `2026-10-12`, `2026-10-12 14:30` or `2026-10-1
 | `LXR_MODEL_DIR` | Folder of the embedding model (`model.safetensors`, `tokenizer.json`). Tried first; then the model compiled into the program, if there is one; then the places below. |
 | `PGR_ENGINES` | Same as `--engines`; the flag wins. |
 | `PGR_NO_REFRESH` | `1`: answer from the index as it is; no index at all is exit 1. |
+| `PGR_NO_MODEL` | `1`: behave as if no embedding model existed, at index build and at query, whether it is on disk or compiled in. Unset (or empty, or `0`): nothing changes. |
 | `PGR_LOCK_WAIT_MS` | Milliseconds a refresh waits for the lock of another process. Default 30000. |
 | `PGR_BANK` | Same as `--bank`; the flag wins. A name of 1 to 64 characters out of `A-Z a-z 0-9 . _ -`, not `.` or `..`: use `LXR_HOME\banks\NAME` as the memory bank of every repository. Any other value, `..\x` or `a\b` included, is a usage error (exit 2). An empty variable counts as not set. |
 | `PGR_TASK` | Same as `--task`; the flag wins. The task a `handoff`, `loadout` or `pack` belongs to. Same rule for the name. |
@@ -121,32 +127,47 @@ Three commands:
   and the note gains the two tags: this is how a fact becomes confirmed by a second role. `TEXT`
   that is the single argument `-` is read from standard input (UTF-8, at most 65,536 bytes). The
   last line says how many notes were filed and how many of them name code:
-  `handoff NAME: N notes from ROLE, K name code`. A fact that repeats inside one text makes one
-  note, which is counted once (and is seen more than once, as `retain` counts it).
+  `handoff NAME: N notes from ROLE, K name code`. A fact that repeats inside one text, or inside
+  one `retain` call, is one sighting: it makes one note, seen once, and it is reported and
+  counted once. Another call that repeats it is another sighting.
 - `pgr loadout [WORDS...] [--budget N]` prints what an agent loads before it starts, within a
-  budget (600 tokens by default). It only reads: it never changes the bank, and the same input
-  and the same bank give the same bytes, except for the ages. The layers come in this order, and
+  budget (600 tokens by default; a budget under 120 is raised to 120, and that is said once on
+  standard error as `pgr: budget raised to 120`). It only reads: it never changes the bank, and the same input
+  and the same bank give the same bytes, except for the ages. A line is costed as it is printed, with
+  its real age, so the cut can move by one note when an age gains a character (`9d` to `10d`). The layers come in this order, and
   one with nothing to print is left out: `== core` (directives, then confirmed notes, newest first,
   at most a third of the budget), `== task NAME` (with `--task`: every note of the task that core
-  did not print, fresh ones first, then stale, then gone, and what the other layers leave of the
-  budget), `== related` (with WORDS: at most four notes that `pgr recall WORDS` finds among the
+  did not print, fresh ones first, then the notes of another repository, then stale, then gone,
+  and what the other layers leave of the budget), `== related` (with WORDS: at most four notes that `pgr recall WORDS` finds among the
   others, by words, by meaning and by the names they share, within a third). A summary the bank
   builds itself from three or more notes about one definition (a note of kind observation) is
-  neither confirmed nor a note of the task, because the notes it covers print on their own. A line
-  is the line of `recall` with the roles before the id. A note that does not fit what is left of
-  its layer is left out and counted, and the notes after it are still tried; a layer the budget cuts
-  ends with `  +K more`, and a layer that has no room for a note, its title and that line is left
-  out, so that the loadout never costs more than its budget (below about 20 tokens that is nothing:
-  `no notes`). A line costs the same at every age, so the ages move no cut. The closing line is `loadout: N notes, F fresh, S stale, G gone, about
-  T tokens`; when S+G is above 0 it is followed by `check stale and gone notes against the code
-  before relying on them`. Nothing to print: `no notes`.
+  neither confirmed nor a note of the task, because the notes it covers print on their own; when
+  the task layer is printed it is left out of the related layer too, so that the facts of the task
+  are not printed twice. A line is the line of `recall` with the roles before the id, and it is
+  costed as it is printed, age included, so that the figure in the closing line is what the
+  printed lines cost. A layer the budget cuts ends at the first note that does not fit, so that the
+  order of priority is never traded for length; only a note that could not be printed even as the
+  only note of its layer is left out and counted, and the notes after it go on. A cut layer ends
+  with `  +K more`, and a layer that has no room for a note, its title and that line is left out,
+  so that the loadout never costs more than its budget. The closing line is `loadout: N notes, F
+  fresh, S stale, G gone, about T tokens`; when notes of another repository were printed (below)
+  it reads `..., G gone, U unchecked, about T tokens`. When S+G is above 0 it is followed by
+  `check stale and gone notes against the code before relying on them`. Nothing to print: `no notes`.
 - `pgr pack "TASK" [--budget N]` is the answer meant to be pasted into a brief: `== names` (the
   block `pgr about` prints for each code name in the task text that has exactly one definition:
   a name in backticks, a word with an underscore, a dot, `::` or an inner capital letter, or a
-  word followed directly by `(`; at most four, using up to half of the budget), `== find` (without
+  word followed directly by `(`; at most four, using up to half of the budget; a word with a `/`
+  and no `::` that names no definition, such as `load_config/parse_text`, is tried as its parts;
+  at most 64 names are looked up), `== find` (without
   the hits that already have a block), `== graph`, and `== memory`. The three sections after the
   names share what is left in turn, and what one does not use passes to the next. With `--task`
-  the memory section holds the core and task layers of `loadout`, without its closing lines.
+  the memory section holds the core and task layers of `loadout`, without its closing lines. A
+  budget under 120 is raised to 120 as in `loadout`, and a line that has to be cut to fit is cut
+  after a whole word, never in the middle of one. The same holds for what was cut before pack
+  and `loadout` print it: a digest of the bank is cut to 600 characters after a whole word, and a
+  line of the names section that the index cut (it ends in `...`) goes back to the end of the word
+  before the half word. `about`, `find` and `ask` print the index as it is. A digest made by an
+  earlier build keeps its cut until its notes change.
 
 The MCP server has the same: the tools `handoff` and `loadout`, and `for_task` in `pack`.
 
@@ -182,18 +203,26 @@ and pgr stays local: choosing, ranking and cutting are plain computation. What p
 a note that names code is checked against the code graph. The notes that are checked are those
 that name code in a spelling the entity rules of the bank know, when exactly one definition has
 that name: a name in backticks, `snake_case`, `camelCase` or a dotted name such as `Store.reload`.
-A plain word such as `main` or `slugify`, a call form such as `slugify()`, and the forms
-`Store::reload` and `app/util.py::slugify` are not anchors, so such a note is never marked stale or
-gone: the closing line counts it as fresh and, once the code has gone, it is still printed among
+A plain word such as `main` or `slugify`, a call form such as `slugify()`, and a path with a
+name after it such as `app/util.py::slugify` are not anchors (`Store::reload` is one, it is read as
+`Store.reload`), so such a note is never marked stale or gone: the closing line counts it as fresh and, once the code has gone, it is still printed among
 the fresh notes with no mark. Put the name in backticks to have it checked.
 
-A bank shared by several repositories (`--bank`) is judged by the repository of the one who reads:
-the anchors of a note hold a file and a name, and the graph that answers is the reader's. Several
-checkouts of one project (clones, worktrees, branches) therefore read a note as fresh, stale or
-gone by the code each of them has, which is the point of sharing the bank. A repository that does
-not hold the code a note names reads the note as gone (the code is not there), however far apart
-the repositories are; the line `check stale and gone notes against the code before relying on
-them` is meant for that too.
+A bank shared by several repositories (`--bank`) keeps the repository each note was made in. An
+anchor holds a file, a name and the key of the repository the note was made in (the key that names
+the index folder of that repository). A reader judges the anchors of its own repository against its
+own graph. A note whose anchors all belong to another repository is not judged: its line carries
+`, other repository` inside the brackets in place of `stale` or `gone` (in `loadout`, `pack`,
+`recall` and `reflect`), a loadout sorts it after the fresh notes and before the stale ones, and the
+closing line counts it as `U unchecked`, a part that is printed only when U is above 0. A note with
+anchors of both kinds is judged by the anchors of the repository that reads. A note written before
+the bank kept the repository counts as made in the repository that reads it. The linked worktrees
+of one git repository are one repository: the key is that of the checkout whose `.git` folder the
+worktrees point into, read from git's own files (`.git` file, `commondir`), so a note made in one
+worktree is judged in the others. A clone has a `.git` folder of its own and is another
+repository by this rule: it does not judge the note and does not call it gone. A checkout that is
+moved or renamed has a new key, and reads its old notes as another repository. The line `check stale and gone notes against the code before relying on
+them` is for the notes that were judged.
 
 ## Index folder
 

@@ -88,12 +88,14 @@ fn a_function_that_does_not_call_itself_is_not_marked() {
 }
 
 #[test]
-fn a_tiny_pack_budget_is_not_overrun() {
+fn a_tiny_pack_budget_is_raised_to_120_and_not_overrun() {
     let env = Env::with_project();
     let task = "change how load_config reads the settings file";
-    for budget in [3usize, 6, 9] {
+    for budget in [3usize, 6, 9, 120] {
         let run = env.run(&["pack", task, "--budget", &budget.to_string()]);
         assert_eq!(run.code, 0, "{}", run.err);
+        assert_eq!(run.err.contains("budget raised to 120"), budget < 120, "{}", run.err);
+        let budget = budget.max(120);
         let mut spent = 0usize;
         let mut total = 0usize;
         for line in run.out.lines().chain(std::iter::once("== end")) {

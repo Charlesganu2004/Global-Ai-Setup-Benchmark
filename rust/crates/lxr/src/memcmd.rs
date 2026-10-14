@@ -19,14 +19,15 @@ pub fn written(note: &Note) -> i64 {
 }
 
 /// `- TEXT  (AGE ago, seen N times) #ID`, with `, stale: code changed` or
-/// `, gone: code removed` inside the brackets when the code the note names has moved.
+/// `, gone: code removed` inside the brackets when the code the note names has moved, or
+/// `, other repository` when the note is about the code of another repository and is not judged.
 pub fn note_line(recalled: &Recalled, now: i64) -> String {
-    line_with(&recalled.note, recalled.stale, recalled.gone, now, "")
+    line_with(&recalled.note, recalled.stale, recalled.gone, recalled.other, now, "")
 }
 
 /// The line of a note: `- TEXT  (AGE ago, seen N times, stale: code changed)`, then `roles` as
 /// they are given (empty, or a space and the roles in square brackets), then ` #ID`.
-pub fn line_with(note: &Note, stale: bool, gone: bool, now: i64, roles: &str) -> String {
+pub fn line_with(note: &Note, stale: bool, gone: bool, other: bool, now: i64, roles: &str) -> String {
     let mut inside = format!("{} ago", age_word(now - written(note)));
     if note.proof_count > 1 {
         inside.push_str(&format!(", seen {} times", note.proof_count));
@@ -35,6 +36,8 @@ pub fn line_with(note: &Note, stale: bool, gone: bool, now: i64, roles: &str) ->
         inside.push_str(", gone: code removed");
     } else if stale {
         inside.push_str(", stale: code changed");
+    } else if other {
+        inside.push_str(", other repository");
     }
     format!("- {}  ({inside}){roles} #{}", flat(&note.text), note.id)
 }

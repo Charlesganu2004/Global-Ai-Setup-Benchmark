@@ -73,9 +73,15 @@ pub(crate) fn recall_at(now: i64) -> RecallOpts {
 #[derive(Default)]
 pub(crate) struct FakeCode {
     defs: RefCell<HashMap<String, (String, u64)>>,
+    repo: String,
 }
 
 impl FakeCode {
+    /// A fake that reads the repository with this key.
+    pub fn in_repo(repo: &str) -> FakeCode {
+        FakeCode { repo: repo.to_string(), ..FakeCode::default() }
+    }
+
     pub fn define(&self, name: &str, path: &str, hash: u64) {
         self.defs.borrow_mut().insert(name.to_string(), (path.to_string(), hash));
     }
@@ -86,8 +92,12 @@ impl FakeCode {
 }
 
 impl CodeView for FakeCode {
+    fn repo(&self) -> &str {
+        &self.repo
+    }
+
     fn anchor(&self, word: &str) -> Option<Anchor> {
-        self.defs.borrow().get(word).map(|(path, hash)| Anchor { path: path.clone(), qual: word.to_string(), hash: *hash })
+        self.defs.borrow().get(word).map(|(path, hash)| Anchor { path: path.clone(), qual: word.to_string(), hash: *hash, repo: self.repo.clone() })
     }
 
     fn current_hash(&self, anchor: &Anchor) -> Option<u64> {

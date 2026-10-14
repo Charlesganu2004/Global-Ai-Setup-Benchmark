@@ -147,6 +147,7 @@ impl Env {
             .env_remove("LXR_MODEL_DIR")
             .env_remove("PGR_ENGINES")
             .env_remove("PGR_NO_REFRESH")
+            .env_remove("PGR_NO_MODEL")
             .env_remove("PGR_BANK")
             .env_remove("PGR_TASK")
             .env_remove("PGR_ROLE");
