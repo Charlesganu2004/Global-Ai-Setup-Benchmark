@@ -6,6 +6,7 @@ use crate::ctx::Ctx;
 use crate::fail::{Fail, Res};
 use crate::index::status;
 use crate::{ask, findcmd, graphcmd, hub, memcmd, model, pack};
+use lxr_rag::Mode;
 
 /// The text a command prints on standard output.
 pub fn dispatch(ctx: &mut Ctx, command: &Command) -> Res<String> {
@@ -61,7 +62,7 @@ pub fn dispatch(ctx: &mut Ctx, command: &Command) -> Res<String> {
             graphcmd::map(ctx.graph()?, *budget, &mut out);
         }
         Command::Find(args) => {
-            ctx.need_search()?;
+            ctx.need_search(args.mode != Mode::Words)?;
             findcmd::run(ctx, args, &mut out)?;
         }
         Command::Retain(args) => memcmd::retain(ctx, args, &mut out)?,

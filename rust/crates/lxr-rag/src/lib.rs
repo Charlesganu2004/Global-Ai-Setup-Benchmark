@@ -9,6 +9,10 @@
 mod chunk;
 mod index;
 mod rank;
+mod repo;
+mod tuning;
 
 pub use chunk::{chunk_file, Chunk, ChunkKind};
 pub use index::{Hit, Mode, SearchIndex, SearchOpts};
+pub use rank::is_test_path;
+pub use tuning::{Meaning, Tuning, Weights, WEIGHT_KEYS};

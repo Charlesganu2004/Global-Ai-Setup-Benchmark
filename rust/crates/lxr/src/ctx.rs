@@ -11,6 +11,7 @@ use crate::index::{graph_path, load_graph, open_search, search_path, BANK_LOCK_F
 use crate::model;
 use crate::names::{self, Kind as Name, DEFAULT_ROLE};
 use crate::oslock::OsLock;
+use crate::searchenv;
 use lxr_core::{find_root, index_dir, index_home, repo_identity};
 use lxr_graph::{Graph, NodeKind};
 use lxr_memory::{Anchor, Bank, CodeView, NoCode};
@@ -173,7 +174,7 @@ impl SearchSlot {
     /// is not the one of the generation the slot was made for, or when no index has been
     /// looked at yet.
     pub fn get(&self) -> Option<&SearchIndex> {
-        self.cell.get_or_init(|| if self.gen.id == 0 { None } else { open_search(&self.path, self.gen.id) }).as_ref()
+        self.cell.get_or_init(|| if self.gen.id == 0 { None } else { open_search(&self.path, self.gen.id, false) }).as_ref()
     }
 }
 
@@ -196,6 +197,9 @@ pub struct Needs {
     pub search: bool,
     /// The embedding model, for commands that use it whether or not the search index has vectors.
     pub embed: bool,
+    /// The command reads the vectors of the search index (a search by words alone does not), so
+    /// the thread that opens the index also puts a packed file of them back together.
+    pub vectors: bool,
 }
 
 /// Parts of the index that helper threads load while the check for changed files runs.
@@ -222,12 +226,13 @@ impl Early {
             thread::spawn(move || load_graph(&path, gen.graph))
         });
         let wants_search = needs.search && ctx.search.cell.get().is_none();
+        let warm = needs.vectors && !searchenv::leaves_model_alone();
         let search = wants_search.then(|| {
             let path = ctx.search.path.clone();
-            thread::spawn(move || open_search(&path, gen.id))
+            thread::spawn(move || open_search(&path, gen.id, warm))
         });
         // A search by words alone never opens the model, so it is not loaded for one.
-        let wants_model = needs.embed || (wants_search && manifest.embeddings);
+        let wants_model = needs.embed || (wants_search && manifest.embeddings && !searchenv::leaves_model_alone());
         let embed = (wants_model && ctx.embed.cell.get().is_none()).then(|| thread::spawn(model::open));
         Some(Early { gen, graph, search, embed })
     }
@@ -467,6 +472,8 @@ impl Ctx {
     /// the check for changed files runs. Gives an error when a part cannot be read even
     /// after one rebuild.
     pub fn need(&mut self, needs: Needs) -> Res<()> {
+        // A search that follows its hits through the graph reads the graph too.
+        let needs = if needs.search && searchenv::graph_on()? && self.engines.is_on(Engine::Graph) { Needs { graph: true, ..needs } } else { needs };
         if needs.graph {
             self.engines.require(Engine::Graph)?;
         }
@@ -501,9 +508,10 @@ impl Ctx {
         self.need(Needs { graph: true, ..Needs::default() })
     }
 
-    /// Makes the index current and opens the search index.
-    pub fn need_search(&mut self) -> Res<()> {
-        self.need(Needs { search: true, ..Needs::default() })
+    /// Makes the index current and opens the search index. `vectors` says that the search reads
+    /// the vectors (every search but one by words alone).
+    pub fn need_search(&mut self, vectors: bool) -> Res<()> {
+        self.need(Needs { search: true, vectors, ..Needs::default() })
     }
 
     /// Gets ready for a memory command. The notes are matched against the code, so the
@@ -519,7 +527,7 @@ impl Ctx {
         if !self.engines.is_on(Engine::Graph) {
             return Ok(());
         }
-        self.need(Needs { graph: true, search: false, embed })
+        self.need(Needs { graph: true, search: false, embed, vectors: false })
     }
 
     /// The task a call belongs to: `given` (a tool argument), else `--task`, else `PGR_TASK`.

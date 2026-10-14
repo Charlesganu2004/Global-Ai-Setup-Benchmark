@@ -9,3 +9,5 @@ publish.workspace = true
 serde.workspace = true
 postcard.workspace = true
 xxhash-rust.workspace = true
+miniz_oxide.workspace = true
+fdeflate.workspace = true

@@ -266,6 +266,13 @@ pub(crate) fn enough_matches(matches: usize, total: usize) -> bool {
     total > 0 && matches as f64 / total as f64 >= MIN_MATCH_RATIO
 }
 
+/// True when the path is a test file or lies in a test folder, as the penalty for test paths
+/// understands them.
+pub fn is_test_path(path: &str) -> bool {
+    let path = path.replace('\\', "/");
+    test_file_re().is_match(&path) || test_dir_re().is_match(&path)
+}
+
 /// The factor a path's scores are multiplied by: 0.3 for test files and folders, 0.5 for
 /// `__init__.py` and `package-info.java`, 0.3 for compat and legacy folders, 0.3 for
 /// example and documentation-source folders, 0.7 for `.d.ts` files. Factors multiply.
@@ -417,6 +424,12 @@ mod tests {
         assert_eq!(path_penalty("types/a.d.ts"), 0.7);
         assert_eq!(path_penalty("src\\tests\\a.py"), 0.3);
         assert_eq!(path_penalty("src/contest.py"), 1.0);
+        for test in ["tests/app.py", "src/test_app.py", "src/app_test.go", "web/app.spec.ts", "src\\tests\\a.py"] {
+            assert!(is_test_path(test), "{test}");
+        }
+        for other in ["src/app.py", "src/contest.py", "pkg/__init__.py", "examples/a.py"] {
+            assert!(!is_test_path(other), "{other}");
+        }
     }
 
     #[test]

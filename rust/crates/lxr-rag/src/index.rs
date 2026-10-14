@@ -2,6 +2,10 @@
 
 use crate::chunk::{Chunk, ChunkKind};
 use crate::rank;
+use crate::repo::{self, RepoVectors};
+use crate::tuning::{Meaning, Tuning, Weights};
+use lxr_core::pack::{pack, unpack};
+use lxr_core::store::write_atomic;
 use lxr_core::{hash64, load, save};
 use lxr_text::{code_tokens, rrf, Bm25, Embedder, Vectors};
 use rayon::prelude::*;
@@ -12,11 +16,15 @@ use std::fs;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 
 /// Version of the files an index is written as. 2 added the size and hash of the vectors
-/// file, the embedder's probe vector and the table's own hash; an index of version 1 is
-/// refused and has to be built again.
-const FORMAT: u32 = 2;
+/// file, the embedder's probe vector and the table's own hash. 3 stores every file packed
+/// and losslessly: the table in the container of `lxr_core::pack`, the word index in its
+/// compact form inside that container, the vectors with the top byte of each number as a
+/// three-bit code (see `Vectors::write_packed`). An index of
+/// an earlier version is refused and has to be built again.
+const FORMAT: u32 = 3;
 const TABLE_FILE: &str = "chunks.bin";
 const BM25_FILE: &str = "bm25.bin";
 const VECTORS_FILE: &str = "vectors.bin";
@@ -63,6 +71,17 @@ impl Default for SearchOpts {
     fn default() -> SearchOpts {
         SearchOpts { limit: 5, mode: Mode::Hybrid, alpha: None }
     }
+}
+
+/// One query as the search sees it: its text and words, the vectors made from it, the weight of
+/// the vectors and the tuning.
+struct Asked<'a> {
+    text: &'a str,
+    model: Option<&'a [f32]>,
+    repo: Option<&'a [f32]>,
+    alpha: f32,
+    tuning: &'a Tuning,
+    tokens: Vec<String>,
 }
 
 /// One search result.
@@ -244,12 +263,19 @@ fn file_digest(path: &Path) -> io::Result<(u64, u64)> {
     Ok((size, digest.finish()))
 }
 
-/// Errors unless the file at `path` has the size and hash that the table recorded for it.
-fn verify(path: &Path, size: u64, hash: u64) -> io::Result<()> {
-    if file_digest(path)? != (size, hash) {
-        return Err(invalid(format!("{} is damaged", path.display())));
-    }
-    Ok(())
+/// Reads the file at `path` once and decodes the bytes that were read. Gives the size and
+/// hash of those bytes, to be compared with what the table recorded, and what `decode` made
+/// of them. An error only when the file cannot be read.
+fn read_decoded<T>(path: &Path, decode: impl FnOnce(&[u8]) -> io::Result<T>) -> io::Result<((u64, u64), io::Result<T>)> {
+    let bytes = fs::read(path)?;
+    Ok((figures_of(&bytes), decode(&bytes)))
+}
+
+/// The size and hash of some bytes, as the table records them for a file.
+fn figures_of(bytes: &[u8]) -> (u64, u64) {
+    let mut digest = Digest::new();
+    digest.put(bytes);
+    (bytes.len() as u64, digest.finish())
 }
 
 /// Has `write` write a file under a temporary name beside `path`, takes the size and hash of
@@ -316,6 +342,11 @@ pub struct SearchIndex {
     modules: HashMap<u32, ModuleNames>,
     bm25: Bm25,
     vectors: Option<Vectors>,
+    /// The folder the index was built into or opened from; empty for an index put together by hand.
+    dir: PathBuf,
+    /// The vectors made from the repository itself, found or made on first use. Only a search
+    /// with the switch for them on looks at this.
+    repo: OnceLock<Option<RepoVectors>>,
 }
 
 fn invalid(message: impl Into<String>) -> io::Error {
@@ -455,7 +486,7 @@ impl SearchIndex {
                     let views: Vec<&str> = texts.iter().map(|t| t.as_ref()).collect();
                     matrix.extend(e.embed_many(&views));
                 }
-                let (size, hash) = write_checked(&vectors_path, |temp| Vectors::write(temp, e.dim(), &matrix))?;
+                let (size, hash) = write_checked(&vectors_path, |temp| Vectors::write_packed(temp, e.dim(), &matrix))?;
                 table.dim = e.dim() as u32;
                 table.vectors_len = size;
                 table.vectors_hash = hash;
@@ -467,13 +498,13 @@ impl SearchIndex {
         }
         drop(chunks);
 
-        let (size, hash) = write_checked(&dir.join(BM25_FILE), |temp| save(temp, &bm25))?;
+        let (size, hash) = write_checked(&dir.join(BM25_FILE), |temp| write_atomic(temp, &pack(&bm25.to_packed())))?;
         table.bm25_len = size;
         table.bm25_hash = hash;
         table.check = table.digest();
         save(&dir.join(TABLE_FILE), &table)?;
         let vectors = if table.dim > 0 { Some(Vectors::open(&vectors_path)?) } else { None };
-        SearchIndex::from_parts(table, bm25, vectors)
+        SearchIndex::from_parts(table, bm25, vectors).map(|index| index.in_folder(dir))
     }
 
     /// Opens an index written by [`SearchIndex::build`]. A missing folder or file, a file
@@ -481,29 +512,56 @@ impl SearchIndex {
     /// The table is checked against its own hash, and the word index and the vectors against
     /// the size and hash that the table recorded for them.
     pub fn open(dir: &Path) -> io::Result<SearchIndex> {
+        SearchIndex::open_warm(dir, false)
+    }
+
+    /// Like [`SearchIndex::open`]. With `warm` a packed vectors file is put back together on the
+    /// thread that reads it, beside the others, instead of by the first search that reads the
+    /// numbers: for a search that is going to. The answers are the same either way.
+    pub fn open_warm(dir: &Path, warm: bool) -> io::Result<SearchIndex> {
         let table_path = dir.join(TABLE_FILE);
-        let table: Table = load(&table_path)?;
+        // The word index and the vectors are the big files, so each is read, hashed and decoded
+        // on a thread of its own while the table is read. Each gives the size and hash of the
+        // bytes it decoded, and these are compared with what the table recorded before the
+        // value is used: figures and value come from the same bytes, so a file that a rebuild
+        // replaced in between fails the comparison, and a damaged one gives an error or a value
+        // that is thrown away. A packed vectors file is only mapped and hashed here; it is put
+        // back together when a search first reads the numbers, so a search by words pays nothing
+        // for them.
+        let (table, bm25, vectors) = std::thread::scope(|scope| {
+            let bm25 = scope.spawn(|| read_decoded(&dir.join(BM25_FILE), |bytes| Bm25::from_packed(&unpack(bytes)?)));
+            let vectors = scope.spawn(|| {
+                let opened = Vectors::open_observing(&dir.join(VECTORS_FILE), figures_of);
+                if let (true, Ok((_, Ok(vectors)))) = (warm, &opened) {
+                    vectors.warm();
+                }
+                opened
+            });
+            (load::<Table>(&table_path), bm25.join(), vectors.join())
+        });
+        let table = table?;
         if table.format != FORMAT {
             return Err(invalid(format!("index format {} is not {FORMAT}", table.format)));
         }
         if table.check != table.digest() {
             return Err(invalid(format!("{} is damaged", table_path.display())));
         }
-        // A file is read into its structure first and checked after: a file that a rebuild
-        // replaced in between fails the check instead of being taken on the strength of
-        // a check made on the file it replaced.
-        let bm25_path = dir.join(BM25_FILE);
-        let bm25: io::Result<Bm25> = load(&bm25_path);
-        verify(&bm25_path, table.bm25_len, table.bm25_hash)?;
+        let stopped = |_| invalid("a thread that reads the index stopped");
+        let (bm25_figures, bm25) = bm25.map_err(stopped)??;
+        if bm25_figures != (table.bm25_len, table.bm25_hash) {
+            return Err(invalid(format!("{} is damaged", dir.join(BM25_FILE).display())));
+        }
+        let bm25 = bm25?;
         let vectors = if table.dim > 0 {
-            let vectors_path = dir.join(VECTORS_FILE);
-            let vectors = Vectors::open(&vectors_path);
-            verify(&vectors_path, table.vectors_len, table.vectors_hash)?;
+            let (figures, vectors) = vectors.map_err(stopped)??;
+            if figures != (table.vectors_len, table.vectors_hash) {
+                return Err(invalid(format!("{} is damaged", dir.join(VECTORS_FILE).display())));
+            }
             Some(vectors?)
         } else {
             None
         };
-        SearchIndex::from_parts(table, bm25?, vectors)
+        SearchIndex::from_parts(table, bm25, vectors).map(|index| index.in_folder(dir))
     }
 
     /// Checks that the parts agree with each other and derives what search needs.
@@ -529,7 +587,7 @@ impl SearchIndex {
         }
         let modules: HashMap<u32, ModuleNames> = table.modules.iter().map(|m| (m.chunk, m.clone())).collect();
         let files = table.paths.iter().map(|p| file_info(p)).collect();
-        Ok(SearchIndex { table, files, file_chunks, modules, bm25, vectors })
+        Ok(SearchIndex { table, files, file_chunks, modules, bm25, vectors, dir: PathBuf::new(), repo: OnceLock::new() })
     }
 
     /// Number of chunks.
@@ -559,23 +617,33 @@ impl SearchIndex {
     /// similar paths are pushed down, and each further hit from a file counts half as much
     /// as the one before. Ties are broken by path and line.
     pub fn search(&self, query: &str, embedder: Option<&Embedder>, opts: &SearchOpts) -> Vec<Hit> {
+        self.search_tuned(query, embedder, opts, &Tuning::default())
+    }
+
+    /// Like [`SearchIndex::search`], with the switches of `tuning`: other weights, a second
+    /// pass over the best hits, or vectors made from the repository. With [`Tuning::default`]
+    /// this is `search`, to the last digit.
+    pub fn search_tuned(&self, query: &str, embedder: Option<&Embedder>, opts: &SearchOpts, tuning: &Tuning) -> Vec<Hit> {
         let query = query.trim();
         if query.is_empty() || opts.limit == 0 || self.is_empty() {
             return Vec::new();
         }
-        let meaning = if opts.mode == Mode::Words { None } else { self.query_vector(query, embedder) };
+        let vectors_allowed = opts.mode != Mode::Words;
+        let model = if vectors_allowed && tuning.meaning != Meaning::Repo { self.query_vector(query, embedder) } else { None };
+        let repo = if vectors_allowed && tuning.meaning != Meaning::Model { self.repo_query(query) } else { None };
         let words = opts.mode != Mode::Meaning;
-        if !words && meaning.is_none() {
+        if !words && model.is_none() && repo.is_none() {
             return Vec::new();
         }
-        let alpha = match (words, meaning.is_some()) {
+        let alpha = match (words, model.is_some() || repo.is_some()) {
             (true, true) => opts.alpha.unwrap_or_else(|| rank::auto_alpha(query)).clamp(0.0, 1.0),
             (true, false) => 0.0,
             _ => 1.0,
         };
+        let asked = Asked { text: query, model: model.as_deref(), repo: repo.as_deref(), alpha, tuning, tokens: code_tokens(query) };
         let mut wanted = opts.limit.saturating_mul(5);
         loop {
-            let (hits, more) = self.search_pool(query, meaning.as_deref(), alpha, opts.limit, wanted);
+            let (hits, more) = self.search_pool(&asked, opts.limit, wanted);
             if hits.len() >= opts.limit || !more || wanted >= self.len() {
                 return hits;
             }
@@ -583,21 +651,81 @@ impl SearchIndex {
         }
     }
 
-    /// One pass of [`SearchIndex::search`] over the best `wanted` chunks of each retriever.
-    /// The second value is true when a retriever had at least `wanted` chunks to offer, so
-    /// that a larger `wanted` could bring in more.
-    fn search_pool(&self, query: &str, meaning: Option<&[f32]>, alpha: f32, limit: usize, wanted: usize) -> (Vec<Hit>, bool) {
-        let semantic: Vec<u32> = match (meaning, &self.vectors) {
+    /// One pass of [`SearchIndex::search`] over the best `wanted` chunks of each retriever,
+    /// and when the tuning asks for it a second pass that also learns words from the best hits
+    /// of the first. The second value is true when a retriever had at least `wanted` chunks to
+    /// offer, so that a larger `wanted` could bring in more.
+    fn search_pool(&self, asked: &Asked, limit: usize, wanted: usize) -> (Vec<Hit>, bool) {
+        let refine = asked.tuning.refine;
+        let first_limit = if refine > 0 { limit.max(refine) } else { limit };
+        let (mut ranked, mut more) = self.ranked_pool(asked, None, first_limit, wanted);
+        if refine > 0 && asked.alpha < 1.0 && !ranked.is_empty() {
+            let best: Vec<u32> = ranked.iter().take(refine).map(|r| r.0).collect();
+            let extra = self.expansion(&best, &asked.tokens, &asked.tuning.weights);
+            if !extra.is_empty() {
+                let (again, also) = self.ranked_pool(asked, Some(&extra), limit, wanted);
+                ranked = again;
+                more |= also;
+            }
+        }
+        ranked.truncate(limit);
+        (ranked.into_iter().map(|(id, score)| self.hit(id, score)).collect(), more)
+    }
+
+    /// The ranked entries of one pass: the retrievers' lists fused with the tuning's weights,
+    /// lifted, merged by definition and cut to `limit`. `extra` are words of a refinement pass,
+    /// searched as one more list of words.
+    fn ranked_pool(&self, asked: &Asked, extra: Option<&[String]>, limit: usize, wanted: usize) -> (Vec<(u32, f64)>, bool) {
+        let alpha = asked.alpha;
+        let weights = &asked.tuning.weights;
+        let semantic: Vec<u32> = match (asked.model, &self.vectors) {
             (Some(q), Some(v)) if alpha > 0.0 => v.nearest(q, wanted).into_iter().map(|h| h.0).collect(),
             _ => Vec::new(),
         };
+        let repo_list: Vec<u32> = match asked.repo {
+            Some(q) if alpha > 0.0 => self.repo_vectors().map(|repo| repo.nearest(q, wanted)).unwrap_or_default(),
+            _ => Vec::new(),
+        };
         let lexical: Vec<u32> = if alpha < 1.0 {
-            self.bm25.search(&code_tokens(query), wanted).into_iter().map(|h| h.0).collect()
+            self.bm25.search(&asked.tokens, wanted).into_iter().map(|h| h.0).collect()
         } else {
             Vec::new()
         };
-        let more = semantic.len() >= wanted || lexical.len() >= wanted;
-        let mut scores: BTreeMap<u32, f64> = rrf(&[semantic.as_slice(), lexical.as_slice()], rank::RRF_K, &[alpha, 1.0 - alpha])
+        let refined: Vec<u32> = match extra {
+            Some(tokens) if alpha < 1.0 => self.bm25.search(tokens, wanted).into_iter().map(|h| h.0).collect(),
+            _ => Vec::new(),
+        };
+        let more = semantic.len() >= wanted || repo_list.len() >= wanted || lexical.len() >= wanted;
+
+        // The lists in a fixed order, with the weight of each: the vectors share alpha times the
+        // weight of the meaning, the words have what is left of 1 times the weight of the words.
+        let meaning_weight = alpha * weights.meaning;
+        let word_weight = (1.0 - alpha) * weights.words;
+        let mut lists: Vec<&[u32]> = Vec::with_capacity(4);
+        let mut shares: Vec<f32> = Vec::with_capacity(4);
+        match asked.tuning.meaning {
+            Meaning::Model => {
+                lists.push(&semantic);
+                shares.push(meaning_weight);
+            }
+            Meaning::Repo => {
+                lists.push(&repo_list);
+                shares.push(meaning_weight);
+            }
+            Meaning::Both => {
+                lists.push(&semantic);
+                shares.push(meaning_weight * (1.0 - weights.repo));
+                lists.push(&repo_list);
+                shares.push(meaning_weight * weights.repo);
+            }
+        }
+        lists.push(&lexical);
+        shares.push(word_weight);
+        if extra.is_some() {
+            lists.push(&refined);
+            shares.push(word_weight * weights.refine);
+        }
+        let mut scores: BTreeMap<u32, f64> = rrf(&lists, weights.k, &shares)
             .into_iter()
             .filter(|&(_, score)| score != 0.0)
             .map(|(id, score)| (id, f64::from(score)))
@@ -605,11 +733,63 @@ impl SearchIndex {
         if scores.is_empty() {
             return (Vec::new(), more);
         }
-        self.lift_files(&mut scores);
-        self.lift_query(&mut scores, query);
+        self.lift_files(&mut scores, weights.files);
+        self.lift_query(&mut scores, asked.text, weights.names);
+        if weights.doc > 0.0 {
+            self.lift_docs(&mut scores, &asked.tokens, weights.doc);
+        }
         let merged = self.merge_definitions(&scores);
-        let hits = self.rerank(merged, limit, alpha < 1.0).into_iter().map(|(id, score)| self.hit(id, score)).collect();
-        (hits, more)
+        (self.rerank(merged, limit, alpha < 1.0), more)
+    }
+
+    /// The words a refinement pass adds to the query: from the words of the chunks `best`, those
+    /// that are not in the query, are held by at least two chunks of the index (a word of one
+    /// chunk could only find that chunk) and are longer than two characters, ranked by how rare
+    /// they are times how many of the best chunks hold them. At most `weights.terms` words.
+    fn expansion(&self, best: &[u32], query: &[String], weights: &Weights) -> Vec<String> {
+        let mut chosen: Vec<(f64, &str)> = Vec::new();
+        for (t, held) in self.bm25.terms_in(best) {
+            let Some((term, postings)) = self.bm25.term_at(t) else { continue };
+            if postings.docs.len() < 2 || term.len() < 3 || query.iter().any(|q| q == term) {
+                continue;
+            }
+            chosen.push((self.bm25.idf(postings.docs.len()) * held as f64, term));
+        }
+        chosen.sort_by(|a, b| b.0.total_cmp(&a.0).then(a.1.cmp(b.1)));
+        chosen.into_iter().take(weights.terms).map(|(_, term)| term.to_string()).collect()
+    }
+
+    /// The vector of the query made from the repository, when there is one.
+    fn repo_query(&self, query: &str) -> Option<Vec<f32>> {
+        self.repo_vectors()?;
+        repo::query_vector(&self.bm25, query)
+    }
+
+    /// The vectors of the chunks made from the repository: read from the file the index was
+    /// built with, or made in memory from the word index when there is none. `None` for an
+    /// index too large for them.
+    fn repo_vectors(&self) -> Option<&RepoVectors> {
+        self.repo
+            .get_or_init(|| {
+                let path = self.dir.join(repo::file_name(self.table.bm25_hash));
+                RepoVectors::open(&path, self.len()).or_else(|| repo::compute(&self.bm25).and_then(|rows| RepoVectors::in_memory(&rows)))
+            })
+            .as_ref()
+    }
+
+    /// Makes the vectors from the repository and writes them to a file in `dir`, where an index
+    /// opened from `dir` finds them. Gives false when the index has none to make (it has no chunk,
+    /// or too many postings). The index files themselves are not touched.
+    pub fn write_repo_vectors(&self, dir: &Path) -> io::Result<bool> {
+        match repo::compute(&self.bm25) {
+            Some(rows) => repo::write(&dir.join(repo::file_name(self.table.bm25_hash)), &rows).map(|()| true),
+            None => Ok(false),
+        }
+    }
+
+    fn in_folder(mut self, dir: &Path) -> SearchIndex {
+        self.dir = dir.to_path_buf();
+        self
     }
 
     /// The unit vector of the query, when the index has vectors, an embedder of the same
@@ -637,8 +817,8 @@ impl SearchIndex {
     }
 
     /// Adds to the best chunk of each file a share of the best score, in proportion to
-    /// how much of the candidates' score the file holds.
-    fn lift_files(&self, scores: &mut BTreeMap<u32, f64>) {
+    /// how much of the candidates' score the file holds. `scale` is 1 for the share of pgr 0.2.
+    fn lift_files(&self, scores: &mut BTreeMap<u32, f64>, scale: f64) {
         let max = scores.values().copied().fold(0.0, f64::max);
         if max == 0.0 {
             return;
@@ -656,7 +836,7 @@ impl SearchIndex {
             }
         }
         let max_sum = sum.values().copied().fold(0.0, f64::max);
-        let unit = max * rank::FILE_BOOST;
+        let unit = max * rank::FILE_BOOST * scale;
         for (path, (id, _)) in best {
             if let Some(score) = scores.get_mut(&id) {
                 *score += unit * sum[&path] / max_sum;
@@ -664,19 +844,19 @@ impl SearchIndex {
         }
     }
 
-    /// Applies the boosts of the query's kind.
-    fn lift_query(&self, scores: &mut BTreeMap<u32, f64>, query: &str) {
+    /// Applies the boosts of the query's kind, each `scale` times as large as in pgr 0.2.
+    fn lift_query(&self, scores: &mut BTreeMap<u32, f64>, query: &str, scale: f64) {
         let max = scores.values().copied().fold(0.0, f64::max);
         if rank::is_symbol_query(query) {
             let name = rank::symbol_name(query).to_lowercase();
             let names = rank::symbol_names(query);
-            self.lift_definitions(scores, &names, max * rank::DEFINITION_BOOST, &|f: &FileInfo| rank::stem_matches(&f.stem, &name));
+            self.lift_definitions(scores, &names, max * rank::DEFINITION_BOOST * scale, &|f: &FileInfo| rank::stem_matches(&f.stem, &name));
         } else {
-            self.lift_stems(scores, query, max);
+            self.lift_stems(scores, query, max * scale);
             let names = rank::embedded_symbols(query);
             if !names.is_empty() {
                 let lower: Vec<String> = names.iter().map(|n| n.to_lowercase()).collect();
-                let unit = max * rank::DEFINITION_BOOST * rank::EMBEDDED_SCALE;
+                let unit = max * rank::DEFINITION_BOOST * rank::EMBEDDED_SCALE * scale;
                 self.lift_definitions(scores, &names, unit, &|f: &FileInfo| rank::embedded_stem_ok(&f.stem, &f.stem_joined, &lower));
             }
         }
@@ -694,6 +874,34 @@ impl SearchIndex {
             if matches > 0 && rank::enough_matches(matches, keywords.len()) {
                 *score += unit * matches as f64 / keywords.len() as f64;
             }
+        }
+    }
+
+    /// Lifts candidates whose definition has a documentation line that holds words of the query,
+    /// by `weight` times the best score in proportion to the share of the query's words that the
+    /// line holds, each word counting by its inverse document frequency. Words the index does
+    /// not know do not count.
+    fn lift_docs(&self, scores: &mut BTreeMap<u32, f64>, query: &[String], weight: f64) {
+        let mut words: Vec<&str> = query.iter().map(String::as_str).collect();
+        words.sort_unstable();
+        words.dedup();
+        let known: Vec<(&str, f64)> = words
+            .into_iter()
+            .filter_map(|w| self.bm25.postings(w).map(|p| (w, self.bm25.idf(p.docs.len()))))
+            .collect();
+        let total: f64 = known.iter().map(|k| k.1).sum();
+        if total <= 0.0 {
+            return;
+        }
+        let max = scores.values().copied().fold(0.0, f64::max);
+        let mut shares: HashMap<u32, f64> = HashMap::new();
+        for (&id, score) in scores.iter_mut() {
+            let doc = self.table.rows[id as usize].doc;
+            let share = *shares.entry(doc).or_insert_with(|| {
+                let line: HashSet<String> = code_tokens(self.string(doc)).into_iter().collect();
+                known.iter().filter(|k| line.contains(k.0)).map(|k| k.1).sum::<f64>() / total
+            });
+            *score += max * weight * share;
         }
     }
 
@@ -1023,7 +1231,7 @@ mod tests {
 
         // Files: the best chunk of each file gets 0.2 * best * (file sum / best file sum).
         let mut scores = BTreeMap::from([(1, 0.5), (2, 0.25), (3, 1.0)]);
-        index.lift_files(&mut scores);
+        index.lift_files(&mut scores, 1.0);
         assert!(close(scores[&1], 0.5 + 0.2 * 0.75), "{scores:?}");
         assert!(close(scores[&2], 0.25), "{scores:?}");
         assert!(close(scores[&3], 1.0 + 0.2), "{scores:?}");
@@ -1103,6 +1311,202 @@ mod tests {
             assert_eq!(both.search(query, None, &opts(4, Mode::Hybrid)), words, "no embedder: {query}");
             assert_eq!(both.search(query, Some(&embedder), &opts(4, Mode::Words)), words, "words mode: {query}");
         }
+    }
+
+    fn tuned(weights: Option<&str>, refine: Option<&str>, vectors: Option<&str>) -> Tuning {
+        Tuning::parse(weights, refine, vectors).unwrap()
+    }
+
+    #[test]
+    fn the_default_tuning_is_the_plain_search() {
+        let (index, embedder, _dir) = built("plain-tuning");
+        for query in ["load_config", "render the html template", "retry connect socket", "Server", "zebra"] {
+            for mode in [Mode::Hybrid, Mode::Words, Mode::Meaning] {
+                let plain = index.search(query, Some(&embedder), &opts(5, mode));
+                let tuned = index.search_tuned(query, Some(&embedder), &opts(5, mode), &Tuning::default());
+                assert_eq!(plain, tuned, "{query} {mode:?}");
+                // Switches that are named but left at their defaults change nothing either.
+                let same = tuned_hits(&index, &embedder, query, mode, &tuned_same());
+                assert_eq!(plain, same, "{query} {mode:?}");
+            }
+        }
+        // A search that does not ask for the repository's vectors never reads or makes them.
+        assert!(index.repo.get().is_none());
+        index.search_tuned("template", Some(&embedder), &opts(5, Mode::Hybrid), &tuned(None, None, Some("repo")));
+        assert!(index.repo.get().is_some());
+    }
+
+    fn tuned_same() -> Tuning {
+        tuned(Some("names=1,files=1,words=1,meaning=1,k=60,doc=0,repo=0.5"), Some("0"), Some("model"))
+    }
+
+    fn tuned_hits(index: &SearchIndex, embedder: &Embedder, query: &str, mode: Mode, tuning: &Tuning) -> Vec<Hit> {
+        index.search_tuned(query, Some(embedder), &opts(5, mode), tuning)
+    }
+
+    #[test]
+    fn a_meaning_weight_of_zero_leaves_the_words_alone() {
+        let (index, embedder, _dir) = built("no-meaning");
+        let off = tuned(Some("meaning=0"), None, None);
+        for query in ["render the html template", "retry connect socket", "config file parse", "load_config"] {
+            let hits = tuned_hits(&index, &embedder, query, Mode::Hybrid, &off);
+            let words = index.search(query, Some(&embedder), &opts(5, Mode::Words));
+            assert_eq!(names(&hits), names(&words), "{query}");
+        }
+        // And a words weight of zero leaves the vectors: the order of meaning mode.
+        let only = tuned(Some("words=0"), None, None);
+        let hits = tuned_hits(&index, &embedder, "retry", Mode::Hybrid, &only);
+        let meaning = index.search("retry", Some(&embedder), &opts(5, Mode::Meaning));
+        assert_eq!(hits[0].symbol, meaning[0].symbol);
+    }
+
+    #[test]
+    fn weights_scale_the_boosts_and_the_fusion_constant() {
+        let (index, embedder, _dir) = built("scales");
+        let top = |tuning: &Tuning| tuned_hits(&index, &embedder, "load_config", Mode::Hybrid, tuning)[0].score;
+        let base = top(&Tuning::default());
+        assert!(top(&tuned(Some("names=0"), None, None)) < base);
+        assert!(top(&tuned(Some("names=2"), None, None)) > base);
+        assert!(top(&tuned(Some("files=0"), None, None)) < base);
+        assert!(top(&tuned(Some("k=1"), None, None)) > base);
+        // The name boost is what puts the definition first: without it another chunk may lead.
+        let hits = tuned_hits(&index, &embedder, "load_config", Mode::Hybrid, &Tuning::default());
+        assert_eq!(hits[0].symbol, "load_config");
+    }
+
+    #[test]
+    fn a_documentation_boost_lifts_definitions_whose_line_holds_the_words() {
+        let (index, embedder, _dir) = built("doc-boost");
+        // Every definition here is documented as "About NAME.".
+        let top = |query: &str, tuning: &Tuning| tuned_hits(&index, &embedder, query, Mode::Words, tuning)[0].score;
+        let boost = tuned(Some("doc=1"), None, None);
+        assert!(top("about config", &boost) > top("about config", &Tuning::default()));
+        // A query none of whose words is in any documentation line is not changed.
+        assert_eq!(top("retry", &boost), top("retry", &Tuning::default()));
+        assert_eq!(
+            names(&tuned_hits(&index, &embedder, "retry", Mode::Words, &boost)),
+            names(&tuned_hits(&index, &embedder, "retry", Mode::Words, &Tuning::default()))
+        );
+    }
+
+    #[test]
+    fn a_refinement_pass_learns_words_from_the_best_hits() {
+        let (index, embedder, _dir) = built("refine");
+        // Chunk 3 is render_page. Its words that other chunks hold too: render, template, and
+        // the common ones. "render" is in the query, so it is not added; "page" and "html" are
+        // held by this chunk alone, so they are not added either.
+        let learnt = index.expansion(&[3], &["render".to_string()], &Weights::default());
+        assert_eq!(learnt.first().map(String::as_str), Some("template"), "{learnt:?}");
+        assert!(!learnt.iter().any(|t| t == "render" || t == "page" || t == "html"), "{learnt:?}");
+        let two = index.expansion(&[3], &[], &tuned(Some("terms=2"), None, None).weights);
+        assert_eq!(two.len(), 2);
+
+        // "html" is a word of render_page alone. With a refinement pass over its best hit, the
+        // words that hit shares with the other render chunk bring that chunk in too.
+        let wide =|tuning: &Tuning| index.search_tuned("html", Some(&embedder), &opts(10, Mode::Words), tuning);
+        let plain = wide(&Tuning::default());
+        assert_eq!(names(&plain), vec!["src/render.py:render_page"]);
+        let refined = wide(&tuned(None, Some("1"), None));
+        assert_eq!(refined[0].symbol, "render_page");
+        assert!(refined.len() > 1 && refined.iter().any(|h| h.symbol == "escape"), "{:?}", names(&refined));
+
+        // The list of the second pass weighs `refine` times the words: with 0, nothing is added.
+        assert_eq!(names(&wide(&tuned(Some("refine=0"), Some("1"), None))), names(&plain));
+        // A pass over no hit, or a mode without words, changes nothing.
+        let meaning_plain = index.search("retry", Some(&embedder), &opts(5, Mode::Meaning));
+        let meaning = tuned_hits(&index, &embedder, "retry", Mode::Meaning, &tuned(None, Some("3"), None));
+        assert_eq!(meaning_plain, meaning);
+        assert!(tuned_hits(&index, &embedder, "zebra", Mode::Words, &tuned(None, Some("3"), None)).is_empty());
+    }
+
+    #[test]
+    fn repository_vectors_give_a_meaning_channel_without_a_model() {
+        let dir = temp("repo-vectors");
+        let plain = SearchIndex::build(corpus(), None, &dir.join("plain")).unwrap();
+        assert!(!plain.has_vectors());
+        let repo = tuned(None, None, Some("repo"));
+        // "template" is a word of render.py's two definitions: usable (two chunks of ten), and
+        // the vectors find both with no model and no embedder.
+        let hits = plain.search_tuned("template", None, &opts(5, Mode::Hybrid), &repo);
+        let found: Vec<&str> = hits.iter().map(|h| h.symbol.as_str()).collect();
+        assert!(found.contains(&"render_page") && found.contains(&"escape"), "{found:?}");
+        let meaning = plain.search_tuned("template", None, &opts(5, Mode::Meaning), &repo);
+        assert!(meaning.iter().any(|h| h.symbol == "escape"), "{:?}", names(&meaning));
+        // Words mode never uses vectors, and the model-only default has none to use here.
+        let words = plain.search_tuned("template", None, &opts(5, Mode::Words), &repo);
+        assert_eq!(words, plain.search("template", None, &opts(5, Mode::Words)));
+        assert!(plain.search("template", None, &opts(5, Mode::Meaning)).is_empty());
+        // A query with no usable word has no vector, so the search is the words.
+        assert_eq!(
+            plain.search_tuned("zebra", None, &opts(5, Mode::Hybrid), &repo),
+            plain.search("zebra", None, &opts(5, Mode::Hybrid))
+        );
+    }
+
+    #[test]
+    fn repository_vectors_come_from_the_file_beside_the_index_or_are_made_again() {
+        let dir = temp("repo-file");
+        let folder = dir.join("index");
+        let fresh = SearchIndex::build(corpus(), None, &folder).unwrap();
+        let repo = tuned(None, None, Some("repo"));
+        let in_memory = fresh.search_tuned("template", None, &opts(5, Mode::Hybrid), &repo);
+        assert!(!in_memory.is_empty());
+        let file = |folder: &Path| -> Vec<String> {
+            let mut found: Vec<String> = fs::read_dir(folder)
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().to_string())
+                .filter(|n| n.starts_with("repo1-"))
+                .collect();
+            found.sort();
+            found
+        };
+        assert!(file(&folder).is_empty());
+        assert!(fresh.write_repo_vectors(&folder).unwrap());
+        let written = file(&folder);
+        assert_eq!(written.len(), 1, "{written:?}");
+
+        let reopened = SearchIndex::open(&folder).unwrap();
+        assert_eq!(reopened.search_tuned("template", None, &opts(5, Mode::Hybrid), &repo), in_memory);
+        // A damaged file is not trusted: the vectors are made again and the answers are the same.
+        let damaged = dir.join("damaged");
+        fs::create_dir_all(&damaged).unwrap();
+        for entry in fs::read_dir(&folder).unwrap() {
+            let entry = entry.unwrap();
+            fs::copy(entry.path(), damaged.join(entry.file_name())).unwrap();
+        }
+        let sidecar = damaged.join(&written[0]);
+        let mut bytes = fs::read(&sidecar).unwrap();
+        bytes.truncate(bytes.len() / 3);
+        fs::write(&sidecar, bytes).unwrap();
+        let again = SearchIndex::open(&damaged).unwrap();
+        assert_eq!(again.search_tuned("template", None, &opts(5, Mode::Hybrid), &repo), in_memory);
+        // So is a byte changed anywhere in it, the low bytes of the numbers included: the vectors
+        // file alone does not check those, the container around it does.
+        let good = fs::read(folder.join(&written[0])).unwrap();
+        for at in [0, 20, good.len() / 4, good.len() / 2, good.len() * 3 / 4, good.len() - 1] {
+            let mut flipped = good.clone();
+            flipped[at] ^= 0x01;
+            fs::write(&sidecar, flipped).unwrap();
+            let again = SearchIndex::open(&damaged).unwrap();
+            assert_eq!(again.search_tuned("template", None, &opts(5, Mode::Hybrid), &repo), in_memory, "byte {at} of the sidecar changed");
+        }
+        // An index with no chunk has no such vectors to write.
+        let empty = SearchIndex::build(Vec::new(), None, &dir.join("empty")).unwrap();
+        assert!(!empty.write_repo_vectors(&dir.join("empty")).unwrap());
+    }
+
+    #[test]
+    fn both_kinds_of_vectors_can_be_fused() {
+        let (index, embedder, _dir) = built("both");
+        let both = tuned(None, None, Some("both"));
+        let hits = tuned_hits(&index, &embedder, "render the html template", Mode::Hybrid, &both);
+        assert_eq!(hits[0].symbol, "render_page");
+        // With the whole meaning weight on the model, `both` is the default search.
+        let model_only = tuned(Some("repo=0"), None, Some("both"));
+        let plain = index.search("render the html template", Some(&embedder), &opts(5, Mode::Hybrid));
+        let fused = tuned_hits(&index, &embedder, "render the html template", Mode::Hybrid, &model_only);
+        assert_eq!(names(&plain), names(&fused));
     }
 
     #[test]
@@ -1210,7 +1614,9 @@ mod tests {
         let (_index, _embedder, dir) = built("notext");
         let mut stored = Vec::new();
         for entry in fs::read_dir(dir.join("index")).unwrap() {
-            stored.extend(fs::read(entry.unwrap().path()).unwrap());
+            // The files are packed, so what they hold is looked for after unpacking.
+            let bytes = fs::read(entry.unwrap().path()).unwrap();
+            stored.extend(if lxr_core::pack::is_packed(&bytes) { unpack(&bytes).unwrap() } else { bytes });
         }
         let find = |needle: &str| stored.windows(needle.len()).any(|w| w == needle.as_bytes());
         assert!(find("load_config"), "names are stored");
@@ -1227,6 +1633,64 @@ mod tests {
         assert!(index.search("anything", Some(&embedder), &SearchOpts::default()).is_empty());
         let opened = SearchIndex::open(&dir.join("index")).unwrap();
         assert_eq!(opened.len(), 0);
+    }
+
+    /// Many chunks that mention a few words of a wider model, so that every file is big enough to pack.
+    fn wide_corpus() -> Vec<Chunk> {
+        (0..300u32)
+            .map(|i| {
+                let (first, last) = (i % 10 * 5 + 1, i % 10 * 5 + 4);
+                let text = format!("def fn_{i}(x):\n    return w{} + w{} + w{}", i % 12, (i * 5) % 12, (i * 7) % 12);
+                chunk(&format!("src/m{}.py", i / 10), first, last, ChunkKind::Definition, &format!("fn_{i}"), (first, last), &text)
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_big_enough_index_is_stored_packed_and_opens_as_the_one_that_was_built() {
+        let dir = temp("packed");
+        let words: Vec<(String, Vec<f32>)> =
+            (0..12u32).map(|w| (format!("w{w}"), (0..24u32).map(|k| ((w * 31 + k * 17) % 23) as f32 / 11.0 - 1.0).collect())).collect();
+        let pairs: Vec<(&str, &[f32])> = words.iter().map(|(w, v)| (w.as_str(), v.as_slice())).collect();
+        let embedder = model_of(&dir.join("m"), 24, &pairs);
+        let at = dir.join("index");
+        let built = SearchIndex::build(wide_corpus(), Some(&embedder), &at).unwrap();
+        for file in [TABLE_FILE, BM25_FILE] {
+            assert!(lxr_core::pack::is_packed(&fs::read(at.join(file)).unwrap()), "{file} is not packed");
+        }
+        assert_eq!(&fs::read(at.join(VECTORS_FILE)).unwrap()[..8], b"LXRVEC02", "the vectors are not packed");
+
+        // What was read back is what was built, field for field and bit for bit.
+        let opened = SearchIndex::open(&at).unwrap();
+        assert_eq!(format!("{:?}", opened.table), format!("{:?}", built.table));
+        let (a, b) = (built.vectors.as_ref().unwrap(), opened.vectors.as_ref().unwrap());
+        assert_eq!((a.len(), a.dim()), (b.len(), b.dim()));
+        assert!((0..a.len() as u32).all(|i| a.row(i).iter().map(|x| x.to_bits()).eq(b.row(i).iter().map(|x| x.to_bits()))));
+        // Opened with the vectors made ready beforehand (as a thread beside the others does for a
+        // search that reads them), the index answers the same.
+        let warmed = SearchIndex::open_warm(&at, true).unwrap();
+        for query in ["w3 w7", "fn_42", "return w1 w5", "x"] {
+            for mode in [Mode::Hybrid, Mode::Words, Mode::Meaning] {
+                let built_hits = built.search(query, Some(&embedder), &opts(8, mode));
+                assert_eq!(built_hits, opened.search(query, Some(&embedder), &opts(8, mode)), "{query} {mode:?}");
+                assert_eq!(built_hits, warmed.search(query, Some(&embedder), &opts(8, mode)), "warmed: {query} {mode:?}");
+            }
+        }
+
+        // A file that was changed in any way is refused, and the good one is accepted again.
+        for file in [TABLE_FILE, BM25_FILE, VECTORS_FILE] {
+            let good = fs::read(at.join(file)).unwrap();
+            let mut flipped_middle = good.clone();
+            flipped_middle[good.len() / 2] ^= 0x10;
+            let mut flipped_last = good.clone();
+            *flipped_last.last_mut().unwrap() ^= 0x01;
+            for damaged in [flipped_middle, flipped_last, good[..good.len() / 2].to_vec(), Vec::new()] {
+                fs::write(at.join(file), damaged).unwrap();
+                assert!(SearchIndex::open(&at).is_err(), "{file}");
+            }
+            fs::write(at.join(file), &good).unwrap();
+            assert!(SearchIndex::open(&at).is_ok(), "{file}");
+        }
     }
 
     #[test]
@@ -1433,7 +1897,8 @@ mod tests {
 
     /// The parts of an index built from the corpus, read back, for a test to change.
     fn parts(at: &Path) -> (Table, Bm25, Option<Vectors>) {
-        (load(&at.join(TABLE_FILE)).unwrap(), load(&at.join(BM25_FILE)).unwrap(), Some(Vectors::open(&at.join(VECTORS_FILE)).unwrap()))
+        let bm25 = Bm25::from_packed(&unpack(&fs::read(at.join(BM25_FILE)).unwrap()).unwrap()).unwrap();
+        (load(&at.join(TABLE_FILE)).unwrap(), bm25, Some(Vectors::open(&at.join(VECTORS_FILE)).unwrap()))
     }
 
     #[test]
@@ -1563,22 +2028,27 @@ mod tests {
     }
 
     #[test]
-    fn verify_refuses_a_file_that_is_not_the_one_the_table_describes() {
+    fn read_decoded_describes_the_bytes_it_decoded() {
         let dir = temp("verify");
         let path = dir.join("file.bin");
         let bytes: Vec<u8> = (0..100_000u32).map(|i| (i % 253) as u8).collect();
         fs::write(&path, &bytes).unwrap();
         let (size, hash) = file_digest(&path).unwrap();
         assert_eq!(size, bytes.len() as u64);
-        verify(&path, size, hash).unwrap();
+        let (figures, copy) = read_decoded(&path, |read| Ok(read.to_vec())).unwrap();
+        assert_eq!((figures, copy.unwrap()), ((size, hash), bytes.clone()));
         let mut flipped = bytes.clone();
         flipped[70_000] ^= 0x10;
         fs::write(&path, &flipped).unwrap();
-        assert!(verify(&path, size, hash).is_err());
+        assert_ne!(read_decoded(&path, |_| Ok(())).unwrap().0, (size, hash));
         fs::write(&path, &bytes[..bytes.len() - 1]).unwrap();
-        assert!(verify(&path, size, hash).is_err());
+        assert_ne!(read_decoded(&path, |_| Ok(())).unwrap().0, (size, hash));
+        // A decoder that fails does not hide the figures.
+        let (figures, failed) = read_decoded(&path, |_| Err::<(), _>(invalid("no"))).unwrap();
+        assert_eq!(figures.0, bytes.len() as u64 - 1);
+        assert!(failed.is_err());
         fs::remove_file(&path).unwrap();
-        assert!(verify(&path, size, hash).is_err());
+        assert!(read_decoded(&path, |_| Ok(())).is_err());
     }
 
     #[test]

@@ -82,6 +82,10 @@ goes to standard error. Dates are `2026-10-12`, `2026-10-12 14:30` or `2026-10-1
 | `PGR_ENGINES` | Same as `--engines`; the flag wins. |
 | `PGR_NO_REFRESH` | `1`: answer from the index as it is; no index at all is exit 1. |
 | `PGR_NO_MODEL` | `1`: behave as if no embedding model existed, at index build and at query, whether it is on disk or compiled in. Unset (or empty, or `0`): nothing changes. |
+| `PGR_SEARCH_WEIGHTS` | Experimental, off unless set. The numbers of the search fusion as `key=value` pairs, for example `names=1,words=1,meaning=1,k=60`. Keys: `names` and `files` (scale of the lifts for file and definition names), `words` and `meaning` (weights of the two retrievers), `k` (the fusion constant), `doc` (boost for a documentation line that holds the query words, 0 = none), `refine` and `terms` (weight and size of the second pass of `PGR_SEARCH_REFINE`), `repo` (share of the meaning weight for `PGR_SEARCH_VECTORS=both`). A key left out keeps the value of 0.2; a wrong key or value is a usage error (exit 2). |
+| `PGR_SEARCH_REFINE` | Experimental, off unless set. `N`: after the first pass the search takes the best N hits, adds the rarest words they hold to the query and fuses a second pass, at a lower weight. `0` or empty: off. |
+| `PGR_SEARCH_VECTORS` | Experimental. `model` (the default): the meaning channel uses the embedding model. `repo`: it uses vectors made from the repository's own word co-occurrence, with no model; an index built with the variable set keeps them in `search/repo1-*.bin`, otherwise every query makes them again (slow). `both`: the two are fused. |
+| `PGR_SEARCH_GRAPH` | Experimental, off unless set to `1` (`0` or empty is off; any other value is a usage error, exit 2). A hit that is a test, or a thin wrapper (a definition of at most 8 lines that calls at most 2 definitions), is followed by the definitions it calls, at most 3, ranked below it; the list stays as long as it was. Reads the graph as well. |
 | `PGR_LOCK_WAIT_MS` | Milliseconds a refresh waits for the lock of another process. Default 30000. |
 | `PGR_BANK` | Same as `--bank`; the flag wins. A name of 1 to 64 characters out of `A-Z a-z 0-9 . _ -`, not `.` or `..`: use `LXR_HOME\banks\NAME` as the memory bank of every repository. Any other value, `..\x` or `a\b` included, is a usage error (exit 2). An empty variable counts as not set. |
 | `PGR_TASK` | Same as `--task`; the flag wins. The task a `handoff`, `loadout` or `pack` belongs to. Same rule for the name. |
@@ -89,6 +93,35 @@ goes to standard error. Dates are `2026-10-12`, `2026-10-12 14:30` or `2026-10-1
 | `USERPROFILE`, `HOME` | The home folder pgr refuses to index; also where the model is looked for. |
 | `PGR_EMBED_MODEL_DIR` | Build time only, with the feature `embedded-model`: the folder of the model to compile in. |
 | `HF_HUB_CACHE`, `HF_HOME` | Hugging Face cache, searched for the model last. |
+
+## Search methods under test
+
+Four switches try ideas from the research on self-improving systems on a search that has no language
+model and whose only neural part is a static embedding table. They are off unless set (the table
+above), they change nothing for a command that does not set them, and none is a default. What each
+does, and what it needs:
+
+- **Refinement** (`PGR_SEARCH_REFINE=N`): the iterate-instead-of-asking-again idea as pseudo-relevance
+  feedback. The query runs; the N best hits give the rarest words they hold (by inverse document
+  frequency, words held by at least two chunks, not in the query); a second list of words for those
+  runs at the weight `refine` (0.5) of the words, and the lists are fused again. Costs a second pass
+  and one scan of the word index.
+- **Graph** (`PGR_SEARCH_GRAPH=1`): the code graph as memory for search. A hit that is a test, or a thin
+  wrapper, is followed by up to three definitions it calls, those sharing the most words with the
+  query first, then those called from fewer places. The list keeps its length, so they take the place of
+  the lowest hits. Reads `graph.bin`.
+- **Repository vectors** (`PGR_SEARCH_VECTORS=repo` or `both`): meaning learned from the repository. Each
+  chunk has a fixed random vector; a word's vector is the sum of those of the chunks that hold it,
+  weighted by positive pointwise mutual information; a chunk's vector is the sum of its words' vectors;
+  a query's vector is made from its words the same way (random indexing, 256 numbers, seed fixed in the
+  source). It is made from the word index, so it needs no model. With the variable set when the index
+  is built, the chunk vectors are kept in `search/repo1-*.bin` (about the size of `vectors.bin`);
+  otherwise they are made again in memory for every query (about 45 ms more for a `find` on the
+  86-file fixture, on a busy machine, and more for a larger repository).
+- **Weights** (`PGR_SEARCH_WEIGHTS`): the numbers of the fusion as parameters, so that a lab can search
+  them (`benchmark/lab/search_lab.py tune`). The search itself is not in `pgr`.
+
+`benchmark/lab/README.md` says how they are measured and `benchmark/data/search_lab.json` holds the numbers.
 
 ## Team hub
 
@@ -233,6 +266,23 @@ deleted by a rebuild). `refresh.lock` exists only while an index is being writte
 older than 600 seconds is ignored. Taking over such a lock, and giving a lock back, is
 ordered by an operating system lock on `refresh.guard` (the file stays and holds nothing),
 and a lock file holds a token, so a process never removes the lock of a successor.
+
+Every file of the index is stored packed and losslessly (index format 3), about 30% smaller
+on the 86-file fixture. `manifest.bin`, `facts.bin`, `graph.bin` and `search\chunks.bin` are
+their postcard bytes in a small container (`LXZ1`, the length and hash of the original bytes,
+then a deflate stream); `search\bm25.bin` is the word index in a compact form (terms stored
+as the part they do not share with the term before, postings as steps) in the same
+container; `search\vectors.bin` keeps the three low bytes of every number as they are and
+stores the top byte (sign and high exponent bits, a handful of values) as a three-bit code
+(for a matrix of up to 8 MiB; a larger one is written plain and mapped, so that opening it
+costs no more than before). A packed matrix is put back together in memory the first time a
+search reads its numbers, on the thread that opens the index when the command is going to
+search by meaning, and not at all for a search by words alone. The vectors that
+`PGR_SEARCH_VECTORS=repo` keeps beside the index are in the same container, so a changed byte
+anywhere in them is found and they are made again.
+A writer reads back what it wrote and compares it before it uses the packed form; a reader
+checks the length and hash before it trusts a file. A damaged file is an error, so the next
+query builds the index again, and an index of an earlier format is built again, never read.
 
 How it stays current: every query command walks the repository once and compares sizes and
 times with the manifest. A file is read and hashed only when its size is the same and its

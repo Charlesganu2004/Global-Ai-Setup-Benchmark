@@ -4,6 +4,7 @@
 //! and the graph, search and memory crates consume them. Nothing here parses code.
 
 pub mod model;
+pub mod pack;
 pub mod store;
 
 pub use model::{Call, FileFacts, Import, Lang, ParseGrade, SymKind, Symbol};

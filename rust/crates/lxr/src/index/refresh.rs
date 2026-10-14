@@ -18,6 +18,7 @@ use super::manifest::{Counts, Entry, Generation, Manifest, Part, FORMAT, VERSION
 use super::{facts_path, graph_path, load_graph, manifest_path, open_search, part_matches, part_of, parts_present, search_path, LOCK_FILE, SEARCH_TAG};
 use crate::dates::now_nanos;
 use crate::fail::{Fail, Res};
+use crate::searchenv;
 use lxr_core::{hash64, FileFacts};
 use lxr_extract::{extract, lang_of, walk_checked, Unreadable, WalkOpts, Walked};
 use lxr_graph::Graph;
@@ -228,7 +229,7 @@ fn usable_manifest(dir: &Path) -> Option<Manifest> {
 fn parts_agree(dir: &Path, manifest: &Manifest) -> bool {
     load_graph(&graph_path(dir), manifest.graph).is_some()
         && part_matches(&facts_path(dir), manifest.facts)
-        && open_search(&search_path(dir), manifest.built).is_some()
+        && open_search(&search_path(dir), manifest.built, false).is_some()
 }
 
 /// What a check of the index found.
@@ -547,6 +548,11 @@ fn build_search(fresh: &Path, chunks: Vec<Chunk>, id: u64) -> io::Result<SearchD
     let embedder = model();
     let _ = fs::remove_dir_all(fresh);
     let index = SearchIndex::build(chunks, embedder.as_ref(), fresh)?;
+    // With the switch for vectors made from the repository on, they are made now and kept beside
+    // the index. They are an extra: an index that cannot have them is still a whole index.
+    if searchenv::wants_repo_vectors() {
+        let _ = index.write_repo_vectors(fresh);
+    }
     let done = SearchDone { chunks: index.len(), vectors: index.has_vectors(), model_missing: embedder.is_none() };
     drop(index);
     drop(embedder);

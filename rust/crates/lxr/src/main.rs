@@ -35,6 +35,7 @@ mod names;
 mod oslock;
 mod pack;
 mod rows;
+mod searchenv;
 
 use cli::Command;
 use ctx::Ctx;

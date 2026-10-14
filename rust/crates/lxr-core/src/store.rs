@@ -1,5 +1,6 @@
 //! Where an index lives on disk, and how its parts are written and read.
 
+use crate::pack::{pack, unpack};
 use serde::{de::DeserializeOwned, Serialize};
 use std::fs;
 use std::io::{self, Write};
@@ -86,15 +87,17 @@ pub fn index_dir(root: &Path) -> PathBuf {
 }
 
 /// Writes `value` to `path`, replacing the file in one step so that a reader never
-/// sees half of it.
+/// sees half of it. The file is the value as postcard bytes in the lossless container of
+/// [`crate::pack`], so it is smaller on disk and a damaged copy is found by its hash.
 pub fn save<T: Serialize>(path: &Path, value: &T) -> io::Result<()> {
     let bytes = postcard::to_stdvec(value).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    write_atomic(path, &bytes)
+    write_atomic(path, &pack(&bytes))
 }
 
-/// Reads a value written by [`save`].
+/// Reads a value written by [`save`]. A file that is not in the container, is damaged, or
+/// was written by a version that stored plain postcard is an `InvalidData` error.
 pub fn load<T: DeserializeOwned>(path: &Path) -> io::Result<T> {
-    let bytes = fs::read(path)?;
+    let bytes = unpack(&fs::read(path)?)?;
     postcard::from_bytes(&bytes).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
 }
 
@@ -188,6 +191,72 @@ mod tests {
         fs::write(wt.join(".git"), "gitdir: nowhere\n").unwrap();
         assert_eq!(repo_identity(&wt), repo_key(&canonical(&wt)));
         fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
+    fn facts_survive_the_store_field_for_field() {
+        use crate::model::{Call, FileFacts, Import, Lang, ParseGrade, SymKind, Symbol};
+        let symbol = |name: &str, qual: &str, kind, parent| Symbol {
+            name: name.to_string(),
+            qual: qual.to_string(),
+            kind,
+            start: 3,
+            end: u32::MAX,
+            sig: format!("def {name}(self, text: str) -> Config"),
+            doc: "Turn text into settings. Zażółć gęślą jaźń \u{1f600}.".to_string(),
+            parent,
+            bases: vec!["Base".to_string(), "mixins.Reader".to_string()],
+            hash: u64::MAX - 7,
+        };
+        let facts = vec![
+            FileFacts {
+                path: "app/core.py".to_string(),
+                lang: Lang::Python,
+                lines: 69,
+                bytes: u64::MAX,
+                hash: 0xdead_beef_cafe_f00d,
+                grade: ParseGrade::Ast,
+                symbols: vec![symbol("Config", "Config", SymKind::Class, None), symbol("parse", "Config.parse", SymKind::Method, Some(0))],
+                calls: vec![
+                    Call { caller: Some(1), name: "read".to_string(), recv: "self.cache".to_string(), line: 12 },
+                    Call { caller: None, name: "main".to_string(), recv: String::new(), line: u32::MAX },
+                ],
+                imports: vec![Import { module: "os.path".to_string(), name: "join".to_string(), alias: "j".to_string(), level: 255, line: 1 }],
+            },
+            FileFacts {
+                path: "src/\u{4e2d}\u{6587}.rs".to_string(),
+                lang: Lang::Rust,
+                lines: 0,
+                bytes: 0,
+                hash: 0,
+                grade: ParseGrade::Lexical,
+                symbols: Vec::new(),
+                calls: Vec::new(),
+                imports: Vec::new(),
+            },
+        ];
+        let dir = std::env::temp_dir().join(format!("lxr-core-facts-{}", std::process::id()));
+        let path = dir.join("facts.bin");
+        save(&path, &facts).unwrap();
+        assert_eq!(&fs::read(&path).unwrap()[..4], b"LXZ1");
+        let back: Vec<FileFacts> = load(&path).unwrap();
+        assert_eq!(back, facts);
+        let none: Vec<FileFacts> = Vec::new();
+        save(&path, &none).unwrap();
+        assert_eq!(load::<Vec<FileFacts>>(&path).unwrap(), none);
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_file_that_is_not_in_the_container_is_not_read() {
+        let dir = std::env::temp_dir().join(format!("lxr-core-plain-{}", std::process::id()));
+        let path = dir.join("old.bin");
+        // What `save` wrote before the container: the postcard bytes alone.
+        let value = (vec!["a".to_string(), "b".to_string()], 42u32);
+        write_atomic(&path, &postcard::to_stdvec(&value).unwrap()).unwrap();
+        let error = load::<(Vec<String>, u32)>(&path).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData, "{error}");
+        fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

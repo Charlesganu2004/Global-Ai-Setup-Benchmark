@@ -272,7 +272,7 @@ pub fn run(ctx: &mut Ctx, task: &str, budget: usize, for_task: Option<&str>) -> 
     let graph_on = ctx.engines.is_on(Engine::Graph);
     let search_on = ctx.engines.is_on(Engine::Search);
     if graph_on || search_on {
-        ctx.need(Needs { graph: graph_on, search: search_on, embed: false })?;
+        ctx.need(Needs { graph: graph_on, search: search_on, embed: false, vectors: search_on })?;
     }
     let memory_on = ctx.engines.is_on(Engine::Memory)
         && match for_task {

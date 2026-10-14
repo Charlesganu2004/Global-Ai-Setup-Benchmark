@@ -8,6 +8,7 @@ with bootstrap intervals.
   python -I search_lab.py prepare    --lab DIR [--pgr PGR]
   python -I search_lab.py challenges --lab DIR [--pgr PGR] [--show N]
   python -I search_lab.py run        --lab DIR [--pgr PGR] [--variant NAME=ARGS ...]
+  python -I search_lab.py tune       --lab DIR [--pgr PGR] [--variants-file FILE] [--select N]
   python -I search_lab.py report     [--out FILE] [--half held-out]
 
 Every path is an argument; DIR can also come from SEARCH_LAB_DIR. The README next to
@@ -1147,6 +1148,9 @@ def cmd_run(args):
             "args": variant["args"], "env_keys": sorted(variant["env"]), "pgr_version": version,
             "pgr_sha256": ctx["binary_hashes"].get(exe) or sha256_file(exe),
         }
+        shown = {k: v for k, v in sorted(variant["env"].items()) if k.startswith("PGR_")}
+        if shown:
+            result["variants"][variant["name"]]["env"] = shown
     finish_result(result, index, registry, args)
     write_json(out_path, result)
     log(f"wrote {out_path}")
@@ -1197,6 +1201,7 @@ def limits_text():
         "A test-name query and its answer share vocabulary by construction; the numbers compare variants, they are not a forecast of agent behaviour.",
         "Cover matching credits a block that contains the function; a variant that returns coarser blocks gains from it. The exact-matching numbers are kept beside the main ones for that reason.",
         "Answers in example, doc, docs_src, compat and legacy folders are left out because the engine demotes most of them on purpose; a change to that policy is not measured here.",
+        "A variant whose weights were searched with `tune` was searched on the tune half only and is judged here on the held-out half; the tune half holds few T and a few hundred C challenges, so a tuned variant can fit it and gain nothing held-out.",
     ]
 
 
@@ -1263,6 +1268,189 @@ def compute_stats(cells, time_ms, baseline, field="ranks"):
     return metrics, paired
 
 
+# ---------------------------------------------------------------- tuning
+
+# The engine's own values of the fusion weights (rust/crates/lxr-rag/src/tuning.rs): the starting
+# point of every search. `words` is not searched: only the ratio of words to meaning matters.
+WEIGHT_DEFAULTS = {"names": 1.0, "files": 1.0, "meaning": 1.0, "k": 60.0, "doc": 0.0, "refine": 0.5, "terms": 8.0, "repo": 0.5}
+# A parameter and the values tried for it. The search moves one parameter at a time.
+TUNE_GRID = (
+    ("names", (0, 1, 2)),
+    ("files", (0, 1, 2)),
+    ("meaning", (0.5, 1, 2)),
+    ("k", (30, 60, 120)),
+    ("doc", (0, 1)),
+    ("refine", (0.25, 0.5, 1)),
+    ("terms", (4, 8, 16)),
+    ("repo", (0.25, 0.5, 0.75)),
+)
+REFINE_N_GRID = (1, 3, 5)               # how many best hits a refinement pass learns from
+TUNE_KINDS = ("T", "C")                 # the kinds the search is scored on; D is a control and never tunes anything
+TUNE_SWEEPS = 2                         # passes over the parameters
+TUNE_MIN_GAIN = 0.002                   # a value must beat the current one by this much mean reciprocal rank to be taken
+TUNE_SEED = 20261014                    # decides the order the parameters are visited in
+
+
+def env_number(env, name):
+    try:
+        return int(env.get(name, "0") or 0)
+    except ValueError:
+        sys.exit(f"{name} must be a whole number, got {env.get(name)!r}")
+
+
+def tunable_params(variant):
+    """The parameters that can change the answers of a variant: the weights of the stages it uses."""
+    env = variant["env"]
+    if "PGR_SEARCH_WEIGHTS" in env:
+        sys.exit(f"variant {variant['name']}: PGR_SEARCH_WEIGHTS belongs to the search, not to the base variant")
+    words_only = "--words" in variant["args"]
+    refine_on = env_number(env, "PGR_SEARCH_REFINE") > 0
+    vectors = env.get("PGR_SEARCH_VECTORS") or "model"
+    params = ["names", "files"]
+    if not words_only:
+        params.append("meaning")
+    params += ["k", "doc"]
+    if refine_on:
+        params += ["refine", "terms", "N"]
+    if vectors == "both" and not words_only:
+        params.append("repo")
+    return params
+
+
+def weights_text(values):
+    """PGR_SEARCH_WEIGHTS for the parameters that are not at the engine's value, in a fixed order."""
+    parts = [f"{k}={values[k]:g}" for k in sorted(values) if k != "N" and values[k] != WEIGHT_DEFAULTS[k]]
+    return ",".join(parts)
+
+
+def with_params(base, values):
+    """The base variant with the weights (and the number of refined hits) of `values`."""
+    env = dict(base["env"])
+    text = weights_text(values)
+    if text:
+        env["PGR_SEARCH_WEIGHTS"] = text
+    if "N" in values:
+        env["PGR_SEARCH_REFINE"] = str(int(values["N"]))
+    return {"name": base["name"], "args": list(base["args"]), "pgr": base["pgr"], "env": env}
+
+
+class Objective:
+    """Mean reciprocal rank on the tune half, T and C each pooled over the corpora, then averaged.
+    Every call asks pgr (answers are cached by binary, index, variant and query) and counts."""
+
+    def __init__(self, docs, maps, ctx, cache_dir, threads):
+        self.docs, self.maps, self.ctx, self.cache_dir, self.threads = docs, maps, ctx, cache_dir, threads
+        self.calls = 0
+
+    def __call__(self, variant):
+        self.calls += 1
+        ranks = {kind: [] for kind in TUNE_KINDS}
+        for name, doc in self.docs.items():
+            rows = [c for c in doc["challenges"] if c["half"] == "tune" and c["kind"] in TUNE_KINDS]
+            if not rows:
+                continue
+            hits, _, _ = run_group(variant, name, [c["query"] for c in rows], [], self.ctx, self.cache_dir, self.threads, False)
+            for c in rows:
+                ranks[c["kind"]].append(rank_of(hits[c["query"]], c["answer"], self.maps[name], "cover"))
+        per_kind = {k: round(float(metric_arrays(r)["mrr"].mean()), 4) for k, r in ranks.items() if r}
+        if not per_kind:
+            sys.exit("the tune half holds no T or C challenge")
+        return round(sum(per_kind.values()) / len(per_kind), 4), per_kind
+
+
+def coordinate_search(base, objective, sweeps, rng):
+    """Moves one parameter at a time over its grid, keeping a value only when it beats the current
+    one by TUNE_MIN_GAIN, for a fixed number of sweeps in an order the seed decides. Starts at the
+    engine's values, so a tuned result is never worse than the default on the half it was tuned on."""
+    names = tunable_params(base)
+    values = {k: WEIGHT_DEFAULTS[k] for k in names if k != "N"}
+    if "N" in names:
+        values["N"] = env_number(base["env"], "PGR_SEARCH_REFINE")
+    grids = dict(TUNE_GRID)
+    grids["N"] = REFINE_N_GRID
+    best, per_kind = objective(with_params(base, values))
+    start = (best, per_kind)
+    trace = [{"params": dict(values), "objective": best, **per_kind}]
+    for sweep in range(sweeps):
+        order = list(names)
+        rng.shuffle(order)
+        moved = False
+        for param in order:
+            kept = values[param]
+            for candidate in grids[param]:
+                if candidate == kept:
+                    continue
+                trial = dict(values)
+                trial[param] = candidate
+                score, kinds = objective(with_params(base, trial))
+                trace.append({"params": dict(trial), "objective": score, **kinds})
+                if score > best + TUNE_MIN_GAIN:
+                    best, per_kind, values, moved = score, kinds, trial, True
+        if not moved:
+            break
+    return values, best, per_kind, start, trace
+
+
+def cmd_tune(args):
+    paths = lab_paths(args)
+    bases = load_variants(args)
+    index = read_json(paths["challenges"] / "index.json")
+    if not index:
+        sys.exit("no challenges yet: run `challenges` first")
+    registry = verify_corpora(paths, list(index["corpora"]))
+    ctx = {"registry": registry, "corpora": paths["corpora"], "home": str(paths["home"]), "binary_hashes": {}}
+    paths["cache"].mkdir(parents=True, exist_ok=True)
+    docs = {name: read_json(paths["challenges"] / f"{name}.json") for name in index["corpora"]
+            if not args.corpus or name in args.corpus}
+    maps = {name: TestMap(paths["corpora"] / name) for name in docs}
+    objective = Objective(docs, maps, ctx, paths["cache"], args.threads)
+    rng = random.Random(args.seed)
+
+    counts = {kind: sum(1 for d in docs.values() for c in d["challenges"] if c["half"] == "tune" and c["kind"] == kind)
+              for kind in TUNE_KINDS}
+    log(f"tune half: {counts}; objective = mean of pooled MRR over {', '.join(k for k in TUNE_KINDS if counts[k])}")
+
+    # every base at the engine's weights, on the tune half; the best of them are tuned
+    rows = []
+    for base in bases:
+        score, kinds = objective(base)
+        rows.append((score, kinds, base))
+        log(f"{base['name']:<16} default {score:.4f} {kinds}")
+    chosen = {b["name"] for _, _, b in sorted(rows, key=lambda r: (-r[0], r[2]["name"]))[:args.select]}
+
+    result = {
+        "name": "search_lab_tuning", "schema": 1, "measured": datetime.date.today().isoformat(),
+        "what": "Weights of the fusion searched on the tune half only. Judge a tuned variant on the held-out half.",
+        "challenge_sets_sha256": index["sets_sha256"], "script_sha256": sha256_file(pathlib.Path(__file__)),
+        "objective": "mean over the kinds T and C of the pooled mean reciprocal rank on the tune half (cover matching)",
+        "tune_challenges": counts, "seed": args.seed, "sweeps": args.sweeps, "min_gain": TUNE_MIN_GAIN,
+        "start": WEIGHT_DEFAULTS, "grid": dict({k: list(v) for k, v in TUNE_GRID}, N=list(REFINE_N_GRID)),
+        "bases": {}, "tuned": {},
+    }
+    emitted = []
+    for score, kinds, base in rows:
+        name = base["name"]
+        result["bases"][name] = {"args": base["args"], "env": {k: v for k, v in sorted(base["env"].items()) if k.startswith("PGR_")},
+                                 "tune_objective": score, "tune_mrr": kinds, "tuned": name in chosen}
+        if name not in chosen:
+            continue
+        values, best, per_kind, start, trace = coordinate_search(base, objective, args.sweeps, rng)
+        tuned = with_params(base, values)
+        log(f"{name:<16} tuned   {best:.4f} {per_kind} from {start[0]:.4f}: {weights_text(values) or '(the default)'}"
+            + (f" refine={values['N']}" if "N" in values else ""))
+        result["tuned"][name] = {
+            "weights": weights_text(values), "refine_n": int(values["N"]) if "N" in values else 0,
+            "values": values, "tune_objective": best, "tune_mrr": per_kind,
+            "default_objective": start[0], "evaluations": len(trace), "trace": trace,
+        }
+        emitted.append({"name": f"{name}-tuned", "args": tuned["args"], "env": tuned["env"], "pgr": tuned["pgr"]})
+    result["queries_asked"] = objective.calls
+    write_json(pathlib.Path(args.out), result)
+    write_json(pathlib.Path(args.variants_out), emitted)
+    log(f"wrote {args.out} and {args.variants_out}")
+    return 0
+
+
 # ---------------------------------------------------------------- report
 
 def fmt(cell):
@@ -1305,6 +1493,11 @@ def print_paired(diffs, baseline, scopes):
         print(table(show, head, (10, 11, 5, 21, 21, 21, 21)))
 
 
+def shown_env(variant):
+    env = variant.get("env")
+    return " env " + ",".join(f"{k}={v}" for k, v in env.items()) if env else ""
+
+
 def print_report(result, half):
     evaluation = result["evaluation"].get(half)
     if not evaluation:
@@ -1312,7 +1505,7 @@ def print_report(result, half):
         return
     print(f'search lab, measured {result["measured"]}, half {half}, {result["k"]} hits per query, '
           f'95% bootstrap intervals ({result["bootstrap"]["resamples"]} resamples)')
-    print("variants: " + "; ".join(f'{n} = find {" ".join(v["args"]) or "(default)"} [{v["pgr_version"]}, {v["pgr_sha256"][:8]}]'
+    print("variants: " + "; ".join(f'{n} = find {" ".join(v["args"]) or "(default)"}{shown_env(v)} [{v["pgr_version"]}, {v["pgr_sha256"][:8]}]'
                                    for n, v in sorted(result["variants"].items())))
     metrics, paired, baseline = evaluation["metrics"], evaluation["paired"], evaluation["baseline"]
     corpora = list(result["corpora"])
@@ -1392,6 +1585,21 @@ def build_parser():
     p.add_argument("--fresh", action="store_true", help="ignore cached answers (they are rewritten)")
     p.add_argument("--reset", action="store_true", help="start the result file again")
     p.set_defaults(func=cmd_run)
+
+    p = sub.add_parser("tune", help="search the fusion weights of variants on the tune half only")
+    common(p)
+    p.add_argument("--challenges-dir", help="where the sets are stored (default LAB/challenges)")
+    p.add_argument("--cache", help="answer cache folder (default LAB/cache)")
+    p.add_argument("--variant", action="append", metavar="NAME=ARGS", help="a base variant, as for `run`")
+    p.add_argument("--variants-file", action="append", help="JSON list of {name, args, pgr, env} base variants")
+    p.add_argument("--select", type=int, default=2, help="tune the best N bases, judged on the tune half at the engine's weights")
+    p.add_argument("--sweeps", type=int, default=TUNE_SWEEPS, help="passes over the parameters")
+    p.add_argument("--seed", type=int, default=TUNE_SEED, help="decides the order the parameters are visited in")
+    p.add_argument("--out", default=str(pathlib.Path(__file__).resolve().parent / "tuned.json"), help="the search and its result")
+    p.add_argument("--variants-out", default=str(pathlib.Path(__file__).resolve().parent / "tuned_variants.json"),
+                   help="the tuned variants, as a file `run --variants-file` reads")
+    p.add_argument("--threads", type=int, default=min(8, os.cpu_count() or 4))
+    p.set_defaults(func=cmd_tune)
 
     p = sub.add_parser("report", help="print the tables of a result file")
     p.add_argument("--out", default=str(default_out), help="result file")

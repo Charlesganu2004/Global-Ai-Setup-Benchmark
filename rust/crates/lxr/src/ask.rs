@@ -98,6 +98,8 @@ pub fn run(ctx: &mut Ctx, questions: &[Question]) -> Res<String> {
         graph: questions.iter().any(|q| q.kind.engine() == Engine::Graph),
         search: questions.iter().any(|q| q.kind == Kind::Find),
         embed: false,
+        // The questions of a find kind are searches by words and meaning.
+        vectors: questions.iter().any(|q| q.kind == Kind::Find),
     };
     if needs.graph || needs.search {
         ctx.need(needs)?;

@@ -15,7 +15,9 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use unicode_normalization::UnicodeNormalization;
 
-const CACHE_MAGIC: &[u8; 8] = b"LXRTOK02";
+/// 03 stores each entry's length instead of the offsets and leaves out the hash table, which
+/// is made again from the entries when the cache is read (see [`Vocab::from_blob`]).
+const CACHE_MAGIC: &[u8; 8] = b"LXRTOK03";
 
 /// What the cache file is keyed by. For a `tokenizer.json` on disk: its size and its
 /// modification time (`secs` and `nanos`). For a tokenizer held in memory: its size and a hash
@@ -97,14 +99,23 @@ impl Vocab {
             }
         }
         offs.push(blob.len() as u32);
-        let mut table = vec![0u32; (by_id.len() * 2).next_power_of_two().max(8)];
+        Vocab::from_blob(blob, offs)
+    }
+
+    /// The vocabulary of the entries in `blob`, entry `id` being `blob[offs[id]..offs[id + 1]]`,
+    /// with its hash table. `build` and the cache file both come through here, so a vocabulary
+    /// read from the cache is the one that was built, table and all. An unused id and an empty
+    /// entry are both an empty range and are not in the table.
+    fn from_blob(blob: Vec<u8>, offs: Vec<u32>) -> Vocab {
+        let ids = offs.len().saturating_sub(1);
+        let mut table = vec![0u32; (ids * 2).next_power_of_two().max(8)];
         let mask = table.len() - 1;
-        for (id, entry) in by_id.iter().enumerate() {
-            let Some(token) = entry else { continue };
+        for id in 0..ids {
+            let token = &blob[offs[id] as usize..offs[id + 1] as usize];
             if token.is_empty() {
                 continue;
             }
-            let mut slot = hash64(token.as_bytes()) as usize & mask;
+            let mut slot = hash64(token) as usize & mask;
             while table[slot] != 0 {
                 slot = (slot + 1) & mask;
             }
@@ -403,7 +414,7 @@ impl Tokenizer {
 
     fn to_cache(&self, key: &CacheKey) -> Vec<u8> {
         let s = &self.settings;
-        let mut out = Vec::with_capacity(self.vocab.blob.len() + self.vocab.offs.len() * 4 + self.vocab.table.len() * 4 + 256);
+        let mut out = Vec::with_capacity(self.vocab.blob.len() + self.vocab.offs.len() + 256);
         out.extend_from_slice(CACHE_MAGIC);
         out.extend_from_slice(&key.size.to_le_bytes());
         out.extend_from_slice(&key.secs.to_le_bytes());
@@ -435,14 +446,10 @@ impl Tokenizer {
         }
         out.extend_from_slice(&((self.vocab.offs.len() - 1) as u32).to_le_bytes());
         out.extend_from_slice(&(self.vocab.blob.len() as u32).to_le_bytes());
-        for off in &self.vocab.offs {
-            out.extend_from_slice(&off.to_le_bytes());
+        for range in self.vocab.offs.windows(2) {
+            put_varint(&mut out, u64::from(range[1] - range[0]));
         }
         out.extend_from_slice(&self.vocab.blob);
-        out.extend_from_slice(&(self.vocab.table.len() as u32).to_le_bytes());
-        for slot in &self.vocab.table {
-            out.extend_from_slice(&slot.to_le_bytes());
-        }
         let checksum = hash64(&out);
         out.extend_from_slice(&checksum.to_le_bytes());
         out
@@ -482,17 +489,15 @@ impl Tokenizer {
         }
         let vocab_len = r.u32()? as usize;
         let blob_len = r.u32()? as usize;
-        let offs = r.u32s(vocab_len.checked_add(1)?)?;
+        let mut offs = Vec::with_capacity(vocab_len.checked_add(1)?.min(body.len() + 1));
+        let mut end = 0u32;
+        offs.push(end);
+        for _ in 0..vocab_len {
+            end = end.checked_add(u32::try_from(r.varint()?).ok()?)?;
+            offs.push(end);
+        }
         let blob = r.take(blob_len)?.to_vec();
-        let table_len = r.u32()? as usize;
-        let table = r.u32s(table_len)?;
-        if r.at != body.len() || !table_len.is_power_of_two() {
-            return None;
-        }
-        if offs.first().copied()? != 0 || offs.last().copied()? as usize != blob.len() || offs.windows(2).any(|w| w[0] > w[1]) {
-            return None;
-        }
-        if table.iter().any(|&slot| slot as usize > vocab_len) || !table.contains(&0) {
+        if r.at != body.len() || end as usize != blob.len() {
             return None;
         }
         let settings = Settings {
@@ -508,7 +513,7 @@ impl Tokenizer {
             median_len,
             max_token_bytes,
         };
-        Some(Tokenizer::assemble(settings, added, Vocab { blob, offs, table }))
+        Some(Tokenizer::assemble(settings, added, Vocab::from_blob(blob, offs)))
     }
 
     // ---- text processing ----
@@ -779,6 +784,19 @@ fn cache_name(path: &str, windows_names: bool) -> String {
     format!("vocab-{:016x}.bin", hash64(name.as_bytes()))
 }
 
+/// Writes `n` as a little-endian base-128 number, seven bits to a byte.
+fn put_varint(out: &mut Vec<u8>, mut n: u64) {
+    loop {
+        let low = (n & 0x7f) as u8;
+        n >>= 7;
+        if n == 0 {
+            out.push(low);
+            return;
+        }
+        out.push(low | 0x80);
+    }
+}
+
 fn put_string(out: &mut Vec<u8>, text: &str) {
     out.extend_from_slice(&(text.len() as u32).to_le_bytes());
     out.extend_from_slice(text.as_bytes());
@@ -811,9 +829,28 @@ impl<'a> Reader<'a> {
         String::from_utf8(self.take(len)?.to_vec()).ok()
     }
 
-    fn u32s(&mut self, count: usize) -> Option<Vec<u32>> {
-        let bytes = self.take(count.checked_mul(4)?)?;
-        Some(bytes.chunks_exact(4).map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
+    /// A base-128 number as `put_varint` wrote it: at most ten bytes, the last of them 0 or 1.
+    #[inline]
+    fn varint(&mut self) -> Option<u64> {
+        let first = *self.b.get(self.at)?;
+        if first < 0x80 {
+            self.at += 1;
+            return Some(u64::from(first));
+        }
+        let mut value = 0u64;
+        for shift in (0..64).step_by(7) {
+            let byte = *self.b.get(self.at)?;
+            self.at += 1;
+            let part = u64::from(byte & 0x7f);
+            if shift == 63 && part > 1 {
+                return None;
+            }
+            value |= part << shift;
+            if byte & 0x80 == 0 {
+                return Some(value);
+            }
+        }
+        None
     }
 }
 
@@ -934,6 +971,37 @@ mod tests {
         assert!(error.to_string().contains("BPE"), "{error}");
         assert!(error.to_string().contains("WordPiece"), "{error}");
         assert!(Tokenizer::from_json(b"not json").is_err());
+    }
+
+    #[test]
+    fn a_vocabulary_read_from_the_cache_is_the_built_one_table_and_all() {
+        // Many entries, so that the hash table has collisions, with a gap of unused ids, an empty entry
+        // and an entry that stands twice.
+        let mut by_id: Vec<Option<String>> = (0..6000u32).map(|i| Some(format!("w{}{}", i % 977, i))).collect();
+        by_id[17] = None;
+        by_id[18] = Some(String::new());
+        by_id[4000] = by_id[3999].clone();
+        for id in 100..140 {
+            by_id[id] = None;
+        }
+        let built = Vocab::build(&by_id);
+        let json = tiny_json(&["x"]);
+        let mut t = Tokenizer::from_json(json.as_bytes()).unwrap();
+        t.vocab = built.clone();
+        let key = CacheKey { size: 1, secs: 2, nanos: 3 };
+        let bytes = t.to_cache(&key);
+        let back = Tokenizer::from_cache(&bytes, &key).expect("the cache reads back");
+        assert_eq!((&back.vocab.blob, &back.vocab.offs, &back.vocab.table), (&built.blob, &built.offs, &built.table));
+        for (id, entry) in by_id.iter().enumerate() {
+            if let Some(word) = entry.as_ref().filter(|w| !w.is_empty()) {
+                let found = back.vocab.get(word.as_bytes()).expect("a word of the vocabulary is found");
+                assert_eq!(back.vocab.token(found), word.as_bytes(), "id {id}");
+                assert_eq!(Some(found), built.get(word.as_bytes()));
+            }
+        }
+        assert!(back.vocab.get(b"not in it").is_none());
+        // The file no longer holds the table: it is smaller than offsets, entries and table together.
+        assert!(bytes.len() < built.blob.len() + built.offs.len() * 4 + built.table.len() * 4);
     }
 
     #[test]

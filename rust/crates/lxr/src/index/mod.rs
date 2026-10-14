@@ -90,8 +90,9 @@ pub fn load_graph(path: &Path, part: Part) -> Option<Graph> {
 }
 
 /// Opens the search folder at `path`, and gives it only when it carries the build time `id`.
-/// As with the graph, the folder is opened first and its tag read after.
-pub fn open_search(path: &Path, id: u64) -> Option<SearchIndex> {
-    let index = SearchIndex::open(path).ok()?;
+/// As with the graph, the folder is opened first and its tag read after. With `warm` the
+/// vectors are made ready on the thread that reads them, for a search that reads them.
+pub fn open_search(path: &Path, id: u64, warm: bool) -> Option<SearchIndex> {
+    let index = SearchIndex::open_warm(path, warm).ok()?;
     (search_tag(path) == Some(id)).then_some(index)
 }

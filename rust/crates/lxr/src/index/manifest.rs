@@ -8,8 +8,9 @@ use serde::{Deserialize, Serialize};
 use std::io;
 use std::path::Path;
 
-/// The number of the index file layout. A different number means a full rebuild.
-pub const FORMAT: u32 = 2;
+/// The number of the index file layout. A different number means a full rebuild. 3 stores
+/// every index file packed and losslessly (see `lxr_core::pack`).
+pub const FORMAT: u32 = 3;
 
 /// The version of this program. An index written by another version is rebuilt.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -91,5 +92,78 @@ impl Manifest {
     /// The generation this manifest describes.
     pub fn generation(&self) -> Generation {
         Generation { id: self.built, graph: self.graph, facts: self.facts }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+
+    fn sample() -> Manifest {
+        Manifest {
+            format: FORMAT,
+            version: VERSION.to_string(),
+            built: 1_760_000_000_123_456_789,
+            embeddings: true,
+            counts: Counts { files: 200, symbols: 2133, links: 5051, chunks: u64::MAX },
+            graph: Part { len: 208_796, hash: u64::MAX },
+            facts: Part { len: 264_970, hash: 7 },
+            files: (0..200u64)
+                .map(|i| Entry {
+                    path: format!("pkg/\u{4e2d}m{i}.py"),
+                    size: i * 37,
+                    mtime: 1_700_000_000_000_000_000 + i,
+                    hash: i.wrapping_mul(0x9e37_79b9_7f4a_7c15),
+                })
+                .collect(),
+        }
+    }
+
+    fn temp(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("pgr-manifest-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn a_manifest_survives_the_store_field_for_field() {
+        let dir = temp("round");
+        let manifest = sample();
+        manifest.save(&dir).unwrap();
+        assert_eq!(&fs::read(manifest_path(&dir)).unwrap()[..4], b"LXZ1");
+        let back = Manifest::load(&dir).expect("the manifest reads back");
+        assert_eq!((back.format, &back.version, back.built, back.embeddings), (manifest.format, &manifest.version, manifest.built, manifest.embeddings));
+        assert_eq!((back.counts, back.graph, back.facts), (manifest.counts, manifest.graph, manifest.facts));
+        assert_eq!(back.files, manifest.files);
+        assert_eq!(back.generation(), manifest.generation());
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn a_damaged_other_format_or_other_version_manifest_is_not_given() {
+        let dir = temp("damaged");
+        let good = {
+            sample().save(&dir).unwrap();
+            fs::read(manifest_path(&dir)).unwrap()
+        };
+        for at in (0..good.len()).step_by(7).chain([good.len() - 1]) {
+            let mut damaged = good.clone();
+            damaged[at] ^= 0x40;
+            fs::write(manifest_path(&dir), &damaged).unwrap();
+            if let Some(back) = Manifest::load(&dir) {
+                // A bit that no decoder reads may change nothing; it never changes a value.
+                assert_eq!(back.files, sample().files, "byte {at}");
+            }
+        }
+        fs::write(manifest_path(&dir), &good[..good.len() / 2]).unwrap();
+        assert!(Manifest::load(&dir).is_none());
+        for (format, version) in [(FORMAT - 1, VERSION.to_string()), (FORMAT, "0.0.0".to_string())] {
+            let manifest = Manifest { format, version, ..sample() };
+            manifest.save(&dir).unwrap();
+            assert!(Manifest::load(&dir).is_none(), "format {format}");
+        }
+        fs::remove_dir_all(&dir).unwrap();
     }
 }

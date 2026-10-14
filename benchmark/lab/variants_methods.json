@@ -1,0 +1,10 @@
+[
+ {"name": "words-refine", "args": ["--words"], "env": {"PGR_SEARCH_REFINE": "3"}},
+ {"name": "words-graph", "args": ["--words"], "env": {"PGR_SEARCH_GRAPH": "1"}},
+ {"name": "words-repo", "args": [], "env": {"PGR_SEARCH_VECTORS": "repo"}},
+ {"name": "words-all", "args": [], "env": {"PGR_SEARCH_VECTORS": "repo", "PGR_SEARCH_REFINE": "3", "PGR_SEARCH_GRAPH": "1"}},
+ {"name": "hybrid-refine", "args": [], "env": {"PGR_SEARCH_REFINE": "3"}},
+ {"name": "hybrid-graph", "args": [], "env": {"PGR_SEARCH_GRAPH": "1"}},
+ {"name": "hybrid-repo", "args": [], "env": {"PGR_SEARCH_VECTORS": "both"}},
+ {"name": "hybrid-all", "args": [], "env": {"PGR_SEARCH_VECTORS": "both", "PGR_SEARCH_REFINE": "3", "PGR_SEARCH_GRAPH": "1"}}
+]

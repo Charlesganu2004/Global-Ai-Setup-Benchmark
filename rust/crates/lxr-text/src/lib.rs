@@ -14,7 +14,7 @@ mod tokens;
 mod unicode_data;
 mod vectors;
 
-pub use bm25::Bm25;
+pub use bm25::{Bm25, Postings};
 pub use embed::Embedder;
 pub use fusion::{rrf, trigram_similarity};
 pub use tokens::code_tokens;

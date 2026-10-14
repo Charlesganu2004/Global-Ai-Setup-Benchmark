@@ -32,6 +32,49 @@ python -I search_lab.py report
 
 Variants are rows: `--variant NAME=ARGS`, extra `pgr find` arguments, with `@pgr=PATH` for another binary and `@env:KEY=VALUE` for an environment variable (forward slashes). Default: `words=--words`, `meaning=--meaning`, `hybrid=`. `--variants-file` takes a JSON list of `{name, args, pgr, env}`. A new binary needs its own index: `prepare --pgr NEW --home NEWHOME`, then `@env:LXR_HOME=NEWHOME`. `run` adds or replaces only the variants it is given; `--half tune` scores the tune half (use `--out` for a file of your own). Answers are cached by binary hash, corpus commit, index content, variant and query; `--fresh` ignores the cache.
 
+## Tune
+
+`tune` searches the fusion weights of `pgr find` (the variable `PGR_SEARCH_WEIGHTS`) with the lab's own challenges, with no model and no human labels:
+
+```
+python -I search_lab.py tune --lab C:\path\to\lab --pgr C:\path\to\pgr.exe --variants-file variants_methods.json [--select 2]
+```
+
+- It scores every base variant at the engine's own weights on the **tune half only**, by the mean of the pooled MRR of T and C (D is a control and tunes nothing), and tunes the best `--select` of them. The choice of what to tune is made on the tune half too.
+- The search moves one parameter at a time over a small fixed grid (`TUNE_GRID`; for a variant with `PGR_SEARCH_REFINE` the number of hits the second pass learns from is one more parameter), for two sweeps, in an order a fixed seed decides. A value is taken only when it gains at least 0.002 MRR, and the search starts at the engine's values, so a tuned variant never scores below the default on the half it was tuned on.
+- It writes the search with its trace (`tuned.json`) and the tuned variants as `NAME-tuned` (`tuned_variants.json`), which `run --variants-file` reads. Judge them with `run` on the held-out half. The weights are in the `env` of the variant's row.
+- `variants_methods.json` holds the variants of the study of the search methods that need no model: `PGR_SEARCH_REFINE` (a second pass that adds the rarest words of the best hits), `PGR_SEARCH_GRAPH` (the definitions a test or a thin wrapper calls follow it), `PGR_SEARCH_VECTORS` (vectors made from the repository itself). The repository vectors are made when the index is built with the variable set, so build the lab index once with `PGR_SEARCH_VECTORS=repo pgr refresh --force`.
+
+## Search methods that need no model (2026-10-14)
+
+Four switches of `pgr find`, all off by default (`rust/crates/lxr/README.md`), measured here on the held-out half with `pgr 0.2.0`: `PGR_SEARCH_REFINE` (a second pass with the rarest words of the best hits), `PGR_SEARCH_GRAPH` (the definitions a test or a thin wrapper calls follow it), `PGR_SEARCH_VECTORS` (vectors made from the repository itself) and `PGR_SEARCH_WEIGHTS` (the numbers of the fusion). Rule fixed before the run: a method is recommended as a new default only if its held-out MRR on the commit-subject challenges (C) beats `hybrid` with the paired interval above zero, nothing else (R@1, R@5, R@10, MRR of T, C and D pooled, MRR of C per corpus) gets worse beyond its interval, and it keeps the speed targets. Pooled MRR, difference against `hybrid` in brackets, `*` where the paired interval excludes zero:
+
+| variant | C MRR (n=213) | T MRR (n=25) | D MRR (n=715, control) |
+|---|---|---|---|
+| `words` | 0.755 (+0.024) | 0.260 (-0.118) | 0.818 (+0.004) |
+| `words-refine` | 0.748 (+0.017) | 0.263 (-0.114) | 0.629 (-0.185*) |
+| `words-graph` | 0.753 (+0.022) | 0.421 (+0.043) | 0.815 (+0.001) |
+| `words-repo` | 0.735 (+0.004) | 0.307 (-0.070) | 0.850 (+0.036*) |
+| `words-all` | 0.728 (-0.003) | 0.473 (+0.095) | 0.748 (-0.066*) |
+| `hybrid` | 0.731 | 0.378 | 0.814 |
+| `hybrid-refine` | 0.728 (-0.003) | 0.400 (+0.023) | 0.699 (-0.115*) |
+| `hybrid-graph` | 0.728 (-0.003*) | 0.442 (+0.064*) | 0.811 (-0.003) |
+| `hybrid-repo` | 0.748 (+0.018) | 0.433 (+0.056) | 0.864 (+0.050*) |
+| `hybrid-all` | 0.746 (+0.015) | 0.508 (+0.131) | 0.761 (-0.052*) |
+| `words-graph-tuned` | 0.768 (+0.038) | 0.498 (+0.121) | 0.921 (+0.107*) |
+| `hybrid-all-tuned` | 0.747 (+0.016) | 0.413 (+0.035) | 0.975 (+0.161*) |
+| `words-weights` (the tuned weights of `words-graph`, no graph) | 0.771 (+0.040*) | 0.263 (-0.114) | 0.920 (+0.106*) |
+
+What the numbers allow:
+
+- **No variant meets the rule.** The closest, `words-graph-tuned`, has C +0.038 with the interval [-0.001, +0.076]; nothing is worse beyond its interval for it. `words-weights` has C +0.040 with the interval above zero but loses T recall at 10 (-0.200 [-0.360, -0.040], as `words` does).
+- **Refinement does not help** and costs the control: D falls by 0.185 (words) and 0.115 (hybrid) MRR and C moves by less than 0.01.
+- **The graph step helps the test-name challenges** (T +0.064* on hybrid, +0.043 on words) and leaves D and C alone (C -0.003* on hybrid, one corpus). T has 25 challenges: read it as a direction.
+- **Repository vectors are a working meaning channel without a model.** Next to the model's vectors they add D +0.050* and about +0.02 on C and +0.06 on T (intervals include zero). Alone (`words-repo`) they are about as good as `words`.
+- **Tuning**: `words-graph` was tuned to `files=0,k=30` on the tune half (tune objective 0.564 to 0.649) and the weights carry over (C 0.753 to 0.768, T 0.421 to 0.498); `words-weights` shows the C gain is the weights, not the graph. `hybrid-all` was tuned to `doc=1,files=2,k=30,meaning=2,names=2,terms=4` (0.544 to 0.583 on the tune half) and gained nothing held-out (C +0.001, T -0.095): it fitted a half of 18 T and 201 C. Its D of 0.975 is the documentation-line boost matching D queries that are documentation lines by construction; D is no evidence for it.
+- **The no-model product** (`PGR_NO_MODEL=1`, an index without `vectors.bin`) gives the same rank strings as the same variant with the model present (`nomodel-words-graph`, `-tuned` and `-all`: 24 of 24 cells each). On the fixture the program is 8,506,368 bytes against 42,011,648 with the model, the index 954,920 bytes against 5,913,118 (the repository vectors, 4,971,159 bytes, are only needed by variants that fuse meaning).
+- Timings in the result file were taken while a 4K render and other jobs ran: they are not a ranking.
+
 ## Limits
 
 - Queries come from developer-written test names and commit subjects, not from questions an agent would ask. A test-name query shares words with its answer by construction.
