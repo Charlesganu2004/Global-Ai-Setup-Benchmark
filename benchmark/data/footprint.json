@@ -1,0 +1,42 @@
+{
+  "measured": "2026-10-13",
+  "machine": "one Windows 11 laptop",
+  "how": "Sizes of the files on disk, summed per folder. The first generation is the set of separate tools the Rust engine replaces, as installed and used on the test machine; the Python interpreter itself is not counted. Its model, cache and index folders hold data for more than one repository, so they are listed apart from the programs. The index sizes are for the test repository (86 files, 68,316 lines).",
+  "first_generation": {
+    "programs_and_runtimes_mb": 481.7,
+    "parts": [
+      {
+        "what": "graph tool: its runtime environment",
+        "mb": 174.5
+      },
+      {
+        "what": "search tool: its runtime environment",
+        "mb": 231.1
+      },
+      {
+        "what": "symbol index tool: program",
+        "mb": 76.1
+      }
+    ],
+    "models_caches_and_index_data_mb": 591.2,
+    "total_mb": 1072.9,
+    "index_of_test_repository_mb": 14.53
+  },
+  "pgr": {
+    "version": "0.1.0",
+    "program_with_model_mb": 41.1,
+    "program_without_model_mb": 7.9,
+    "files": 1,
+    "index_of_test_repository_mb": 8.07,
+    "index_parts_bytes": {
+      "vectors": 5787672,
+      "word_index": 1056005,
+      "facts": 786876,
+      "graph": 486200,
+      "chunks": 338260,
+      "manifest": 3259
+    },
+    "index_without_vectors_mb": 2.55
+  },
+  "language": "The engine, pgr, is written in Rust, all of it. Python is around it, not inside it: the repository the benchmark asks questions about is a Python project, the first generation's tools, the benchmark harness and this site's generator are Python programs, and uv, pipx and pip are optional ways to deliver the same Rust program."
+}

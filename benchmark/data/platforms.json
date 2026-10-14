@@ -1,0 +1,59 @@
+{
+  "checked": "2026-10-13",
+  "tests": [
+    {
+      "system": "Windows 11",
+      "where": "development machine",
+      "what": "the engine's whole test suite",
+      "result": "729 passed, 0 failed, 5 ignored"
+    },
+    {
+      "system": "Ubuntu 24.04 on WSL 2",
+      "where": "the same machine",
+      "what": "the engine's whole test suite, built natively",
+      "result": "654 passed, 0 failed, 5 ignored on the 0.1 source after one fix; the first run found a test that failed in 23 of 40 runs on Linux only, fixed (0 of 40 after)"
+    },
+    {
+      "system": "Linux, macOS, Windows",
+      "where": "GitHub's build machines",
+      "what": "the engine's whole test suite on every push that touches the engine",
+      "result": "passed on all three for 0.1 and for 0.2"
+    }
+  ],
+  "same_answers": [
+    {
+      "what": "The Windows build against the Linux build, the Linux one run inside Ubuntu, on the same repository",
+      "result": "56 of 56 commands gave byte-identical output (42 recorded from the benchmark's agents, 14 added), for 0.1 and for 0.2"
+    },
+    {
+      "what": "The 0.2 Windows build against the binary the fifth round measured",
+      "result": "88 of 88 recorded commands gave identical output"
+    }
+  ],
+  "installers": [
+    {
+      "system": "Windows 11",
+      "what": "install.ps1 from the public release, then a first index and a query in a new repository",
+      "result": "passed"
+    },
+    {
+      "system": "Ubuntu 24.04 on WSL 2",
+      "what": "install.sh from the public release, then a first index and a query in a new repository",
+      "result": "passed"
+    },
+    {
+      "system": "both",
+      "what": "pip install of the wheel from the release",
+      "result": "passed"
+    }
+  ],
+  "built_not_run_here": [
+    "Linux aarch64 (cross-compiled, checked, not run)",
+    "macOS Intel (cross-compiled, checked, not run)"
+  ],
+  "run_by_the_build_workflow": [
+    "Windows x86-64",
+    "Linux x86-64",
+    "macOS Apple silicon"
+  ]
+}

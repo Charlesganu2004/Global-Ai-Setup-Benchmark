@@ -1,0 +1,36 @@
+{
+ "about": "The virtual machine of the arms R6V, THV and TPHV, made by prepare_wsl.py: the agent stays in the harness and everything it runs happens inside a WSL 2 distribution.",
+ "pgr_version": "pgr 0.2.0",
+ "distro": "Ubuntu",
+ "os": "Ubuntu 24.04.4 LTS",
+ "kernel": "Linux 6.18.54.1-microsoft-standard-WSL2",
+ "machine": "x86_64",
+ "layout": {
+  "distro": "Ubuntu",
+  "repo": "/home/USER/lxbench/repo",
+  "pgr": "/home/USER/lxbench/bin/pgr"
+ },
+ "commands": {
+  "pgr": "wsl -d Ubuntu --cd /home/USER/lxbench/repo --exec /home/USER/lxbench/bin/pgr",
+  "code": "wsl -d Ubuntu --cd /home/USER/lxbench/repo --exec sed -n \"FIRST,LASTp\" PATH"
+ },
+ "pgr_sha256": "a0bd4a36aaa184258b359644d731bcb2036d086fbccec2007cd0528ce6241918",
+ "pgr_bytes": 42352704,
+ "status": "pgr: repo | graph ready (2133 symbols, 5051 links) | search ready (5652 chunks, embeddings) | memory 0 notes.",
+ "status_matches_windows": true,
+ "packs": {
+  "variants": [
+   "gs"
+  ],
+  "checked": 6,
+  "identical": true,
+  "sha256": {
+   "gs/A/q1": "b0ba970a4060372f57755cb0f1155847785e3f1b1f110564ddea00e15eb07bb0",
+   "gs/A/q2": "8a19e2a796187322de454c6fd67ddd2a1fd0b1af19cb95797f581ee6f3afb6a4",
+   "gs/A/q3": "3072f0376476072a0a8116c5f8a2824986d07ac19674b2cf4223146f3dc211e2",
+   "gs/B/q1": "facf42b591baa475b363096bfd6dcf8c3e70e12d49d4ec07bb16ab5aae288c46",
+   "gs/B/q2": "9c86757086833d1881667e250d4a4386c91b99656eb230aaa5704a5d0e4f527d",
+   "gs/B/q3": "5bbed3042e6e6213de666984397e2b29da6987557bb36419e0b3a34af1c8d07d"
+  }
+ }
+}

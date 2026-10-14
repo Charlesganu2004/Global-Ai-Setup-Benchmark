@@ -1,0 +1,71 @@
+{
+  "public": {
+    "status": "public",
+    "version": "0.1.0",
+    "tag": "v0.1.0",
+    "repository": "https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark",
+    "release_page": "https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest",
+    "download_base": "https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download",
+    "versioned_base": "https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.1.0",
+    "command": "irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex",
+    "installers": [
+      {
+        "id": "windows",
+        "system": "Windows",
+        "shell": "PowerShell",
+        "note": "No administrator rights.",
+        "command": "irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex"
+      },
+      {
+        "id": "unix",
+        "system": "macOS and Linux",
+        "shell": "a terminal",
+        "note": "No root.",
+        "command": "curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh"
+      }
+    ],
+    "programs": [
+      {"name": "pgr-windows-x86_64.exe", "system": "windows", "label": "Windows, x86-64", "bytes": 43145728},
+      {"name": "pgr-macos-aarch64", "system": "macos", "label": "macOS, Apple silicon", "bytes": 41508480},
+      {"name": "pgr-macos-x86_64", "system": "macos-intel", "label": "macOS, Intel", "bytes": 41686912},
+      {"name": "pgr-linux-x86_64", "system": "linux", "label": "Linux, x86-64", "bytes": 42263112},
+      {"name": "pgr-linux-aarch64", "system": "linux-arm", "label": "Linux, ARM64", "bytes": 41350616}
+    ],
+    "wheels": [
+      {"name": "peterganurusty-0.1.0-py3-none-win_amd64.whl", "system": "windows", "label": "Windows, x86-64", "bytes": 34401406},
+      {"name": "peterganurusty-0.1.0-py3-none-macosx_11_0_arm64.whl", "system": "macos", "label": "macOS, Apple silicon", "bytes": 34335297},
+      {"name": "peterganurusty-0.1.0-py3-none-macosx_10_12_x86_64.whl", "system": "macos-intel", "label": "macOS, Intel", "bytes": 34229323},
+      {"name": "peterganurusty-0.1.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", "system": "linux", "label": "Linux, x86-64", "bytes": 34324353},
+      {"name": "peterganurusty-0.1.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", "system": "linux-arm", "label": "Linux, ARM64", "bytes": 34135305}
+    ],
+    "support": [
+      {"name": "install.ps1", "label": "Windows installer script", "bytes": 3906},
+      {"name": "install.sh", "label": "macOS and Linux installer script", "bytes": 3435},
+      {"name": "SHA256SUMS.txt", "label": "Checksums of every program file", "bytes": 1214}
+    ],
+    "first_commands": [
+      {"command": "pgr refresh", "text": "Build the index of the repository you are in. Run it once, and again after the code changes."},
+      {"command": "pgr ask about:SomeFunction \"find:where tokens expire\"", "text": "Ask two questions in one call: where SomeFunction is defined and what calls it (use a name from your code), and which code does a job you can only describe."},
+      {"command": "pgr help", "text": "Every command, with what it prints."}
+    ],
+    "agent_rule": [
+      "Before reading files to find where something is, run pgr ask.",
+      "For a name, run pgr ask about:NAME: the definition, the callers and what it calls.",
+      "For a job you cannot name, run pgr ask \"find:what the code does\".",
+      "Open a file only for the lines the answer names."
+    ],
+    "tested": {
+      "ran": [
+        "The Windows installer, on Windows 11, from the public release, followed by a first index build and a query in a new repository.",
+        "The shell installer, on Ubuntu, from the public release, with the same first index build and query.",
+        "Installing the wheel with pip, on both of those systems.",
+        "The build workflow installed and ran the Windows, Linux x86-64 and macOS Apple-silicon builds."
+      ],
+      "not_run": [
+        "The Linux ARM64 and the macOS Intel builds were cross-compiled and checked, not run.",
+        "The Linux builds need the GNU C library, so Alpine (musl) is not covered yet."
+      ]
+    },
+    "licence": "The licence terms are not chosen yet. LICENSE.txt says all rights reserved, with the terms to be published."
+  }
+}
