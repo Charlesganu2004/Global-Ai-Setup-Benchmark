@@ -54,8 +54,14 @@ pub fn repo_key(root: &Path) -> String {
 /// worktree, where it is that of the checkout whose `.git` folder the worktree points into, so
 /// that the worktrees of one repository are one repository. A clone has a `.git` folder of its
 /// own and is another repository.
+///
+/// The folder is made canonical first, because the worktree branch reads a canonical path out of
+/// git's own files: without it one checkout could have two names, as it did on macOS (`/var` is a
+/// link to `/private/var`) and on Windows machines whose temporary folder has a short 8.3 name.
+/// [`repo_key`] itself is left as it is, so that index folders keep their names.
 pub fn repo_identity(root: &Path) -> String {
-    repo_key(&owner_checkout(root).unwrap_or_else(|| root.to_path_buf()))
+    let root = fs::canonicalize(root).map(|p| plain(&p)).unwrap_or_else(|_| root.to_path_buf());
+    repo_key(&owner_checkout(&root).unwrap_or(root))
 }
 
 /// The checkout that owns the `.git` folder a linked worktree points into: the parent of that
@@ -171,13 +177,16 @@ mod tests {
         // Git writes the way back to the common folder relative to the administrative one.
         fs::write(admin.join("commondir"), "../..\n").unwrap();
         fs::write(wt.join(".git"), format!("gitdir: {}\n", admin.display())).unwrap();
-        assert_eq!(repo_identity(&wt), repo_key(&main));
-        assert_eq!(repo_identity(&main), repo_key(&main));
-        assert_eq!(repo_identity(&clone), repo_key(&clone));
+        // The temporary folder may be reached through a link (macOS) or a short 8.3 name
+        // (Windows), so the expected names are taken from the canonical folders.
+        let canonical = |p: &Path| plain(&fs::canonicalize(p).unwrap());
+        assert_eq!(repo_identity(&wt), repo_identity(&main));
+        assert_eq!(repo_identity(&main), repo_key(&canonical(&main)));
+        assert_eq!(repo_identity(&clone), repo_key(&canonical(&clone)));
         assert_ne!(repo_identity(&clone), repo_identity(&main));
         // A `.git` file that points nowhere leaves the checkout named after itself.
         fs::write(wt.join(".git"), "gitdir: nowhere\n").unwrap();
-        assert_eq!(repo_identity(&wt), repo_key(&wt));
+        assert_eq!(repo_identity(&wt), repo_key(&canonical(&wt)));
         fs::remove_dir_all(&base).unwrap();
     }
 
