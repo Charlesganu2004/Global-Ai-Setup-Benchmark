@@ -9,6 +9,10 @@
 //     function and has no import, require, file access, Date.now, Math.random or argless new Date,
 //   - its meta block is a pure literal whose phases are the phase names the script uses,
 //   - R6 sends byte for byte what RGS sends, in every setup and on both question sets,
+//   - the second batch of arms: R6V sends R6's text except for the command prefix, the reading rule and the
+//     folder; RN sends R6's text except for the prefix and the folder; no prompt of a virtual machine arm names
+//     a Windows path; the pack-only arm holds no command and its schema lets a field be unknown; every new id
+//     resolves through baseArm, also with the h suffix,
 //   - a pack arm's prompt holds its own pack and no other, a hub arm's prompt names its own bank and no
 //     other, and no two repeats of a hub cell share a bank,
 //   - a missing or stale pack, a missing run tag and the other mistakes stop the round before any agent
@@ -100,7 +104,7 @@ let compiled = null
 try { compiled = new AsyncFunction('args', 'agent', 'parallel', 'log', body) } catch (error) { expect(false, `the workflow does not parse as the body of an async function: ${error.message}`) }
 // The same body with a second return value, so that the questions and the helpers can be read out.
 const peeking = compiled && new AsyncFunction('args', 'agent', 'parallel', 'log', body.replace(RETURN,
-  'return { rep: REP, cells: done, inside: { Q, Q_B, Q_T, PACK_OF, HUB, SET_T, policy, baseArm, setOf, hasArm, bankOf, validName, sha256Text } }'))
+  'return { rep: REP, cells: done, inside: { Q, Q_B, Q_T, PACK_OF, HUB, SET_T, VM, WORDS, PACK_ONLY, REVIEW, TIER, policy, baseArm, setOf, hasArm, bankOf, validName, sha256Text } }'))
 
 // ---------------------------------------------------------------- a fake runtime
 
@@ -118,7 +122,7 @@ function fill(schema) {
 async function run(args) {
   const calls = []
   const agent = async (prompt, options) => {
-    calls.push({ prompt, label: options.label, phase: options.phase, model: options.model, effort: options.effort })
+    calls.push({ prompt, label: options.label, phase: options.phase, model: options.model, effort: options.effort, schema: options.schema })
     return fill(options.schema)
   }
   const parallel = async fns => Promise.all(fns.map(fn => fn()))
@@ -138,7 +142,19 @@ async function refused(args, pattern, what) {
 
 // ---------------------------------------------------------------- dummy data
 
-const BASE = { repo: 'C:\\path\\to\\lxbench\\repo', repoPlain: 'C:\\path\\to\\lxbench\\repo-noemb', repoTeam: 'C:\\path\\to\\lxbench\\repo-team', runTag: 'dry' }
+const BASE = {
+  repo: 'C:\\path\\to\\lxbench\\repo',
+  repoPlain: 'C:\\path\\to\\lxbench\\repo-noemb',
+  repoTeam: 'C:\\path\\to\\lxbench\\repo-team',
+  repoWords: 'C:\\path\\to\\lxbench\\repo-words',
+  wsl: { distro: 'Ubuntu', repo: '/home/USER/lxbench/repo', pgr: '/home/USER/lxbench/bin/pgr' },
+  runTag: 'dry',
+}
+const VARIANTS = ['gs', 'g', 's', 'n']
+// The second batch, written out here so that a broken table in the workflow cannot excuse itself.
+const VM_IDS = ['R6V', 'THV', 'TPHV']
+const WORDS_IDS = ['RN', 'TPN']
+const PACK_ONLY_IDS = ['TPX']
 const KEYS = ['q1', 'q2', 'q3']
 const sha = text => crypto.createHash('sha256').update(text, 'utf8').digest('hex')
 const tokensOf = text => Math.ceil(Buffer.byteLength(text, 'utf8') / 4)
@@ -146,7 +162,7 @@ const clone = value => JSON.parse(JSON.stringify(value))
 
 function dummyPacks(inside) {
   const packs = {}
-  for (const variant of ['gs', 'g', 's']) {
+  for (const variant of VARIANTS) {
     packs[variant] = {}
     for (const set of ['A', 'B']) {
       packs[variant][set] = {}
@@ -191,6 +207,8 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
   const loadouts = dummyLoadouts()
   const sums = sumsOf(packs, loadouts)
   const full = extra => ({ ...BASE, packs, loadouts, sums, ...extra })
+  const same = (table, ids) => JSON.stringify(Object.keys(table).sort()) === JSON.stringify(ids.slice().sort())
+  expect(same(inside.VM, VM_IDS) && same(inside.WORDS, WORDS_IDS) && same(inside.PACK_ONLY, PACK_ONLY_IDS), 'the virtual machine, words-only or pack-only table of the workflow is not the one this check knows')
 
   // ---- the arm ids
   const base = id => inside.baseArm(id)
@@ -203,7 +221,11 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
   let threw = ''
   try { inside.baseArm('XYh') } catch (error) { threw = error.message }
   expect(/there is no arm/.test(threw), 'an h suffix on an unknown arm is accepted')
-  for (const id of ['R6', 'TP', 'TPG', 'TPS', 'TH', 'TPH', 'T0', 'TL', 'TI']) expect(inside.hasArm(id), `${id} is not a registered arm`)
+  for (const id of ['R6', 'TP', 'TPG', 'TPS', 'TH', 'TPH', 'T0', 'TL', 'TI', 'R6V', 'THV', 'TPHV', 'RN', 'TPN', 'TPX']) expect(inside.hasArm(id), `${id} is not a registered arm`)
+  for (const id of ['R6V', 'THV', 'TPHV', 'RN', 'TPN', 'TPX']) {
+    expect(base(id) === id && base(id + 'h') === id && inside.setOf({ arm: id }) === 'A' && inside.setOf({ arm: id + 'h' }) === 'B', `${id} or ${id}h does not resolve through baseArm and setOf`)
+    expect(!inside.hasArm(id + 'h'), `${id}h is registered as an arm of its own`)
+  }
 
   // ---- R6 sends what RGS sends, in every setup and on both question sets
   const setups = ['single', 'parallel', 'orch', 'orch-notools', 'orch-mid', 'orch-low']
@@ -225,10 +247,38 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
   // single 1 agent, parallel 3, four orchestrated setups 5 each, on two sets
   expect(compared === (1 + 3 + 4 * 5) * 2, `compared ${compared} R6 prompts with RGS, expected 48`)
 
-  // ---- the two round six matrices
-  const matrices = { a: read('round6-a.json'), b: read('round6-b.json') }
+  // ---- R6V sends R6's text except for the command prefix, the reading rule and the folder; RN except for the prefix and the folder
+  const wslBase = BASE.wsl
+  const r6Start = `starts with:  Set-Location ${BASE.repo};`
+  const vmStart = `wsl -d ${wslBase.distro} --cd ${wslBase.repo} --exec ${wslBase.pgr}`
+  const vmLine = `starts with:  ${vmStart}   and goes on with the arguments of the command: this start stands in place of the word pgr in each command below. The repository and pgr are inside a virtual machine; nothing here runs on Windows.`
+  const r6Read = 'After a command answers, use the Read tool only on a line range it returned, and only when the answer needs it. Use Grep only when the listed commands return nothing useful.'
+  const vmRead = `To see code, print a line range that a command returned, only when the answer needs it, as one PowerShell call:  wsl -d ${wslBase.distro} --cd ${wslBase.repo} --exec sed -n "FIRST,LASTp" PATH  (PATH is relative to the repository). Do not use the Read, Grep or Glob tools at all.`
+  const asVm = text => text.split(BASE.repo).join(wslBase.repo).split(`starts with:  Set-Location ${wslBase.repo};`).join(vmLine).split(r6Read).join(vmRead)
+  const asWords = text => text.split(BASE.repo).join(BASE.repoWords).split(`starts with:  Set-Location ${BASE.repoWords};`).join(`starts with:  $env:PGR_NO_MODEL='1'; Set-Location ${BASE.repoWords};`)
+  expect(r6Start.length > 0 && twin.calls.some(call => call.prompt.includes(r6Start)), 'the prompt of R6 no longer has the line the VM arms replace')
+  const kin = await run(full({ matrix: ['single', 'parallel', 'orch', 'orch-mid', 'orch-low'].map(setup => ({ arms: ['R6', 'R6V', 'RN', 'R6h', 'R6Vh', 'RNh'], setup, tier: 'C', reps: ['r1'] })) }))
+  const kinByLabel = {}
+  for (const call of kin.calls) kinByLabel[call.label] = call
+  let kept = 0
+  for (const call of kin.calls) {
+    const [arm, ...rest] = call.label.split('|')
+    const mapped = { R6V: ['R6', asVm], R6Vh: ['R6h', asVm], RN: ['R6', asWords], RNh: ['R6h', asWords] }[arm]
+    if (!mapped || rest[2] === 'plan') continue
+    const other = kinByLabel[[mapped[0], ...rest].join('|')]
+    expect(!!other, `no R6 prompt to compare with ${call.label}`)
+    if (!other) continue
+    kept += 1
+    expect(mapped[1](other.prompt) === call.prompt, `the prompt of ${call.label} is not the prompt of ${other.label} with only the prefix${arm.startsWith('R6V') ? ', the reading rule' : ''} and the folder changed`)
+    expect(other.model === call.model && other.effort === call.effort, `the model of ${call.label} differs from ${other.label}`)
+  }
+  // per arm and set: single 1 agent, parallel 3, three orchestrated setups 4 each (the planner differs by its folder)
+  expect(kept === (1 + 3 + 3 * 4) * 2 * 2, `compared ${kept} VM and words-only prompts with R6, expected 64`)
+
+  // ---- the two round six matrices and the second batch
+  const matrices = { a: read('round6-a.json'), b: read('round6-b.json'), c: read('round6-c.json'), d: read('round6-d.json') }
   const everyCell = cellKeys(matrices.a).concat(cellKeys(matrices.b))
-  expect(new Set(everyCell).size === everyCell.length, 'a cell is in both matrices, or twice in one')
+  expect(new Set(everyCell).size === everyCell.length, 'a cell is in two matrices, or twice in one')
   const dump = {}
   const banks = []
   for (const [half, matrix] of Object.entries(matrices)) {
@@ -252,15 +302,21 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
       expect(agents.length === expected, `${key}: ${agents.length} agents, expected ${expected}`)
       const variant = inside.PACK_OF[id]
       const hub = !!inside.HUB[id]
+      const vm = VM_IDS.includes(id)
+      const words = WORDS_IDS.includes(id)
+      const packOnly = PACK_ONLY_IDS.includes(id)
       const bank = hub ? inside.bankOf({ arm, setup, tier, rep }) : null
       if (hub) banks.push(bank)
       for (const agent of agents) {
         const text = agent.prompt
         const where = agent.label
-        if (agent.role === 'plan') continue
+        if (agent.role === 'plan') {
+          if (vm) expect(text.includes(wslBase.repo) && !text.includes(BASE.repo), `${where}: the planner of a virtual machine arm is not pointed at the repository inside the VM`)
+          continue
+        }
         expect(!/undefined|NaN|\[object/.test(text.replace(/Subagent answers:[\s\S]*$/, '')), `${where}: the prompt holds undefined, NaN or [object`)
         // the packs: only the variant, set and questions this agent is meant to see
-        for (const v of ['gs', 'g', 's']) {
+        for (const v of VARIANTS) {
           for (const s of ['A', 'B']) {
             for (const q of KEYS) {
               const wanted = variant === v && s === set && (agent.role === 'all' || agent.role === 'verify' || agent.role === q || agent.role === 'w-' + q)
@@ -271,11 +327,32 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
         if (variant) {
           const labelled = agent.role === 'all' || agent.role === 'verify'
           expect(text.includes('Context looked up for you before you started (the harness ran pgr pack on the question; '), `${where}: the pack lead sentence is missing`)
-          expect(text.includes(' tokens). It may be all you need. Anything it does not show you may look up under the tool policy.\n'), `${where}: the pack trailer is missing`)
+          const trailer = packOnly ? ' tokens). It is all you have: you can look nothing up. Where it does not show a field, write unknown.\n' : ' tokens). It may be all you need. Anything it does not show you may look up under the tool policy.\n'
+          expect(text.includes(trailer), `${where}: the pack trailer is missing`)
           expect(labelled === /(^|\n)Q1\. Context looked up/.test(text), `${where}: the pack blocks ${labelled ? 'are not' : 'are'} labelled Q1 to Q3`)
           expect((text.match(/Context looked up for you/g) || []).length === (labelled ? 3 : 1), `${where}: wrong number of pack blocks`)
         } else {
           expect(!/Context looked up for you/.test(text), `${where}: a prompt without a pack holds one`)
+        }
+        // the second batch: the virtual machine, no neural network, no tool
+        if (vm) {
+          const rest = text.replace(/Subagent answers:[\s\S]*$/, '')
+          expect(rest.includes(`starts with:  ${vmStart}   and goes on`), `${where}: the wsl prefix is missing`)
+          expect(rest.includes(`--exec sed -n "FIRST,LASTp" PATH`) && rest.includes('Do not use the Read, Grep or Glob tools at all.'), `${where}: the reading rule of the VM is missing`)
+          expect(!/Set-Location/.test(rest) && !rest.includes('use the Read tool only'), `${where}: a virtual machine prompt keeps a Windows command or the Read tool rule`)
+          expect(!/(^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/mnt\/[a-z]\//.test(rest) && !rest.includes(BASE.repo) && rest.includes(`Repository under test: ${wslBase.repo} (`), `${where}: a virtual machine prompt names a Windows path or not the repository in the VM`)
+        }
+        if (words) {
+          expect(text.includes(`starts with:  $env:PGR_NO_MODEL='1'; Set-Location ${BASE.repoWords};`) && text.includes(`Repository under test: ${BASE.repoWords} (`), `${where}: the words-only prefix or folder is missing`)
+          expect(!text.split(BASE.repoWords).join('').includes(BASE.repo), `${where}: a words-only prompt names the main fixture`)
+        } else {
+          expect(!/PGR_NO_MODEL/.test(text), `${where}: a prompt of an arm that keeps the neural network mentions PGR_NO_MODEL`)
+        }
+        if (packOnly) {
+          expect(text.includes('No lookup command is allowed: you have no tool in this run') && !/Set-Location|pgr ask|wsl |Allowed shell commands/.test(text), `${where}: the pack-only prompt holds a command`)
+          expect(agent.phase === 'Single' && JSON.stringify(agent.schema).includes('write unknown'), `${where}: the schema of the pack-only arm does not let a field be unknown`)
+        } else {
+          expect(!/write unknown/.test(JSON.stringify(agent.schema || {})), `${where}: only the pack-only arm may answer unknown`)
         }
         // set T
         if (set === 'T') {
@@ -305,7 +382,7 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
       }
     }
   }
-  expect(banks.length === 4 * 3, `${banks.length} hub cells, expected 12 (TH, THh, TPH and TPHh with three repeats)`)
+  expect(banks.length === 8 * 3, `${banks.length} hub cells, expected 24 (TH, THh, TPH, TPHh, THV, THVh, TPHV and TPHVh with three repeats)`)
   expect(new Set(banks).size === banks.length, 'two hub cells share a bank name')
   expect(banks.every(name => /^[A-Za-z0-9._-]{1,64}$/.test(name) && name === name.toLowerCase()), 'a bank name breaks the name rule or is not lower case')
   expect(banks.every(name => inside.validName(name)), 'validName refuses a bank name that was built')
@@ -331,6 +408,38 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
   await refused(full({ matrix: [{ arms: ['TI'], setup: 'single', tier: 'C', reps: ['r1'] }], loadouts: { ...loadouts, q2: { ...loadouts.q2, task: 'other-task' } } }), /which the question does not name/, 'a loadout of another task')
   await refused(full({ matrix: [{ arms: ['TH'], setup: 'orch', tier: 'C', reps: ['a repeat name that is far too long to ever fit into a sixty four character bank name'] }] }), /not valid/, 'a repeat name that breaks the bank name rule')
   await refused(full({ matrix: hubCell, teamBank: 'bad/name' }), /not a valid bank name/, 'a bad team bank')
+  const vmCell = [{ arms: ['R6V'], setup: 'single', tier: 'C', reps: ['r1'] }]
+  await refused(full({ matrix: vmCell, wsl: undefined }), /need args\.wsl/, 'a VM arm without args.wsl')
+  await refused(full({ matrix: vmCell, wsl: { distro: 'Ubuntu', repo: '/home/u/my repo', pgr: '/home/u/pgr' } }), /need args\.wsl/, 'a VM folder with a space')
+  await refused(full({ matrix: vmCell, wsl: { distro: 'Ubuntu', repo: 'C:\\x\\repo', pgr: '/home/u/pgr' } }), /need args\.wsl/, 'a Windows path as the repository in the VM')
+  await refused(full({ matrix: vmCell, wsl: { distro: 'Ubu ntu', repo: '/home/u/repo', pgr: '/home/u/pgr' } }), /need args\.wsl/, 'a distribution name with a space')
+  await refused(full({ matrix: [{ arms: ['RN'], setup: 'single', tier: 'C', reps: ['r1'] }], repoWords: undefined }), /need args\.repoWords/, 'a words-only arm without repoWords')
+  await refused(full({ matrix: [{ arms: ['TPN'], setup: 'single', tier: 'C', reps: ['r1'] }], packs: { gs: packs.gs } }), /no pack for variant n, set A/, 'TPN without the words-only packs')
+  await refused(full({ matrix: [{ arms: ['TPX'], setup: 'orch', tier: 'C', reps: ['r1'] }] }), /asked of one agent only/, 'the pack-only arm orchestrated')
+  await refused(full({ matrix: [{ arms: ['THV'], setup: 'single', tier: 'C', reps: ['r1'] }] }), /hub arms run orchestrated/, 'a hub arm of the VM in the single setup')
+  await refused(full({ matrix: [{ arms: ['THV', 'THV'], setup: 'orch', tier: 'C', reps: ['r1'] }] }), /belongs to another cell/, 'two VM cells with one bank')
+  await refused(full({ matrix: [{ arms: ['R6V'], setup: 'orch', tier: 'C', reps: ['r1'] }], briefs: { q1: 'look in C:\\other\\x.py', q2: 'b', q3: 'c' } }), /names a Windows path/, 'a shared brief that names a Windows path, for a VM arm')
+  // The fixture's own folder in a shared brief is rewritten to the folder in the VM, so a VM worker never sees a Windows path.
+  const withPath = await run(full({ matrix: [{ arms: ['THV'], setup: 'orch', tier: 'C', reps: ['r1'] }], briefs: { q1: `look in ${BASE.repo}/x.py`, q2: 'b', q3: 'c' } }))
+  const workerOne = withPath.calls.find(call => call.label.endsWith('|w-q1|r1'))
+  expect(!!workerOne && workerOne.prompt.includes(`look in ${wslBase.repo}/x.py`) && !workerOne.prompt.includes(BASE.repo), 'a shared brief that names the fixture is not rewritten for a VM worker')
+  // A brief the planner of a VM cell writes itself that names a Windows folder stops that cell, not the round.
+  const stray = await peeking(full({ matrix: [{ arms: ['THVh'], setup: 'orch', tier: 'C', reps: ['r1'] }] }), async (prompt, options) => {
+    return options.label.includes('|plan|') ? { q1: 'see D:\\other\\x.py', q2: 'b', q3: 'c' } : fill(options.schema)
+  }, async fns => Promise.all(fns.map(fn => fn())), () => {})
+  expect(stray.cells[0].failed === 'plan:windows-path' && stray.cells[0].answer === null, 'a planner brief that names a Windows folder does not stop the VM cell')
+  // The forward-slash spelling of a Windows folder is a Windows path too, and the fixture's own folder is rewritten in all three spellings.
+  await refused(full({ matrix: [{ arms: ['THV'], setup: 'orch', tier: 'C', reps: ['r1'] }], briefs: { q1: 'look in D:/other/x.py', q2: 'b', q3: 'c' } }), /names a Windows path/, 'a shared brief with a forward-slash Windows path, for a VM arm')
+  const slashed = BASE.repo.replace(/\\/g, '/')
+  const bashed = BASE.repo.replace(/^([A-Za-z]):/, (all, drive) => '/' + drive.toLowerCase()).replace(/\\/g, '/')
+  const spelled = await run(full({ matrix: [{ arms: ['THV'], setup: 'orch', tier: 'C', reps: ['r1'] }], briefs: { q1: `look in ${slashed}/x.py and ${bashed}/y.py, not in http://example.test/z`, q2: 'b', q3: 'c' } }))
+  const workerSpelled = spelled.calls.find(call => call.label.endsWith('|w-q1|r1'))
+  expect(!!workerSpelled && workerSpelled.prompt.includes(`look in ${wslBase.repo}/x.py and ${wslBase.repo}/y.py, not in http://example.test/z`), 'a shared brief that names the fixture with forward slashes or as /c/... is not rewritten for a VM worker')
+  const strayForward = await peeking(full({ matrix: [{ arms: ['THVh'], setup: 'orch', tier: 'C', reps: ['r1'] }] }), async (prompt, options) => {
+    return options.label.includes('|plan|') ? { q1: 'see D:/other/x.py', q2: 'b', q3: 'c' } : fill(options.schema)
+  }, async fns => Promise.all(fns.map(fn => fn())), () => {})
+  expect(strayForward.cells[0].failed === 'plan:windows-path' && strayForward.cells[0].answer === null, 'a planner brief with a forward-slash Windows folder does not stop the VM cell')
+
   // ---- the args travel through the orchestrating model: a text that was cut, changed or moved is found before any agent starts
   const checksum = /does not match its checksum|has no checksum/
   const cell = (arm, setup = 'single') => [{ arms: [arm], setup, tier: 'C', reps: ['r1'] }]
@@ -345,6 +454,7 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
   await tampered('a pack cut to its first 20 characters', cell('TP'), g => { g.packs.gs.A.q2.output = g.packs.gs.A.q2.output.slice(0, 20); retoken(g.packs.gs.A.q2) })
   await tampered('two packs swapped', cell('TPGh'), g => { const one = g.packs.g.B.q3; g.packs.g.B.q3 = g.packs.s.B.q3; g.packs.s.B.q3 = one })
   await tampered('a pack of set B replaced by the text of set A', cell('TPh'), g => { g.packs.gs.B.q1 = { ...clone(g.packs.gs.A.q1), question: inside.Q_B.q1 } })
+  await tampered('a caller line dropped from a words-only pack', cell('TPN'), g => { g.packs.n.A.q1.output = g.packs.n.A.q1.output.replace('\n<-- caller_two a/d.py:5-6', ''); retoken(g.packs.n.A.q1) })
   await tampered('a ticket changed in a loadout', cell('TI'), g => { g.loadouts.q1.output = g.loadouts.q1.output.replace('BLD-9999', 'BLD-9990'); retoken(g.loadouts.q1) })
   await tampered('a stale mark dropped from a loadout', cell('TI'), g => { g.loadouts.q2.output = g.loadouts.q2.output.replace(', stale: code changed', ''); retoken(g.loadouts.q2) })
   await tampered('a checksum left out', cell('TP'), g => { delete g.sums['packs/gs/A/q2'] })
@@ -368,7 +478,7 @@ const cellKeys = matrix => matrix.flatMap(block => block.reps.flatMap(rep => blo
   expect(inside.policy('TH', { bank: 'BANK', task: 'lookups', role: 'worker' }).includes('pgr --bank BANK --task lookups --from scout handoff'), 'policy() does not use the hub it is given')
 
   if (flag('--dump')) fs.writeFileSync(flag('--dump'), JSON.stringify(dump, null, 1))
-  if (flag('--inside')) fs.writeFileSync(flag('--inside'), JSON.stringify({ Q: inside.Q, Q_B: inside.Q_B, Q_T: inside.Q_T, PACK_OF: inside.PACK_OF, HUB: inside.HUB, SET_T: inside.SET_T }, null, 1))
+  if (flag('--inside')) fs.writeFileSync(flag('--inside'), JSON.stringify({ Q: inside.Q, Q_B: inside.Q_B, Q_T: inside.Q_T, PACK_OF: inside.PACK_OF, HUB: inside.HUB, SET_T: inside.SET_T, VM: inside.VM, WORDS: inside.WORDS, PACK_ONLY: inside.PACK_ONLY, REVIEW: inside.REVIEW, TIER: inside.TIER }, null, 1))
   if (flag('--args')) {
     // The args file that round6_args.py wrote: the workflow must accept it and start every cell.
     const given = JSON.parse(fs.readFileSync(flag('--args'), 'utf8'))

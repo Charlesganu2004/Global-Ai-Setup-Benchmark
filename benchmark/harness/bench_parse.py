@@ -29,6 +29,7 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+import posixpath
 import re
 import sys
 
@@ -78,10 +79,15 @@ NOTE_FIELDS = {"q1.ticket", "q1.may_rename", "q2.status", "q2.filed_by", "q3.rol
 TRUTHS = {"A": TRUTH, "B": TRUTH_B, "T": TRUTH_T}
 
 # Round six arms. TH and TPH add the hub (`pgr handoff` and `pgr loadout`), the arms with P in
-# the name put a `pgr pack` in the prompt, T0, TL and TI ask set T.
-TEAM_ARMS = {"R6", "TP", "TPG", "TPS", "TH", "TPH", "T0", "TL", "TI"}
+# the name put a `pgr pack` in the prompt, T0, TL and TI ask set T. The second batch: R6V, THV and TPHV
+# run the same commands inside a WSL 2 virtual machine, RN and TPN search with words only (PGR_NO_MODEL=1),
+# TPX has the pack in its prompt and no tool.
+TEAM_ARMS = {"R6", "TP", "TPG", "TPS", "TH", "TPH", "T0", "TL", "TI", "R6V", "THV", "TPHV", "RN", "TPN", "TPX"}
 SET_T_ARMS = {"T0", "TL", "TI"}
-HUB_ARMS = {"TH", "TPH"}          # the subagents file with handoff, the reviewer starts from loadout
+HUB_ARMS = {"TH", "TPH", "THV", "TPHV"}   # the subagents file with handoff, the reviewer starts from loadout
+VM_ARMS = {"R6V", "THV", "TPHV"}          # every command runs inside the virtual machine, behind `wsl ... --exec`
+WORDS_ARMS = {"RN", "TPN"}                # each call starts with $env:PGR_NO_MODEL='1';
+PACK_ONLY_ARMS = {"TPX"}                  # no tool at all
 TEAM_BANK_ARMS = {"TL", "TI"}     # loadout and recall on the team bank
 HUB_COMMANDS = ("handoff", "loadout", "recall")
 # What pgr prints when it refuses a command line, as pgr 0.1 does for every hub command; each form ends with this hint.
@@ -118,6 +124,9 @@ ALLOWED = {   # first word of a shell command each arm may run
     "SB": {"lx"}, "HB": {"lx"},
     # Round six: R6 starts with R and a digit, so the pgr rule in allowed_words does not see it.
     **{arm: {"pgr"} for arm in TEAM_ARMS},
+    # A virtual machine arm runs `wsl ... --exec pgr` and `wsl ... --exec sed`; a pack-only arm runs nothing.
+    **{arm: {"wsl", "wsl.exe"} for arm in VM_ARMS},
+    **{arm: set() for arm in PACK_ONLY_ARMS},
 }
 # Arms told to read code through token-goat, never the Read tool.
 NO_READ_TOOL = {"C9", "C15"}
@@ -240,11 +249,15 @@ def grade(question: str, answer, which: str = "A") -> float | None:
                 bare(answer.get(fourth)) in accepted]) / 4
 
 
-def first_word(command: str) -> str:
-    """The program a shell call really runs, past the `Set-Location ...;` prefix."""
+ENV_SET = re.compile(r"\$env:\w+\s*=")
+
+
+def first_word(command: str, env: bool = False) -> str:
+    """The program a shell call really runs, past the `Set-Location ...;` prefix. With `env`, also past
+    `$env:NAME='value';` statements, which the arms without the neural network put first."""
     for part in re.split(r"[;\n]|&&", command):
         part = part.strip().lstrip("&").strip()
-        if not part or re.match(r"(?i)(set-location|cd|push-location|pop-location)\b", part):
+        if not part or re.match(r"(?i)(set-location|cd|push-location|pop-location)\b", part) or (env and ENV_SET.match(part)):
             continue
         # A quoted text piped into a program ('a finding' | pgr handoff -) runs the program after the pipe.
         piped = re.match(r"""(?:"[^"]*"|'[^']*')\s*\|\s*(\S.*)""", part, re.S)
@@ -322,17 +335,71 @@ def pipe_segments(statement: str) -> list[str]:
     return [part.strip() for part in parts if part.strip()]
 
 
-def pgr_call(statement: str) -> tuple[str, str] | None:
+# The options of wsl.exe that take a value.
+WSL_VALUE_FLAGS = {"-d", "--distribution", "--cd", "-u", "--user"}
+
+
+def wsl_call(found: list[str]) -> tuple[str | None, list[str]]:
+    """(the --cd value or None, the program and arguments after `--exec` or `-e`) of a wsl call whose words are
+    `found`; the program is empty when the call does not start one directly (`wsl bash`, `wsl -- pgr ...`,
+    `wsl` alone)."""
+    cd, at = None, 1
+    while at < len(found):
+        if found[at] in ("--exec", "-e"):
+            return cd, found[at + 1:]
+        if found[at] == "--":
+            return cd, []
+        if found[at] == "--cd" and at + 1 < len(found):
+            cd = found[at + 1]
+        at += 2 if found[at] in WSL_VALUE_FLAGS else 1
+    return cd, []
+
+
+def reaches_windows(base: str, word: str) -> bool:
+    """Whether one word of a call inside the VM names a place on the Windows drives: a drive letter, a /mnt/
+    path (also behind an option, `--root=/mnt/c/x`) or a relative path that climbs there from `base`."""
+    if re.match(r"[A-Za-z]:[\\/]", word) or re.search(r"(?:^|[=:,])/mnt/[a-z](?:/|$)", word):
+        return True
+    if "/" in word or word in (".", ".."):
+        resolved = posixpath.normpath(posixpath.join(base, word))
+        return resolved == "/mnt" or resolved.startswith("/mnt/")
+    return False
+
+
+def leaves_vm(cd: str | None, program: list[str]) -> bool:
+    """Whether a wsl call reaches out of the virtual machine: it starts in a folder that is not a Linux one
+    (no --cd leaves wsl in the Windows folder of the caller, shown under /mnt/), it runs a Windows executable,
+    or one of its words names a place on the Windows drives."""
+    if cd is None or not (cd.startswith("/") or cd == "~" or cd.startswith("~/")) or "\\" in cd:
+        return True
+    base = cd if cd.startswith("/") else "/home/_" + cd[1:]      # the home folder of the VM user, whatever its name
+    if reaches_windows("/", base) or (program and program[0].lower().endswith(".exe")):
+        return True
+    return any(reaches_windows(base, word) for word in program)
+
+
+def pgr_call(statement: str, vm: bool = False) -> tuple[str, str] | None:
     """(command, bank) of a statement that runs pgr, else None. The command is the first word after
     pgr's own flags ("ask", "loadout", ...), empty for `pgr --version`; the bank is the --bank value.
     Either side of a pipe may be the pgr call: `pgr ask x | Select-Object -First 5` and
-    `'a finding' | pgr handoff -` both run pgr."""
+    `'a finding' | pgr handoff -` both run pgr. Behind a wsl prefix (`wsl -d D --cd R --exec /x/pgr ask ...`)
+    the program after --exec is the one that counts; a Windows program reached through wsl is not pgr here.
+    With `vm` (an arm that runs in the virtual machine) only the wsl form counts: a bare Windows pgr is no
+    lookup of the VM."""
     for segment in pipe_segments(statement):
         found = [word for word in words(segment) if word != "&"]
         if not found:
             continue
         head = found[0].lstrip("&")
         stem = pathlib.PureWindowsPath(head).stem.lower() if ("\\" in head or "/" in head) else head.lower().removesuffix(".exe")
+        if stem == "wsl":
+            cd, found = wsl_call(found)
+            if not found or leaves_vm(cd, found):
+                continue
+            head = found[0]
+            stem = pathlib.PurePosixPath(head).name.lower()
+        elif vm:
+            continue
         if stem != "pgr":
             continue
         bank, at = "", 1
@@ -346,9 +413,10 @@ def pgr_call(statement: str) -> tuple[str, str] | None:
     return None
 
 
-def team_counts(commands: list[str], row: dict, refusals: list[bool] | None = None) -> dict:
+def team_counts(commands: list[str], row: dict, refusals: list[bool] | None = None, vm: bool = False) -> dict:
     """What a round six agent did with the engine, from the shell calls it made. `refusals` says, for each
     call, whether pgr answered it with a usage error: such a call did nothing, so it is counted nowhere.
+    `vm` is true for an arm that runs in the virtual machine: only its `wsl ... --exec pgr` calls are pgr calls.
 
     pgr_lookups: pgr statements that look something up (ask, about, find, ...).
     hub_calls:   pgr statements of the hub, by command: handoff, loadout, recall.
@@ -363,9 +431,9 @@ def team_counts(commands: list[str], row: dict, refusals: list[bool] | None = No
         refused = bool(refusals and refusals[number])
         kinds = []
         for statement in statements(command):
-            call = pgr_call(statement)
+            call = pgr_call(statement, vm)
             if call is None:
-                kinds.append("nav" if re.match(r"(?i)(set-location|cd|push-location|pop-location)\b", statement) else "other")
+                kinds.append("nav" if re.match(r"(?i)(set-location|cd|push-location|pop-location)\b", statement) or ENV_SET.match(statement) else "other")
                 continue
             sub, bank = call
             if not refused:
@@ -382,10 +450,54 @@ def team_counts(commands: list[str], row: dict, refusals: list[bool] | None = No
             "banks": sorted(banks)}
 
 
-def refused_calls(commands: list[str], refusals: list[bool]) -> int:
+def refused_calls(commands: list[str], refusals: list[bool], vm: bool = False) -> int:
     """How many shell calls that run pgr got a usage error back."""
     return sum(1 for command, refused in zip(commands, refusals)
-               if refused and any(pgr_call(statement) for statement in statements(command)))
+               if refused and any(pgr_call(statement, vm) for statement in statements(command)))
+
+
+# PowerShell cmdlets that only shape or hand on text: a pipe into one of these, or out of a quoted text, stays
+# on the side of the call that wsl made.
+PS_FILTERS = {"select-object", "select", "out-string", "out-host", "out-null", "measure-object", "measure", "sort-object", "sort",
+              "where-object", "where", "foreach-object", "format-table", "ft", "format-list", "fl", "select-string", "sls",
+              "tee-object", "write-output", "echo", "%", "?"}
+NAV_STATEMENT = re.compile(r"(?i)(set-location|cd|push-location|pop-location)\b")
+
+
+def vm_flags(commands: list[str]) -> list[str]:
+    """What a virtual machine arm did that its prompt does not allow, beyond the shell-word rule (which lists
+    the program a call starts with as `shell:NAME` when it is not wsl): `wsl:no-exec` (a wsl call that does not
+    start a program directly), `wsl:other-command` (a program inside the VM that is neither pgr nor sed) and
+    `wsl:leaves-vm`. That last one is every way out of the VM: a Windows program or a path on the Windows drives
+    reached through wsl, a wsl call with no Linux --cd, and any statement or pipe stage of the call that is not a
+    wsl call (a Windows pgr or Get-Content after a `;` is as much a way out as one at the start of the call)."""
+    found = set()
+    for command in commands:
+        for statement in statements(command):
+            if NAV_STATEMENT.match(statement) or ENV_SET.match(statement):
+                continue
+            wsl_calls = 0
+            for segment in pipe_segments(statement):
+                given = [word for word in words(segment) if word != "&"]
+                head = given[0].lstrip("&") if given else ""
+                stem = pathlib.PureWindowsPath(head).stem.lower() if ("\\" in head or "/" in head) else head.lower().removesuffix(".exe")
+                if stem == "wsl":
+                    wsl_calls += 1
+                    cd, program = wsl_call(given)
+                    if not program:
+                        found.add("wsl:no-exec")
+                        continue
+                    if leaves_vm(cd, program):
+                        found.add("wsl:leaves-vm")
+                    if pathlib.PurePosixPath(program[0]).name.lower().removesuffix(".exe") not in ("pgr", "sed"):
+                        found.add("wsl:other-command")
+                elif segment.startswith(("'", '"')):
+                    continue        # a quoted text piped into the call, the finding that handoff files
+                elif stem not in PS_FILTERS or any(re.match(r"[A-Za-z]:[\\/]", word) or "/mnt/" in word for word in given[1:]):
+                    found.add("wsl:leaves-vm")
+            if not wsl_calls:
+                found.add("wsl:leaves-vm")
+    return sorted(found)
 
 
 def hub_policy(arm: str, setup: str, tier: str, role: str, rep: str, row: dict) -> list[str]:
@@ -447,7 +559,7 @@ def count_hook_row(note: dict, hooks: dict) -> None:
     hooks["hook_denials"] += specific.get("permissionDecision") == "deny" or said.get("decision") == "block"
 
 
-def read_agent(path: pathlib.Path) -> dict:
+def read_agent(path: pathlib.Path, arm: str = "") -> dict:
     usage, calls, results, stamps, model = {}, {}, {}, [], ""
     refused = set()     # ids of the tool calls whose result was a pgr usage error
     hooks = dict(hook_calls=0, hook_rewrites=0, hook_denials=0, hook_notes=0, hook_redactions=0)
@@ -540,7 +652,7 @@ def read_agent(path: pathlib.Path) -> dict:
         returned += results.get(call_id, 0)
         command = given.get("command") if isinstance(given, dict) else None
         if isinstance(command, str):
-            word = first_word(command)
+            word = first_word(command, base_arm(arm) in WORDS_ARMS)
             shell[word] = shell.get(word, 0) + 1
             commands.append(command)
             refusals.append(call_id in refused)
@@ -555,14 +667,19 @@ def read_agent(path: pathlib.Path) -> dict:
                 answer=answer, seconds=seconds, began=min(stamps) if stamps else "", commands=commands, refusals=refusals, **hooks)
 
 
-HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb|-mem-orient|-mem|-team)?)[\\/]*")
+HOME_PATH = re.compile(r"(?i)[a-z]:[\\/]+users[\\/]+[^\\/\"']+[\\/]+(?:[^\\/\"']+[\\/]+)*?(lxbench[\\/]+repo(?:-noemb|-mem-orient|-mem|-team|-words)?)[\\/]*")
+
+
+VM_PATH = re.compile(r"/home/[^/\"'\s]+/(?:[^/\"'\s]+/)*?repo(?![\w.-])/*")
 
 
 def portable(value):
     """An answer with the machine's own folders cut off the front of any path in
-    it, so `C:\\Users\\name\\...\\lxbench\\repo\\hooks.py` is stored as `hooks.py`."""
+    it, so `C:\\Users\\name\\...\\lxbench\\repo\\hooks.py` is stored as `hooks.py`. The copy of the
+    fixture inside the virtual machine (`/home/name/lxbench/repo/hooks.py`, or under whatever folder prepare_wsl.py
+    was given as --vm-dir) is cut the same way."""
     if isinstance(value, str):
-        return HOME_PATH.sub("", value)
+        return VM_PATH.sub("", HOME_PATH.sub("", value))
     if isinstance(value, list):
         return [portable(item) for item in value]
     if isinstance(value, dict):
@@ -572,10 +689,10 @@ def portable(value):
 
 def off_policy(arm: str, row: dict, setup: str = "", role: str = "") -> list[str]:
     """Tool use the arm's policy did not allow."""
-    if setup == "orch-notools" and role == "verify":
-        # This reviewer is told to call nothing but the structured output.
-        return sorted(row["tools"])
     base = base_arm(arm)
+    if (setup == "orch-notools" and role == "verify") or base in PACK_ONLY_ARMS:
+        # This reviewer, and the pack-only arm, are told to call nothing but the structured output.
+        return sorted(row["tools"])
     found = [f"shell:{word}" for word in row["shell"] if word not in allowed_words(base)]
     if base == "A0" and row["shell"]:
         found = [f"shell:{word}" for word in row["shell"]]
@@ -584,6 +701,9 @@ def off_policy(arm: str, row: dict, setup: str = "", role: str = "") -> list[str
             found.append(name)
         elif name == "Read" and base in NO_READ_TOOL:
             found.append("Read")
+        elif name in ("Read", "Grep", "Glob") and base in VM_ARMS:
+            # A virtual machine arm prints code with sed inside the VM; these tools would read the Windows files.
+            found.append(name)
     return found
 
 
@@ -601,7 +721,7 @@ def read_folders(folders: list[pathlib.Path]) -> list[dict]:
             if not log.exists():
                 continue
             arm, setup, tier, role, rep = bits
-            row = read_agent(log)
+            row = read_agent(log, arm)
             commands, refusals = row.pop("commands"), row.pop("refusals")
             # The callers this agent's own answer to question 1 left out: None when it was not asked
             # (and for set T, whose first question is not about callers).
@@ -613,8 +733,10 @@ def read_folders(folders: list[pathlib.Path]) -> list[dict]:
             row.update(arm=arm, setup=setup, tier=tier, role=role, rep=rep, run=folder.name, set=which,
                        off_policy=off_policy(arm, row, setup, role), answer=portable(row["answer"]))
             if is_team(arm):
-                row.update(team_counts(commands, row, refusals))
-                flags = hub_policy(arm, setup, tier, role, rep, row) + (["pgr:usage-error"] if refused_calls(commands, refusals) else [])
+                in_vm = base_arm(arm) in VM_ARMS
+                row.update(team_counts(commands, row, refusals, in_vm))
+                flags = (hub_policy(arm, setup, tier, role, rep, row) + (["pgr:usage-error"] if refused_calls(commands, refusals, in_vm) else [])
+                         + (vm_flags(commands) if in_vm else []))
                 row["off_policy"] = sorted(set(row["off_policy"]) | set(flags))
             agents.append(row)
 

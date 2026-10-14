@@ -201,9 +201,51 @@ ARMS.TL = [PGR_ASK, PGR_TEAM_LOADOUT, PGR_TEAM_RECALL]
 ARMS.TI = [PGR_ASK, PGR_TEAM_LOADOUT, PGR_TEAM_RECALL]
 for (const arm of ['T0', 'TL', 'TI']) REPO_OF[arm] = REPO_TEAM
 // What an arm adds to R6: the variant of pack in its prompts, the hub, the set it asks.
-const PACK_OF = { TP: 'gs', TPG: 'g', TPS: 's', TPH: 'gs' }
-const HUB = { TH: true, TPH: true }
+const PACK_OF = { TP: 'gs', TPG: 'g', TPS: 's', TPH: 'gs', TPHV: 'gs', TPN: 'n', TPX: 'gs' }
+const HUB = { TH: true, TPH: true, THV: true, TPHV: true }
 const SET_T = { T0: true, TL: true, TI: true }
+
+// Round six, more arms (ROUND6.md, steps 10 to 14): three more kinds of combination.
+//   V  the tools run inside a WSL 2 virtual machine. The agent stays in this harness, but the copy of the
+//      fixture, the Linux build of pgr and the hub bank are inside the VM (args.wsl = {distro, repo, pgr},
+//      prepare_wsl.py makes them). R6V is R6's commands there, THV is TH there, TPHV is TPH there. Every
+//      pgr call starts with `wsl -d DISTRO --cd REPO --exec PGR`, and code is printed with sed in the VM.
+//   N  no neural network. pgr's only neural part is its embedding table, and PGR_NO_MODEL=1 makes it work
+//      with words only. RN is R6's commands on args.repoWords, a copy of the fixture whose index was built
+//      that way; TPN also puts a pack built that way in the prompt (variant n of args.packs).
+//   X  pack only. TPX gets the pack of TP and may call no tool at all; it may say a field is unknown.
+const WSL = (args && args.wsl) || { distro: 'Ubuntu', repo: '/home/USER/lxbench/repo', pgr: '/home/USER/lxbench/bin/pgr' }
+const REPO_WORDS = (args && args.repoWords) || 'C:\\path\\to\\lxbench\\repo-words'
+const VM = { R6V: true, THV: true, TPHV: true }
+const WORDS = { RN: true, TPN: true }
+const PACK_ONLY = { TPX: true }
+ARMS.R6V = ARMS.RGS
+ARMS.THV = [PGR_ASK]
+ARMS.TPHV = [PGR_ASK]
+ARMS.RN = ARMS.RGS
+ARMS.TPN = [PGR_ASK]
+ARMS.TPX = []
+for (const arm of Object.keys(VM)) REPO_OF[arm] = WSL.repo
+for (const arm of Object.keys(WORDS)) REPO_OF[arm] = REPO_WORDS
+const WSL_START = `wsl -d ${WSL.distro} --cd ${WSL.repo} --exec ${WSL.pgr}`
+const WSL_SED = `wsl -d ${WSL.distro} --cd ${WSL.repo} --exec sed -n "FIRST,LASTp" PATH`
+const NO_MODEL_START = "$env:PGR_NO_MODEL='1'; "
+const NO_LOOKUP = 'No lookup command is allowed: you have no tool in this run, not a shell command, not Read, Grep or Glob, no Agent tool and no web tool.'
+// TPX may not look anything up, so its answer schemas let it say that a field is unknown.
+const UNKNOWN = 'If the context does not show it, write unknown (0 for a line number, an empty list for a list).'
+function unknownable(schema) {
+  const copy = JSON.parse(JSON.stringify(schema))
+  const walk = node => {
+    if (node.properties) for (const key of Object.keys(node.properties)) walk(node.properties[key])
+    else node.description = (node.description ? node.description + '. ' : '') + UNKNOWN
+  }
+  walk(copy)
+  return copy
+}
+// A path on the Windows drives, in any spelling: C:\x, C:/x or /mnt/c/x (a letter before the colon makes it a drive, so http:// is not one).
+const WINDOWS_PATH = /(^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/mnt\/[a-z]\//
+// The fixture's folder as a brief may spell it (C:\x\repo, C:/x/repo, /c/x/repo), rewritten to the copy inside the VM.
+const inVm = text => [REPO, REPO.replace(/\\/g, '/'), posix(REPO)].reduce((all, spelling) => all.split(spelling).join(WSL.repo), text)
 
 // Held-out questions. The builders of pgr saw questions q1 to q3 (set A), so a
 // second set B exists that nobody tuned for. An arm id plus "h" runs that arm's
@@ -240,6 +282,17 @@ const REVIEW = {
 function policy(armId, hub) {
   const arm = baseArm(armId)
   const repo = REPO_OF[arm] || REPO
+  // The pack-only arm has no tool and no repository to name.
+  if (PACK_ONLY[arm]) {
+    return [
+      'This is one run of a benchmark that measures how many tokens a code lookup costs.',
+      'The questions are about a Python repository of 86 files. You cannot look at it in this run.',
+      '',
+      `TOOL POLICY FOR THIS RUN. It replaces the local-index and read-gate rules (section 6) and any token-goat gate in your global instructions. ${NO_LOOKUP}`,
+      'Answer from the context that follows the questions. Where it does not show a field, write unknown (0 for a line number, an empty list for a list).',
+      'Be exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.',
+    ].join('\n')
+  }
   const lines = [
     'This is one run of a benchmark that measures how many tokens a code lookup costs.',
     `Repository under test: ${repo} (Python, 86 files). It is read-only: never edit, create or delete anything in it, and never build or refresh an index.${hub ? ' The hub commands write to a note bank outside the repository; that is allowed.' : ''}`,
@@ -251,12 +304,16 @@ function policy(armId, hub) {
   } else {
     lines.push(VIA_BASH[arm]
       ? `Allowed shell commands. Run each as one call of the Bash tool (not PowerShell) that starts with:  cd ${posix(repo)} &&`
-      : `Allowed shell commands. Run each as one PowerShell call that starts with:  Set-Location ${repo};`)
+      : VM[arm]
+        ? `Allowed shell commands. Run each as one PowerShell call that starts with:  ${WSL_START}   and goes on with the arguments of the command: this start stands in place of the word pgr in each command below. The repository and pgr are inside a virtual machine; nothing here runs on Windows.`
+        : `Allowed shell commands. Run each as one PowerShell call that starts with:  ${WORDS[arm] ? NO_MODEL_START : ''}Set-Location ${repo};`)
     for (const command of ARMS[arm]) lines.push('  ' + command)
     if (hub) lines.push('  ' + (hub.role === 'reviewer' ? hubLoadout(hub.bank, hub.task) : hubHandoff(hub.bank, hub.task)))
-    lines.push(READ_VIA_TOKEN_GOAT[arm]
-      ? 'To see code, use token-goat read on a symbol a command returned, and only when the answer needs it. Do not use the Read tool. Use Grep only when the listed commands return nothing useful.'
-      : 'After a command answers, use the Read tool only on a line range it returned, and only when the answer needs it. Use Grep only when the listed commands return nothing useful.')
+    lines.push(VM[arm]
+      ? `To see code, print a line range that a command returned, only when the answer needs it, as one PowerShell call:  ${WSL_SED}  (PATH is relative to the repository). Do not use the Read, Grep or Glob tools at all.`
+      : READ_VIA_TOKEN_GOAT[arm]
+        ? 'To see code, use token-goat read on a symbol a command returned, and only when the answer needs it. Do not use the Read tool. Use Grep only when the listed commands return nothing useful.'
+        : 'After a command answers, use the Read tool only on a line range it returned, and only when the answer needs it. Use Grep only when the listed commands return nothing useful.')
     if (hub) lines.push(hub.role === 'reviewer' ? HUB_REVIEWER_RULE : HUB_WORKER_RULE)
   }
   lines.push('Be exact and do not guess. Stop as soon as the work is answered, then return the answer through the structured output.')
@@ -459,9 +516,12 @@ const measure = (key, text) => {
 }
 const packOf = c => PACK_OF[baseArm(c.arm)] || null
 const PACK_LEAD = 'Context looked up for you before you started (the harness ran pgr pack on the question; '
+const PACK_TAIL = ' tokens). It may be all you need. Anything it does not show you may look up under the tool policy.\n'
+// The pack-only arm can look nothing up, so the pack is all it has.
+const PACK_ONLY_TAIL = ' tokens). It is all you have: you can look nothing up. Where it does not show a field, write unknown.\n'
 const packBlock = (c, k, labelled) => {
   const pack = PACKS[packOf(c)][setOf(c)][k]
-  return `${labelled ? k.toUpperCase() + '. ' : ''}${PACK_LEAD}${pack.tokens} tokens). It may be all you need. Anything it does not show you may look up under the tool policy.\n${pack.output}`
+  return `${labelled ? k.toUpperCase() + '. ' : ''}${PACK_LEAD}${pack.tokens}${PACK_ONLY[baseArm(c.arm)] ? PACK_ONLY_TAIL : PACK_TAIL}${pack.output}`
 }
 const LOAD_LEAD = 'Notes filed earlier for the task of this question (the harness ran pgr loadout for the task '
 const loadBlock = (c, k, labelled) => {
@@ -501,6 +561,17 @@ function check(c) {
     if (!(args && args.repoTeam)) throw new Error(`cell ${where}: set T needs args.repoTeam, the copy of the fixture that prepare_team.py made`)
   }
   if (HUB[arm] && (String(c.setup).indexOf('orch') !== 0 || c.setup === 'orch-notools')) throw new Error(`cell ${where}: the hub arms run orchestrated, with a reviewer that may use tools`)
+  if (PACK_ONLY[arm] && c.setup !== 'single') throw new Error(`cell ${where}: the pack-only arm is asked of one agent only (setup single)`)
+  if (WORDS[arm] && !(args && args.repoWords)) throw new Error(`cell ${where}: the arms without the neural network need args.repoWords, the copy of the fixture whose index was built with PGR_NO_MODEL=1 (prepare_words.py)`)
+  if (VM[arm]) {
+    const wsl = args && args.wsl
+    const linux = text => typeof text === 'string' && /^\/[A-Za-z0-9._\/-]{1,200}$/.test(text) && text.indexOf('..') < 0
+    if (!wsl || typeof wsl.distro !== 'string' || !/^[A-Za-z0-9._-]{1,64}$/.test(wsl.distro) || !linux(wsl.repo) || !linux(wsl.pgr)) throw new Error(`cell ${where}: the virtual machine arms need args.wsl = {distro, repo, pgr}: a distribution name and two absolute Linux paths without spaces (prepare_wsl.py prints them)`)
+    // A shared brief of set A that names a Windows folder other than the fixture would send the agent out of the VM.
+    if (SHARED_BRIEFS && !c.ownPlan && set === 'A' && String(c.setup).indexOf('orch') === 0) {
+      for (const k of KEYS) if (typeof SHARED_BRIEFS[k] === 'string' && WINDOWS_PATH.test(inVm(SHARED_BRIEFS[k]))) throw new Error(`cell ${where}: the shared brief for ${k} names a Windows path; the virtual machine arms need briefs that name none (or ownPlan on the cell)`)
+    }
+  }
   if (PACK_OF[arm]) {
     for (const k of KEYS) {
       const pack = PACKS[PACK_OF[arm]] && PACKS[PACK_OF[arm]][set] && PACKS[PACK_OF[arm]][set][k]
@@ -528,7 +599,7 @@ async function single(c) {
   const set = SETS[setOf(c)]
   const answer = await agent(
     `${policy(c.arm)}\n\nAnswer all three questions.\n${set.listed}${context(c, KEYS)}`,
-    { label: tag(c, 'all'), phase: 'Single', schema: set.ALL, ...TIER[c.tier] })
+    { label: tag(c, 'all'), phase: 'Single', schema: PACK_ONLY[baseArm(c.arm)] ? unknownable(set.ALL) : set.ALL, ...TIER[c.tier] })
   return { ...c, set: setOf(c), answer }
 }
 
@@ -542,14 +613,18 @@ async function fanOut(c) {
 
 async function orchestrated(c) {
   const set = SETS[setOf(c)]
+  const root = REPO_OF[baseArm(c.arm)] || REPO
   // The shared briefs were written for set A's questions; a cell on any other set plans for itself.
   const plan = (SHARED_BRIEFS && !c.ownPlan && setOf(c) === 'A') ? SHARED_BRIEFS : await agent(
-    `You are the orchestrator of one benchmark run. Three independent lookup questions about the repository at ${REPO} are listed below. Do not answer them, and call no tool except the structured output. Write one brief per question for a subagent that starts with no other context: the question, what a complete answer contains, and when to stop. Keep each brief under 80 words. The harness appends the tool policy to every brief, so leave tools out.\n\n${set.listed}`,
+    `You are the orchestrator of one benchmark run. Three independent lookup questions about the repository at ${VM[baseArm(c.arm)] ? WSL.repo : REPO} are listed below. Do not answer them, and call no tool except the structured output. Write one brief per question for a subagent that starts with no other context: the question, what a complete answer contains, and when to stop. Keep each brief under 80 words. The harness appends the tool policy to every brief, so leave tools out.\n\n${set.listed}`,
     { label: tag(c, 'plan'), phase: 'Orchestrated', schema: BRIEFS, ...APEX })
   if (!plan) return { ...c, set: setOf(c), answer: null, failed: 'plan' }
+  // The reused briefs name the main fixture; an arm on the other copy is pointed at its own.
+  const brief = k => VM[baseArm(c.arm)] ? inVm(plan[k]) : plan[k].split(REPO).join(root)
+  // A brief that sends an agent in the virtual machine to a Windows folder would take it out of the VM.
+  if (VM[baseArm(c.arm)] && KEYS.some(k => WINDOWS_PATH.test(brief(k)))) return { ...c, set: setOf(c), answer: null, failed: 'plan:windows-path' }
   const workers = await parallel(KEYS.map(k => () => agent(
-    // The reused briefs name the main fixture; an arm on the other copy is pointed at its own.
-    `${policy(c.arm, hubOf(c, 'worker'))}\n\nBrief from the orchestrator:\n${plan[k].split(REPO).join(REPO_OF[baseArm(c.arm)] || REPO)}${context(c, [k])}`,
+    `${policy(c.arm, hubOf(c, 'worker'))}\n\nBrief from the orchestrator:\n${brief(k)}${context(c, [k])}`,
     { label: tag(c, 'w-' + k), phase: 'Orchestrated', schema: set.S[k], ...TIER[c.tier] })))
   const reported = { q1: workers[0], q2: workers[1], q3: workers[2] }
   const review = REVIEW[c.setup]

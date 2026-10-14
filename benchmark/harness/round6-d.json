@@ -1,0 +1,4 @@
+[
+  {"arms": ["R6", "R6h", "TP", "TPh"], "setup": "orch-mid", "tier": "C", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["THV", "THVh", "TPHV", "TPHVh"], "setup": "orch", "tier": "C", "reps": ["r1", "r2", "r3"]}
+]

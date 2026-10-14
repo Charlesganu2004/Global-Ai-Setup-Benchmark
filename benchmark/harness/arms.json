@@ -43,7 +43,7 @@
   {
    "id": "team",
    "name": "Team work",
-   "detail": "Round 6: the Rust engine in team setups, with and without a pack of looked-up context in each prompt and a note hub for the subagents and the reviewer, and a small demonstration set (T) whose answers need a note that an earlier agent left behind."
+   "detail": "Round 6: the Rust engine in team setups, with and without a pack of looked-up context in each prompt and a note hub for the subagents and the reviewer, and a small demonstration set (T) whose answers need a note that an earlier agent left behind. Three more kinds of combination follow: the same tools inside a WSL 2 virtual machine, the same search without its neural network (words only), and a pack as the only help, with no lookup command at all."
   }
  ],
  "commands": {
@@ -82,7 +82,11 @@
   "pgr_hub_handoff": "pgr --bank BANK --task TASK --from scout handoff '<finding>'      files what you found as notes in the shared note bank, for the reviewer. Prints \"kept <id>\" for each note filed and a last line \"handoff TASK: N notes from scout, K name code\"",
   "pgr_hub_loadout": "pgr --bank BANK --task TASK loadout      what the subagents filed for this task, one per line as: - text  (age ago) [roles] #id, where roles are the roles that filed it joined by +. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. A last line counts the notes. Prints \"no notes\" when nothing was filed",
   "pgr_team_loadout": "pgr --bank team-notes --task NAME loadout      the notes the team filed for the task NAME, one per line as: - text  (age ago) [roles] #id, where roles are the roles that filed it joined by +. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. A last line counts the notes. Prints \"no notes\" when there are none",
-  "pgr_team_recall": "pgr --bank team-notes recall \"<words>\"      notes of the team bank that match some words, most relevant first, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. Prints \"no notes\" when none match"
+  "pgr_team_recall": "pgr --bank team-notes recall \"<words>\"      notes of the team bank that match some words, most relevant first, one per line as: - text  (age ago) #id. A note ends its brackets with \"stale: code changed\" when code it names has changed since, and \"gone: code removed\" when that code no longer exists. Prints \"no notes\" when none match",
+  "wsl_start": "wsl -d Ubuntu --cd /home/USER/lxbench/repo --exec /home/USER/lxbench/bin/pgr",
+  "wsl_sed": "wsl -d Ubuntu --cd /home/USER/lxbench/repo --exec sed -n \"FIRST,LASTp\" PATH",
+  "no_model_start": "$env:PGR_NO_MODEL='1'; Set-Location C:\\path\\to\\lxbench\\repo-words;",
+  "pack_only": "No lookup command is allowed: you have no tool in this run, not a shell command, not Read, Grep or Glob, no Agent tool and no web tool."
  },
  "arms": [
   {
@@ -957,6 +961,72 @@
    ]
   },
   {
+   "id": "R6V",
+   "group": "team",
+   "name": "pgr, graph and search in one call, inside a virtual machine",
+   "detail": "R6's commands, run inside a WSL 2 virtual machine. The agent stays in the harness; the copy of the repository, the Linux build of pgr, its index and the note banks are inside the virtual machine, and code is printed with sed there. The Read, Grep and Glob tools are not used.",
+   "uses": [
+    "wsl_start",
+    "pgr_ask",
+    "wsl_sed"
+   ]
+  },
+  {
+   "id": "THV",
+   "group": "team",
+   "name": "pgr, graph and search, with the hub, inside a virtual machine",
+   "detail": "TH's commands and hub, run inside a WSL 2 virtual machine, with the note bank in the VM. The agent stays in the harness; the copy of the repository, the Linux build of pgr, its index and the note banks are inside the virtual machine, and code is printed with sed there. The Read, Grep and Glob tools are not used. Orchestrated runs only.",
+   "uses": [
+    "wsl_start",
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout",
+    "wsl_sed"
+   ]
+  },
+  {
+   "id": "TPHV",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack and the hub, inside a virtual machine",
+   "detail": "TPH's commands, pack and hub, run inside a WSL 2 virtual machine; the pack is the one TP gets, because the Linux build gives the same text. The agent stays in the harness; the copy of the repository, the Linux build of pgr, its index and the note banks are inside the virtual machine, and code is printed with sed there. The Read, Grep and Glob tools are not used. Orchestrated runs only.",
+   "uses": [
+    "wsl_start",
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout",
+    "wsl_sed"
+   ]
+  },
+  {
+   "id": "RN",
+   "group": "team",
+   "name": "pgr, graph and search in one call, without the neural network",
+   "detail": "R6's commands, with the search working on words only. The repository is a copy whose pgr index was built with PGR_NO_MODEL=1, and every call sets the same variable, so pgr's only neural part, its embedding table, plays no part and search works on words alone.",
+   "uses": [
+    "no_model_start",
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPN",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack, without the neural network",
+   "detail": "RN plus, in every prompt, the output of pgr pack on the question, computed beforehand on the same words-only copy (engines graph and search). The repository is a copy whose pgr index was built with PGR_NO_MODEL=1, and every call sets the same variable, so pgr's only neural part, its embedding table, plays no part and search works on words alone.",
+   "uses": [
+    "no_model_start",
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPX",
+   "group": "team",
+   "name": "The pack only, no lookup command",
+   "detail": "The pack of TP is in the prompt and the agent may call no lookup command and no tool at all: it answers from the pack and may say that a field is unknown. It measures whether the pack alone is enough, and what the answer costs when it is not.",
+   "uses": [
+    "pack_only"
+   ]
+  },
+  {
    "id": "R6h",
    "group": "team",
    "name": "pgr, graph and search in one call, round six, held-out questions",
@@ -1020,6 +1090,78 @@
     "pgr_hub_handoff",
     "pgr_hub_loadout"
    ]
+  },
+  {
+   "id": "R6Vh",
+   "group": "team",
+   "name": "pgr, graph and search in one call, inside a virtual machine, held-out questions",
+   "base": "R6V",
+   "detail": "The same method as R6V on three questions nobody tuned for.",
+   "uses": [
+    "wsl_start",
+    "pgr_ask",
+    "wsl_sed"
+   ]
+  },
+  {
+   "id": "THVh",
+   "group": "team",
+   "name": "pgr, graph and search, with the hub, inside a virtual machine, held-out questions",
+   "base": "THV",
+   "detail": "The same method as THV on three questions nobody tuned for.",
+   "uses": [
+    "wsl_start",
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout",
+    "wsl_sed"
+   ]
+  },
+  {
+   "id": "TPHVh",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions",
+   "base": "TPHV",
+   "detail": "The same method as TPHV on three questions nobody tuned for.",
+   "uses": [
+    "wsl_start",
+    "pgr_ask",
+    "pgr_hub_handoff",
+    "pgr_hub_loadout",
+    "wsl_sed"
+   ]
+  },
+  {
+   "id": "RNh",
+   "group": "team",
+   "name": "pgr, graph and search in one call, without the neural network, held-out questions",
+   "base": "RN",
+   "detail": "The same method as RN on three questions nobody tuned for.",
+   "uses": [
+    "no_model_start",
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPNh",
+   "group": "team",
+   "name": "pgr, graph and search, with a pack, without the neural network, held-out questions",
+   "base": "TPN",
+   "detail": "The same method as TPN on three questions nobody tuned for.",
+   "uses": [
+    "no_model_start",
+    "pgr_ask"
+   ]
+  },
+  {
+   "id": "TPXh",
+   "group": "team",
+   "name": "The pack only, no lookup command, held-out questions",
+   "base": "TPX",
+   "detail": "The same method as TPX on three questions nobody tuned for.",
+   "uses": [
+    "pack_only"
+   ]
   }
  ],
  "tiers": [
@@ -1064,8 +1206,8 @@
   },
   {
    "id": "orch-mid",
-   "name": "Orchestrated, mid-tier reviewer",
-   "detail": "Orchestrated, with the mid-tier model as reviewer, allowed the method's own tools.",
+   "name": "Three models, each in its role",
+   "detail": "The top model plans the work, the light model does the lookups, and the middle model reviews the answers, allowed the method's own tools.",
    "reviewer": "Mid tier with the method's tools"
   },
   {

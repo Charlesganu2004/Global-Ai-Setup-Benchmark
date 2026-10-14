@@ -5,7 +5,10 @@
 Covers the workflow (through check_round6_prompts.js, which needs node), the arms, the matrices, the
 parser (on stored rows and on small synthetic transcripts), prepare_packs.py and prepare_team.py (against
 fake_pgr.py, a stand-in for the pgr 0.2 contract) and round6_args.py, with its checks of the pgr that the
-agents will find, the run tag's banks and the team bank. Class Review holds the cases an adversarial review of
+agents will find, the run tag's banks and the team bank. The second batch of arms (the tools in a virtual machine,
+no neural network, the pack only) has its own cases in MoreArmsParser and MoreArmsPreparation: the parser behind a
+wsl prefix, prepare_words.py, prepare_wsl.py (against fake_wsl.py, a stand-in for wsl.exe) and the halves c and d
+of round6_args.py. Class Review holds the cases an adversarial review of
 the first harness found; each failed before its fix. Two checks need the owner's machine and are skipped
 elsewhere:
 
@@ -41,10 +44,13 @@ import round6_common as common  # noqa: E402
 
 NODE = shutil.which("node")
 FAKE = HERE / "fake_pgr.py"
+FAKE_WSL = HERE / "fake_wsl.py"
 ROUND_SIX_ARMS = ["R6", "TP", "TPG", "TPS", "TH", "TPH", "T0", "TL", "TI"]
+MORE_ARMS = ["R6V", "THV", "TPHV", "RN", "TPN", "TPX"]
 NEW_FILES = ["round6_common.py", "prepare_packs.py", "prepare_team.py", "round6_args.py", "check_reparse.py", "fake_pgr.py",
              "check_round6_prompts.js", "round6-a.json", "round6-b.json", "test_round6.py", "ROUND6.md",
-             "token-benchmark.workflow.js", "bench_parse.py", "arms.json"]
+             "token-benchmark.workflow.js", "bench_parse.py", "arms.json", "prepare_words.py", "prepare_wsl.py", "fake_wsl.py",
+             "round6-c.json", "round6-d.json"]
 
 
 def stand_in() -> str:
@@ -173,6 +179,17 @@ class Dry(unittest.TestCase):
             "a loadout that is not held to its checksum": ("proven(`loadouts/${k}`, load.output, load.tokens, `the loadout for ${k}`)", "true", "a ticket changed in a loadout"),
             "a wrong constant in the SHA-256": ("0x428a2f98,", "0x428a2f99,", "does not match its checksum"),
             "the finding in double quotes": ("--from scout handoff '<finding>'", "--from scout handoff \"<finding>\"", "double quotes"),
+            "the VM reading rule gone": (" Do not use the Read, Grep or Glob tools at all.", "", "reading rule of the VM"),
+            "a VM arm on the Windows folder": ("for (const arm of Object.keys(VM)) REPO_OF[arm] = WSL.repo", "for (const arm of Object.keys(VM)) REPO_OF[arm] = REPO", "names a Windows path"),
+            "a VM planner on the Windows folder": ("${VM[baseArm(c.arm)] ? WSL.repo : REPO}", "${REPO}", "planner of a virtual machine arm"),
+            "a words-only arm without its prefix": ("${WORDS[arm] ? NO_MODEL_START : ''}", "", "words-only prefix"),
+            "the pack-only arm with a command": ("const PACK_ONLY = { TPX: true }", "const PACK_ONLY = {}", "holds a command"),
+            "the pack-only schema that cannot say unknown": ("schema: PACK_ONLY[baseArm(c.arm)] ? unknownable(set.ALL) : set.ALL", "schema: set.ALL", "let a field be unknown"),
+            "a brief that is not rewritten for the VM": ("const brief = k => VM[baseArm(c.arm)] ? inVm(plan[k]) : plan[k].split(REPO).join(root)", "const brief = k => plan[k]", "not rewritten for a VM worker"),
+            "only the backslash spelling of the fixture is rewritten": (r"[REPO, REPO.replace(/\\/g, '/'), posix(REPO)]", "[REPO]", "names a Windows path"),
+            "a Windows path with forward slashes goes unseen": (r"const WINDOWS_PATH = /(^|[^A-Za-z0-9])[A-Za-z]:[\\/]|\/mnt\/[a-z]\//", r"const WINDOWS_PATH = /[A-Za-z]:\\|\/mnt\/[a-z]\//", "forward-slash Windows"),
+            "no guard against a Windows folder in a brief": (" if (VM[baseArm(c.arm)] && KEYS.some(k => WINDOWS_PATH.test(brief(k)))) return { ...c, set: setOf(c), answer: null, failed: 'plan:windows-path' }", "", "does not stop the VM cell"),
+            "R6V that sends something else than R6": ("ARMS.R6V = ARMS.RGS", "ARMS.R6V = [PGR_ASK, 'pgr extra']", "is not the prompt of R6"),
         }
         with tempfile.TemporaryDirectory() as temp:
             for name, (old, new, expected) in broken.items():
@@ -199,7 +216,17 @@ class Dry(unittest.TestCase):
         self.assertEqual(inside["PACK_OF"], round6_args.PACK_OF)
         self.assertEqual(set(inside["HUB"]), round6_args.HUB_ARMS)
         self.assertEqual(set(inside["SET_T"]), bench_parse.SET_T_ARMS)
-        self.assertEqual(set(ROUND_SIX_ARMS), bench_parse.TEAM_ARMS)
+        self.assertEqual(set(ROUND_SIX_ARMS + MORE_ARMS), bench_parse.TEAM_ARMS)
+        self.assertEqual(set(inside["VM"]), round6_args.VM_ARMS)
+        self.assertEqual(set(inside["VM"]), bench_parse.VM_ARMS)
+        self.assertEqual(set(inside["WORDS"]), round6_args.WORDS_ARMS)
+        self.assertEqual(set(inside["WORDS"]), bench_parse.WORDS_ARMS)
+        self.assertEqual(set(inside["PACK_ONLY"]), round6_args.PACK_ONLY_ARMS)
+        self.assertEqual(set(inside["PACK_ONLY"]), bench_parse.PACK_ONLY_ARMS)
+        self.assertEqual(round6_args.HUB_ARMS, bench_parse.HUB_ARMS)
+        # the class of model that each setup's reviewer is, as the count of agents names it
+        tier_of = {tuple(model.items()): tier for tier, model in inside["TIER"].items()}
+        self.assertEqual({setup: common.TIER_CLASS[tier_of[tuple(entry["who"].items())]] for setup, entry in inside["REVIEW"].items()}, common.REVIEWER_CLASS)
 
     def test_prompts_carry_the_commands_arms_json_describes(self):
         arms = json.loads(HERE.joinpath("arms.json").read_text(encoding="utf-8"))
@@ -231,17 +258,19 @@ class Matrices(unittest.TestCase):
     def setUp(self):
         self.a = json.loads((HERE / "round6-a.json").read_text(encoding="utf-8"))
         self.b = json.loads((HERE / "round6-b.json").read_text(encoding="utf-8"))
+        self.c = json.loads((HERE / "round6-c.json").read_text(encoding="utf-8"))
+        self.d = json.loads((HERE / "round6-d.json").read_text(encoding="utf-8"))
         self.arms = json.loads((HERE / "arms.json").read_text(encoding="utf-8"))
 
     def cells(self, matrix):
         return [(arm, block["setup"], block["tier"], rep) for block in matrix for rep in block["reps"] for arm in block["arms"]]
 
     def test_shape_and_repeats(self):
-        for matrix in (self.a, self.b):
+        for matrix in (self.a, self.b, self.c, self.d):
             for block in matrix:
                 self.assertEqual(sorted(block), ["arms", "reps", "setup", "tier"])
                 self.assertEqual(block["reps"], ["r1", "r2", "r3"])
-        every = self.cells(self.a) + self.cells(self.b)
+        every = self.cells(self.a) + self.cells(self.b) + self.cells(self.c) + self.cells(self.d)
         self.assertEqual(len(every), len(set(every)))
 
     def test_the_cells_the_brief_asks_for(self):
@@ -258,15 +287,46 @@ class Matrices(unittest.TestCase):
         self.assertTrue(all(setup == "orch" for _, setup, _, _ in self.cells(self.b)))
         self.assertEqual(len(self.cells(self.a)) + len(self.cells(self.b)), 3 * len(want))
 
+    def test_the_second_batch_of_cells(self):
+        want_c = {(arm, "single", "C") for arm in ("R6V", "R6Vh", "RN", "RNh", "TPN", "TPNh")} | {(arm, "single", tier) for arm in ("TPX", "TPXh") for tier in "CB"}
+        want_d = {(arm, "orch-mid", "C") for arm in ("R6", "R6h", "TP", "TPh")} | {(arm, "orch", "C") for arm in ("THV", "THVh", "TPHV", "TPHVh")}
+        found = lambda matrix: {(arm, setup, tier) for arm, setup, tier, _ in self.cells(matrix)}
+        self.assertEqual(found(self.c), want_c)
+        self.assertEqual(found(self.d), want_d)
+        self.assertEqual((len(self.cells(self.c)), len(self.cells(self.d))), (30, 24))
+        # the first two files keep the cells of the first batch: 57 and 24
+        self.assertEqual((len(self.cells(self.a)), len(self.cells(self.b))), (57, 24))
+
+    def test_the_counts_of_cells_and_agents(self):
+        counts = {half: common.count_matrix(getattr(self, half)) for half in "abcd"}
+        self.assertEqual([(counts[h]["cells"], counts[h]["agents"]) for h in "abcd"], [(57, 81), (24, 120), (30, 30), (24, 120)])
+        self.assertEqual(counts["c"]["by_class"], {"light": 24, "middle": 6, "top": 0})
+        self.assertEqual(counts["d"]["by_class"], {"light": 72, "middle": 12, "top": 36})
+        self.assertEqual(counts["d"]["planners"], 24)
+        self.assertEqual(counts["d"]["planners_saved_by_briefs"], 12)
+        self.assertEqual(counts["a"]["by_class"], {"light": 69, "middle": 12, "top": 0})
+        self.assertEqual(counts["b"]["by_class"], {"light": 72, "middle": 0, "top": 48})
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.assertEqual(round6_args.main(["--count"]), 0)
+        self.assertIn("round6-d.json: 24 cells, 120 agents (light 72, middle 12, top 36)", said.getvalue())
+        self.assertIn("round6-c.json: 30 cells, 30 agents (light 24, middle 6, top 0)", said.getvalue())
+
+    def test_the_mid_tier_reviewer_setup_is_named_for_its_three_roles(self):
+        setup = next(item for item in self.arms["setups"] if item["id"] == "orch-mid")
+        self.assertEqual(setup["name"], "Three models, each in its role")
+        for word in ("plans", "lookups", "reviews"):
+            self.assertIn(word, setup["detail"])
+
     def test_every_arm_is_described_in_arms_json(self):
         ids = {arm["id"]: arm for arm in self.arms["arms"]}
-        for arm, _, _, _ in self.cells(self.a) + self.cells(self.b):
+        for arm, _, _, _ in self.cells(self.a) + self.cells(self.b) + self.cells(self.c) + self.cells(self.d):
             self.assertIn(arm, ids, f"{arm} is measured but not described")
             self.assertEqual(ids[arm]["group"], "team")
             base = ids[arm].get("base")
-            if arm not in ROUND_SIX_ARMS:
+            if arm not in ROUND_SIX_ARMS + MORE_ARMS:
                 self.assertEqual(base, arm[:-1])
-                self.assertIn(base, ROUND_SIX_ARMS)
+                self.assertIn(base, ROUND_SIX_ARMS + MORE_ARMS)
 
     def test_arms_json_is_consistent(self):
         groups = {group["id"] for group in self.arms["groups"]}
@@ -294,6 +354,12 @@ class Parser(unittest.TestCase):
         for arm in ROUND_SIX_ARMS + ["R6h", "THh", "TPHh"]:
             self.assertEqual(bench_parse.allowed_words(arm), {"pgr"}, arm)
         self.assertEqual(bench_parse.allowed_words("R1"), {"lx"})
+        for arm, base, which in [("R6V", "R6V", "A"), ("R6Vh", "R6V", "B"), ("THVh", "THV", "B"), ("TPHVh", "TPHV", "B"), ("RNh", "RN", "B"),
+                                 ("TPNh", "TPN", "B"), ("TPXh", "TPX", "B"), ("TPX", "TPX", "A"), ("THV", "THV", "A")]:
+            self.assertEqual((bench_parse.base_arm(arm), bench_parse.question_set(arm)), (base, which), arm)
+            self.assertTrue(bench_parse.is_team(arm), arm)
+        self.assertEqual([bench_parse.allowed_words(arm) for arm in ("R6V", "THVh", "RN", "TPN", "TPX")],
+                         [{"wsl", "wsl.exe"}, {"wsl", "wsl.exe"}, {"pgr"}, {"pgr"}, set()])
         self.assertTrue(bench_parse.is_team("TPHh") and not bench_parse.is_team("RGSh"))
 
     def test_grading_set_t(self):
@@ -586,11 +652,12 @@ class Reparse(unittest.TestCase):
 class Scripts(unittest.TestCase):
     def test_every_script_starts_under_isolated_python(self):
         # ROUND6.md runs them as `python -I script`, which leaves the script's own folder off the path.
-        for name in ("prepare_packs.py", "prepare_team.py", "round6_args.py", "check_reparse.py", "bench_parse.py", "fake_pgr.py"):
+        for name in ("prepare_packs.py", "prepare_team.py", "round6_args.py", "check_reparse.py", "bench_parse.py", "fake_pgr.py",
+                     "prepare_words.py", "prepare_wsl.py", "fake_wsl.py"):
             args = [sys.executable, "-I", str(HERE / name)] + ([] if name == "bench_parse.py" else ["--help"])
             done = subprocess.run(args, capture_output=True, text=True, encoding="utf-8")
-            if name == "fake_pgr.py":
-                self.assertEqual(done.returncode, 2, name)        # no command: usage error, as pgr
+            if name in ("fake_pgr.py", "fake_wsl.py"):
+                self.assertEqual(done.returncode, 2, name)        # no command: usage error, as pgr and wsl.exe
             elif name == "bench_parse.py":
                 self.assertNotIn("ModuleNotFoundError", done.stderr, name)
             else:
@@ -611,9 +678,19 @@ class Documentation(unittest.TestCase):
         table = text.split("## What each args field holds")[1].split("`round6_args.py` fills")[0]
         for field in re.findall(r"^\| `(\w+)` \|", table, re.M):
             self.assertRegex(workflow, rf"args\.{field}\b", f"the workflow does not read args.{field}")
-        for name in ("prepare_packs.py", "prepare_team.py", "round6_args.py", "check_reparse.py", "bench_parse.py", "test_round6.py", "check_round6_prompts.js"):
+        for name in ("prepare_packs.py", "prepare_team.py", "round6_args.py", "check_reparse.py", "bench_parse.py", "test_round6.py", "check_round6_prompts.js",
+                     "prepare_words.py", "prepare_wsl.py"):
             self.assertIn(name, text)
         self.assertIn("81 cells, 201 agents", text)
+        self.assertIn("54 cells, 150 agents", text)
+
+    def test_round6_md_gives_the_order_of_the_four_halves_and_the_second_batch(self):
+        text = " ".join((HERE / "ROUND6.md").read_text(encoding="utf-8").split())
+        for needle in ("round6-c.json", "round6-d.json", "PGR_NO_MODEL", "wsl.exe", "`wsl`", "`repoWords`", "--linux-pgr", "--repo-words", "--wsl-distro",
+                       "R6V", "THV", "TPHV", "RN", "TPN", "TPX", "Three models, each in its role", "byte for byte", "--count"):
+            self.assertIn(needle, text)
+        order = [text.index(f"--half {half}") for half in "abcd"]
+        self.assertEqual(order, sorted(order), "the halves are described in the order a, b, c, d")
 
     def test_round6_md_tells_what_the_review_found_missing(self):
         text = " ".join((HERE / "ROUND6.md").read_text(encoding="utf-8").split())
@@ -955,6 +1032,475 @@ class Hygiene(unittest.TestCase):
                 self.assertEqual(count.get(name), 1, f"{name} is defined {count.get(name)} times in the fixture")
         line = (root / prepare_team.EDIT["file"]).read_bytes().split(b"\n")[prepare_team.EDIT["line"] - 1].rstrip(b"\r").decode("utf-8")
         self.assertEqual(line, prepare_team.EDIT["old"])
+
+
+from unittest import mock  # noqa: E402
+
+import prepare_words  # noqa: E402
+import prepare_wsl  # noqa: E402
+
+VM_START = "wsl -d Ubuntu --cd /home/u/lxbench/repo --exec /home/u/lxbench/bin/pgr"
+VM_SED = 'wsl -d Ubuntu --cd /home/u/lxbench/repo --exec sed -n "10,20p" cli.py'
+WORDS_START = "$env:PGR_NO_MODEL='1'; Set-Location C:\\path\\to\\lxbench\\repo-words; "
+
+
+def parse_folder(build):
+    """The agents and the cells that synthetic transcripts parse to."""
+    with tempfile.TemporaryDirectory() as temp:
+        folder = pathlib.Path(temp) / "wf_synthetic"
+        folder.mkdir()
+        build(folder)
+        with contextlib.redirect_stdout(io.StringIO()):
+            agents = bench_parse.read_folders([folder])
+        cells = {(c["arm"], c["setup"], c["tier"], c["rep"]): c for c in bench_parse.build_cells(agents)}
+    return agents, cells
+
+
+def vm_hub_call(bank: str, what: str) -> str:
+    base = f"{VM_START} --bank {bank} --task lookups"
+    return {"file": f"{base} --from scout handoff 'found it in a.py:1; b calls it'", "load": f"{base} loadout"}[what]
+
+
+def write_vm_hub_cell(folder: pathlib.Path, arm: str, bank: str, reviewer_bank: str | None = None, first: int = 1) -> int:
+    """The planner, three workers that file a finding and a reviewer that loads the notes, every call through wsl."""
+    write_agent(folder, first, f"{arm}|orch|C|plan|r1", [], BRIEFS)
+    for offset, key in enumerate(common.KEYS, 1):
+        write_agent(folder, first + offset, f"{arm}|orch|C|w-{key}|r1", [shell(vm_hub_call(bank, "file"))], TRUTH_A_ANSWER[key])
+    write_agent(folder, first + 4, f"{arm}|orch|C|verify|r1", [shell(vm_hub_call(reviewer_bank or bank, "load"))], TRUTH_A_ANSWER)
+    return first + 5
+
+
+class MoreArmsParser(unittest.TestCase):
+    """The second batch of arms in the parser: the tools in a virtual machine (R6V, THV, TPHV), no neural network
+    (RN, TPN) and the pack only (TPX)."""
+
+    def test_wsl_calls_are_pgr_calls(self):
+        call = bench_parse.pgr_call
+        self.assertEqual(call(f"{VM_START} ask about:foo"), ("ask", ""))
+        self.assertEqual(call(f"{VM_START} --bank r6-t-thv-orch-c-r1 --task lookups --from scout handoff 'a; b'"), ("handoff", "r6-t-thv-orch-c-r1"))
+        self.assertEqual(call("wsl.exe -d Ubuntu --cd /x --exec /x/bin/pgr --bank=b --task t loadout"), ("loadout", "b"))
+        self.assertEqual(call(f"{VM_START} ask about:foo | Select-Object -First 5"), ("ask", ""))
+        self.assertIsNone(call(VM_SED), "sed is not a pgr call")
+        # a call that does not start pgr directly, or that starts a Windows program, is not a pgr call of the VM
+        for other in ("wsl -d Ubuntu --exec /mnt/c/bin/pgr.exe ask x", "wsl -d Ubuntu -- /x/bin/pgr ask x", "wsl -d Ubuntu /x/bin/pgr ask x", "wsl"):
+            self.assertIsNone(call(other), other)
+        self.assertEqual(call("pgr ask about:foo"), ("ask", ""), "a Windows pgr is still a pgr call; the shell word marks it off policy")
+        # a call that starts in a Windows folder, in none, or that climbs to the drives is no lookup of the VM
+        for out in ("wsl -d Ubuntu --cd /mnt/c/x --exec /x/bin/pgr ask x", "wsl -d Ubuntu --cd C:\\x --exec /x/bin/pgr ask x", "wsl -d Ubuntu --exec /x/bin/pgr ask x",
+                    "wsl -d Ubuntu --cd /x/repo --exec /x/bin/pgr --root ../../mnt/c/y ask z"):
+            self.assertIsNone(call(out), out)
+        # for an arm in the VM the bare Windows pgr is not one at all
+        self.assertEqual(call(f"{VM_START} ask about:foo", True), ("ask", ""))
+        self.assertIsNone(call("pgr ask about:foo", True))
+
+    def test_what_a_vm_arm_may_not_do(self):
+        flags = bench_parse.vm_flags
+        cd = "--cd /home/u/lxbench/repo"
+        self.assertEqual(flags([f"{VM_START} ask about:foo", VM_SED, f"{VM_START} --bank b --task t loadout | Select-Object -First 3"]), [])
+        self.assertEqual(flags([f"'found it in a.py:1' | {VM_START} --bank b handoff -", f"Set-Location C:\\x; {VM_START} ask a", f"{VM_START} ask a | Select-String foo"]), [],
+                         "a quoted text piped in, a Set-Location prefix and a filter after the pipe stay inside")
+        self.assertEqual(flags(["wsl -d Ubuntu -- pgr ask x"]), ["wsl:no-exec"])
+        self.assertEqual(flags([f"wsl -d Ubuntu {cd} --exec grep -rn x ."]), ["wsl:other-command"])
+        self.assertEqual(flags([f"wsl -d Ubuntu {cd} --exec sed -n 1,3p /mnt/c/x.py"]), ["wsl:leaves-vm"])
+        self.assertEqual(flags(["wsl.exe -d Ubuntu --exec /mnt/c/bin/pgr.exe ask x"]), ["wsl:leaves-vm"])
+        # a call that runs on the Windows drives: the folder is a Windows one or under /mnt/, there is none (wsl then starts in the
+        # Windows folder of the caller), or a path in the call climbs out of the VM's files
+        for way in ("--cd /mnt/c/Users/x/lxbench/repo --exec /home/u/lxbench/bin/pgr ask about:x",
+                    "--cd C:\\Users\\name\\lxbench\\repo --exec sed -n 1,40p cli.py",
+                    "--exec /home/u/lxbench/bin/pgr ask about:x",
+                    f"{cd}/../../../../mnt/c --exec /home/u/lxbench/bin/pgr ask about:x",
+                    "--cd ~/../../mnt/c --exec /home/u/lxbench/bin/pgr ask about:x",
+                    f"{cd} --exec sed -n 1,40p ../../../../mnt/c/Users/x/secret.txt",
+                    f"{cd} --exec /home/u/lxbench/bin/pgr --root=/mnt/c/x ask about:x"):
+            self.assertEqual(flags([f"wsl -d Ubuntu {way}"]), ["wsl:leaves-vm"], way)
+        for inside in (f"{cd} --exec sed -n 1,40p ../bin/notes.txt", "--cd ~ --exec sed -n 1,3p x.py", f"{cd} --exec sed -n 1,3p /etc/os-release"):
+            self.assertEqual(flags([f"wsl -d Ubuntu {inside}"]), [], inside)
+        # a Windows program is a way out wherever it stands in the call: first, after the wsl call, behind a pipe, or on another line
+        for out in (f"Set-Location C:\\x; pgr ask a; {VM_SED}", f"{VM_START} ask a; Set-Location C:\\x; pgr ask b", f"{VM_START} ask a | pgr ask b", "pgr ask a",
+                    f"{VM_SED}; Get-Content C:\\x\\cli.py -TotalCount 40", f"{VM_START} ask a && type cli.py", f"{VM_SED}\nrg x .",
+                    f"{VM_START} ask a | Select-String foo C:\\x\\y.py", "Get-Content C:\\x\\cli.py"):
+            self.assertEqual(flags([out]), ["wsl:leaves-vm"], out)
+        # only the wsl calls of an arm in the VM are counted as its lookups
+        windows_after = f"{VM_START} ask a; Set-Location C:\\x; pgr ask b"
+        counted = lambda vm: bench_parse.team_counts([windows_after], {"answer": {}, "tool_calls": 1}, vm=vm)["pgr_lookups"]
+        self.assertEqual((counted(False), counted(True)), (2, 1), "a Windows pgr behind the wsl call is no lookup of the VM")
+        row = lambda tools, words=None: {"tools": tools, "shell": words or {}}
+        self.assertEqual(bench_parse.off_policy("R6V", row({"PowerShell": 3}, {"wsl": 3}), "single", "all"), [])
+        self.assertEqual(bench_parse.off_policy("THVh", row({"PowerShell": 1}, {"wsl.exe": 1}), "orch", "w-q1"), [])
+        self.assertEqual(bench_parse.off_policy("R6V", row({"PowerShell": 1, "Read": 2, "Grep": 1, "Glob": 1}, {"pgr": 1}), "single", "all"),
+                         ["shell:pgr", "Read", "Grep", "Glob"])
+        self.assertEqual(bench_parse.off_policy("R6", row({"PowerShell": 1, "Read": 1, "Grep": 1}, {"pgr": 1}), "single", "all"), [],
+                         "the Read and Grep tools are fine for an arm that is not in the VM")
+        # no tool at all for the pack-only arm, whichever it was
+        self.assertEqual(bench_parse.off_policy("TPX", row({}), "single", "all"), [])
+        self.assertEqual(bench_parse.off_policy("TPXh", row({"PowerShell": 1, "Read": 1}, {"pgr": 1}), "single", "all"), ["PowerShell", "Read"])
+
+    def test_the_words_only_prefix_is_not_the_program(self):
+        command = WORDS_START + "pgr ask about:foo"
+        self.assertEqual(bench_parse.first_word(command, env=True), "pgr")
+        self.assertNotEqual(bench_parse.first_word(command), "pgr", "an earlier arm keeps the word it always had")
+        counts = bench_parse.team_counts([command], {"answer": {}, "tool_calls": 1})
+        self.assertEqual((counts["pgr_lookups"], counts["from_brief"]), (1, False))
+        self.assertEqual(bench_parse.off_policy("RN", {"tools": {"PowerShell": 1}, "shell": {"pgr": 1}}, "single", "all"), [])
+
+    def test_a_path_inside_the_vm_is_cut_like_a_windows_one(self):
+        self.assertEqual(bench_parse.portable({"file": "/home/alex/lxbench/repo/hooks.py", "callers": ["/home/USER/lxbench/repo/cli.py:12", "main"]}),
+                         {"file": "hooks.py", "callers": ["cli.py:12", "main"]})
+        self.assertEqual(bench_parse.portable("hooks.py"), "hooks.py")
+        self.assertEqual(bench_parse.portable({"file": "/home/alex/projects/rounds/repo/hooks.py"}), {"file": "hooks.py"}, "the folder given as --vm-dir is cut too")
+        self.assertEqual(bench_parse.portable("/home/alex/repo-notes/x.py"), "/home/alex/repo-notes/x.py", "only a folder called repo is cut")
+        self.assertEqual(bench_parse.portable({"file": "C:\\Users\\name\\Downloads\\lxbench\\repo-words\\graphify\\cache.py"}), {"file": "graphify\\cache.py"},
+                         "the words-only copy is cut like the other copies of the fixture")
+
+    def test_rows_and_cells_of_the_new_arms(self):
+        def build(folder):
+            write_agent(folder, 1, "R6V|single|C|all|r1", [shell(f"{VM_START} ask about:foo"), shell(VM_SED)], TRUTH_A_ANSWER)
+            # left the VM: a Windows pgr, the Read tool, Grep
+            write_agent(folder, 2, "R6V|single|C|all|r2", [shell(f"{WORKDIR}pgr ask about:foo"), ("Read", {"file_path": "x"}), ("Grep", {"pattern": "x"})], TRUTH_A_ANSWER)
+            write_agent(folder, 3, "R6V|single|C|all|r3", [shell("wsl -d Ubuntu --cd /home/u/lxbench/repo --exec grep -rn x .")], TRUTH_A_ANSWER)
+            write_agent(folder, 4, "R6V|single|C|all|r4", [shell(f"{VM_START} --bank b ask x", USAGE_ERROR)], TRUTH_A_ANSWER)
+            at = write_vm_hub_cell(folder, "THV", "r6-t-thv-orch-c-r1", first=10)
+            write_vm_hub_cell(folder, "TPHV", "r6-t-tphv-orch-c-r1", reviewer_bank="team-notes", first=at)
+            write_agent(folder, 40, "RN|single|C|all|r1", [shell(WORDS_START + "pgr ask about:foo")], TRUTH_A_ANSWER)
+            write_agent(folder, 41, "TPNh|single|C|all|r1", [], TRUTH_A_ANSWER)
+            write_agent(folder, 42, "TPX|single|C|all|r1", [], TRUTH_A_ANSWER)
+            write_agent(folder, 43, "TPX|single|B|all|r1", [shell("pgr ask about:foo")], TRUTH_A_ANSWER)
+
+        agents, cells = parse_folder(build)
+        cell = lambda arm, setup, tier="C", rep="r1": cells[(arm, setup, tier, rep)]
+        rows = {(row["arm"], row["role"], row["rep"], row["tier"]): row for row in agents}
+        looked = rows[("R6V", "all", "r1", "C")]
+        self.assertEqual((looked["pgr_lookups"], looked["from_brief"], looked["shell"], looked["off_policy"]), (1, False, {"wsl": 2}, []))
+        self.assertEqual(cell("R6V", "single")["off_policy"], [])
+        self.assertEqual(cell("R6V", "single", rep="r2")["off_policy"], ["Grep", "Read", "shell:pgr", "wsl:leaves-vm"])
+        self.assertEqual(cell("R6V", "single", rep="r2")["pgr_lookups"], 0, "a Windows pgr is no lookup of the VM")
+        self.assertEqual(cell("R6V", "single", rep="r3")["off_policy"], ["wsl:other-command"])
+        self.assertEqual(cell("R6V", "single", rep="r4")["off_policy"], ["pgr:usage-error"])
+        self.assertEqual(cell("R6V", "single", rep="r4")["pgr_lookups"], 0, "a call pgr refused is counted nowhere")
+        # the hub in the VM: three findings filed, the notes loaded, nothing foreign
+        hub = cell("THV", "orch")
+        self.assertEqual((hub["off_policy"], hub["hub_calls"], hub["banks"]), ([], {"handoff": 3, "loadout": 1, "recall": 0}, ["r6-t-thv-orch-c-r1"]))
+        self.assertEqual(hub["from_brief_share"], 0.75, "the three workers only filed; the reviewer loaded the notes")
+        self.assertEqual(cell("TPHV", "orch")["off_policy"], ["bank:foreign"])
+        # no neural network: the prefix does not hide the program
+        words = cell("RN", "single")
+        self.assertEqual((words["off_policy"], words["pgr_lookups"], words["from_brief_share"]), ([], 1, 0.0))
+        self.assertEqual(rows[("RN", "all", "r1", "C")]["shell"], {"pgr": 1})
+        # the pack as the only help
+        self.assertEqual((cell("TPNh", "single")["from_brief_share"], cell("TPNh", "single")["off_policy"]), (1.0, []))
+        self.assertEqual((cell("TPX", "single")["from_brief_share"], cell("TPX", "single")["off_policy"]), (1.0, []))
+        self.assertEqual((cell("TPX", "single", "B")["from_brief_share"], cell("TPX", "single", "B")["off_policy"]), (0.0, ["PowerShell"]))
+        self.assertEqual(cell("TPNh", "single")["set"], "B")
+
+
+class MoreArmsPreparation(unittest.TestCase):
+    """prepare_words.py and prepare_wsl.py against the stand-ins fake_pgr.py and fake_wsl.py."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.root = pathlib.Path(cls.temp.name)
+        cls.fixture, cls.prepared_home = cls.root / "repo", cls.root / "prepared-home"
+        make_fixture(cls.fixture)
+        cls.linux_pgr = cls.root / "pgr-linux"
+        cls.linux_pgr.write_bytes(b"\x7fELF" + b"stand-in for the Linux build")
+        common.Pgr(stand_in(), home=cls.prepared_home).run("--root", cls.fixture, "refresh")
+        quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet):
+            made = prepare_packs.main(["--pgr", stand_in(), "--fixture", str(cls.fixture), "--home", str(cls.prepared_home), "--out", str(cls.root / "packs-base.json")])
+        assert made == 0, quiet.getvalue()
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def setUp(self):
+        self.work = pathlib.Path(tempfile.mkdtemp(dir=self.root))
+        self.home, self.packs, self.vm, self.words_dir = self.work / "home", self.work / "packs.json", self.work / "vm", self.work / "repo-words"
+        shutil.copytree(self.prepared_home, self.home)
+        shutil.copyfile(self.root / "packs-base.json", self.packs)
+        self.vm.mkdir()
+        patch = mock.patch.dict(os.environ, {"FAKE_WSL_ROOT": str(self.vm)})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def leaks(self, text: str) -> list[str]:
+        spellings = {str(self.root), str(self.root).replace("\\", "/"), json.dumps(str(self.root))[1:-1]}
+        return [spelling for spelling in spellings if spelling in text]
+
+    def run_main(self, module, argv):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = module.main(argv)
+        return code, out.getvalue(), err.getvalue()
+
+    def words_argv(self, *extra):
+        return ["--pgr", stand_in(), "--fixture", str(self.fixture), "--words", str(self.words_dir), "--home", str(self.home), "--packs", str(self.packs), *extra]
+
+    def wsl_argv(self, *extra):
+        return ["--pgr", stand_in(), "--fixture", str(self.fixture), "--linux-pgr", str(self.linux_pgr), "--home", str(self.home), "--packs", str(self.packs),
+                "--out", str(self.work / "wsl.json"), "--wsl", f'"{sys.executable}" -I "{FAKE_WSL}"', *extra]
+
+    # ---- prepare_words.py
+
+    def test_words_packs_are_added_beside_the_others(self):
+        before = json.loads(self.packs.read_text(encoding="utf-8"))
+        code, out, err = self.run_main(prepare_words, self.words_argv())
+        self.assertEqual(code, 0, err)
+        after = json.loads(self.packs.read_text(encoding="utf-8"))
+        for variant in common.VARIANTS:
+            self.assertEqual(after["packs"][variant], before["packs"][variant], f"variant {variant} was touched")
+        self.assertEqual(common.check_packs(after, common.workflow_questions(), ("n",)), [])
+        self.assertEqual({letter: sorted(after["packs"]["n"][letter]) for letter in after["packs"]["n"]}, {"A": list(common.KEYS), "B": list(common.KEYS)})
+        self.assertIn("words only", after["words"]["status"])
+        self.assertEqual(after["words"]["fixture"], common.WORDS_PLACEHOLDER)
+        self.assertEqual(after["words"]["identical_to_gs"], {"packs": 0, "of": 6})
+        pack = after["packs"]["n"]["A"]["q1"]
+        self.assertTrue(pack["command"].startswith("$env:PGR_NO_MODEL='1'; pgr --root C:\\path\\to\\lxbench\\repo-words --engines graph,search pack "), pack["command"])
+        self.assertNotEqual(pack["output"], after["packs"]["gs"]["A"]["q1"]["output"])
+        self.assertEqual(self.leaks(self.packs.read_text(encoding="utf-8")), [])
+        self.assertNotIn("same text as the pack with the model: TPN", out)
+
+    def test_words_refuse_a_pgr_that_ignores_the_variable(self):
+        before = self.packs.read_bytes()
+        with mock.patch.dict(os.environ, {"FAKE_PGR_IGNORE_NO_MODEL": "1"}):
+            code, _, err = self.run_main(prepare_words, self.words_argv())
+        self.assertEqual(code, 1)
+        self.assertIn("ignores PGR_NO_MODEL", err)
+        self.assertEqual(self.packs.read_bytes(), before, "nothing is written when the check fails")
+
+    def test_words_need_the_packs_made_first_by_the_same_pgr(self):
+        self.packs.unlink()
+        code, _, err = self.run_main(prepare_words, self.words_argv())
+        self.assertEqual(code, 1)
+        self.assertIn("prepare_packs.py first", err)
+        shutil.copyfile(self.root / "packs-base.json", self.packs)
+        with mock.patch.dict(os.environ, {"FAKE_PGR_VERSION": "0.2.1"}):
+            code, _, err = self.run_main(prepare_words, self.words_argv())
+        self.assertEqual(code, 1)
+        self.assertIn("run prepare_packs.py with this pgr first", err)
+
+    def test_words_a_second_run_needs_replace_and_gives_the_same_file(self):
+        self.assertEqual(self.run_main(prepare_words, self.words_argv())[0], 0)
+        first = self.packs.read_bytes()
+        code, _, err = self.run_main(prepare_words, self.words_argv())
+        self.assertEqual(code, 1)
+        self.assertIn("--replace", err)
+        self.assertEqual(self.run_main(prepare_words, self.words_argv("--replace"))[0], 0)
+        self.assertEqual(self.packs.read_bytes(), first)
+
+    # ---- prepare_wsl.py
+
+    def test_wsl_prepares_the_vm_and_records_it_without_paths(self):
+        code, out, err = self.run_main(prepare_wsl, self.wsl_argv())
+        self.assertEqual(code, 0, err)
+        text = (self.work / "wsl.json").read_text(encoding="utf-8")
+        doc = json.loads(text)
+        self.assertEqual(doc["layout"], {"distro": "Ubuntu", "repo": "/home/USER/lxbench/repo", "pgr": "/home/USER/lxbench/bin/pgr"})
+        self.assertEqual(doc["commands"]["pgr"], "wsl -d Ubuntu --cd /home/USER/lxbench/repo --exec /home/USER/lxbench/bin/pgr")
+        self.assertNotIn("fakeuser", text)
+        self.assertEqual(self.leaks(text), [])
+        self.assertEqual(doc["pgr_sha256"], common.sha256_bytes(self.linux_pgr.read_bytes()))
+        self.assertEqual((doc["packs"]["checked"], doc["packs"]["identical"], doc["status_matches_windows"]), (6, True, True))
+        self.assertNotRegex(doc["status"], r"\d+[smhd] old")
+        base = json.loads(self.packs.read_text(encoding="utf-8"))["packs"]["gs"]
+        self.assertEqual(doc["packs"]["sha256"]["gs/B/q2"], base["B"]["q2"]["sha256"], "the pack it checked is the pack in packs.json")
+        lxbench = self.vm / "home" / "fakeuser" / "lxbench"
+        self.assertTrue((lxbench / "repo" / "security.py").is_file() and (lxbench / "repo" / ".git").is_dir() and (lxbench / "bin" / "pgr").is_file())
+        self.assertIn("--wsl-distro Ubuntu", out)
+
+    def test_wsl_is_safe_to_run_twice(self):
+        self.assertEqual(self.run_main(prepare_wsl, self.wsl_argv())[0], 0)
+        first = (self.work / "wsl.json").read_bytes()
+        repo = self.vm / "home" / "fakeuser" / "lxbench" / "repo"
+        (repo / "stray.py").write_text("x = 1\n", encoding="utf-8")
+        (repo / "security.py").write_text("changed\n", encoding="utf-8")
+        self.assertEqual(self.run_main(prepare_wsl, self.wsl_argv())[0], 0)
+        self.assertEqual((self.work / "wsl.json").read_bytes(), first)
+        self.assertTrue((repo.parent / "repo.round6-wsl").is_file(), "the marker that says the copy is this script's own")
+        self.assertFalse((repo / "stray.py").exists(), "the earlier copy is replaced, not added to")
+        self.assertEqual((repo / "security.py").read_bytes(), (self.fixture / "security.py").read_bytes())
+
+    def test_wsl_leaves_a_folder_it_did_not_make_alone(self):
+        home = self.vm / "home" / "fakeuser"
+        for given in (None, "/home/fakeuser/projects"):
+            repo = (home / "projects" if given else home / "lxbench") / "repo"
+            repo.mkdir(parents=True)
+            (repo / "mine.txt").write_text("not from the fixture\n", encoding="utf-8")
+            code, _, err = self.run_main(prepare_wsl, self.wsl_argv(*(["--vm-dir", given] if given else [])))
+            self.assertEqual(code, 1, given)
+            self.assertIn("was not made by this script", err)
+            self.assertEqual((repo / "mine.txt").read_text(encoding="utf-8"), "not from the fixture\n", "nothing in the folder is removed")
+            self.assertEqual(sorted(child.name for child in repo.parent.iterdir()), ["repo"], "nothing is installed beside it either")
+            self.assertFalse((self.work / "wsl.json").exists())
+        # the folder this script made is replaced on the next run, also when the first run was cut off after the marker
+        repo = home / "lxbench" / "repo"
+        shutil.rmtree(repo)
+        repo.mkdir(parents=True)
+        (repo / "half.txt").write_text("cut off\n", encoding="utf-8")
+        (repo.parent / "repo.round6-wsl").write_text("", encoding="utf-8")
+        self.assertEqual(self.run_main(prepare_wsl, self.wsl_argv())[0], 0)
+        self.assertFalse((repo / "half.txt").exists())
+        self.assertTrue((repo / "security.py").is_file())
+
+    def test_wsl_stops_and_writes_nothing_when_a_pack_differs(self):
+        doc = json.loads(self.packs.read_text(encoding="utf-8"))
+        pack = doc["packs"]["gs"]["A"]["q2"]
+        pack["output"] += "\n== extra"
+        pack["tokens"], pack["sha256"] = common.est_tokens(pack["output"]), common.sha256(pack["output"])
+        self.packs.write_text(json.dumps(doc), encoding="utf-8")
+        code, _, err = self.run_main(prepare_wsl, self.wsl_argv())
+        self.assertEqual(code, 1)
+        self.assertIn("gs/A/q2", err)
+        self.assertIn("not the Windows packs", err)
+        self.assertIn("Windows", err)
+        self.assertFalse((self.work / "wsl.json").exists())
+
+    def test_wsl_stops_when_the_vm_does_not_find_the_embedding_model(self):
+        with mock.patch.dict(os.environ, {"PGR_NO_MODEL": "1"}):     # the VM sees it, the pgr for Windows is run without it
+            code, _, err = self.run_main(prepare_wsl, self.wsl_argv())
+        self.assertEqual(code, 1)
+        self.assertIn("words only", err)
+        self.assertIn("embedding model", err)
+        self.assertFalse((self.work / "wsl.json").exists())
+
+    def test_wsl_refuses_what_is_not_the_right_build_or_place(self):
+        self.linux_pgr_copy = self.work / "not-linux"
+        self.linux_pgr_copy.write_bytes(b"MZ not a linux program")
+        code, _, err = self.run_main(prepare_wsl, self.wsl_argv("--linux-pgr", str(self.linux_pgr_copy)))
+        self.assertEqual((code, "ELF" in err), (1, True))
+        with mock.patch.dict(os.environ, {"FAKE_WSL_PGR_VERSION": "0.2.9"}):
+            code, _, err = self.run_main(prepare_wsl, self.wsl_argv())
+        self.assertEqual((code, "have to be one version" in err), (1, True))
+        code, _, err = self.run_main(prepare_wsl, self.wsl_argv("--vm-dir", "/tmp/lxbench"))
+        self.assertEqual((code, "inside the home folder" in err), (1, True))
+        code, _, err = self.run_main(prepare_wsl, self.wsl_argv("--distro", "Other"))
+        self.assertEqual((code, "no distribution" in err), (1, True), "wsl.exe's own message arrives in UTF-16")
+        self.packs.unlink()
+        code, _, err = self.run_main(prepare_wsl, self.wsl_argv())
+        self.assertEqual((code, "prepare_packs.py first" in err), (1, True))
+        self.assertFalse((self.work / "wsl.json").exists())
+
+
+class MoreArmsArgs(unittest.TestCase):
+    """The halves c and d of round6_args.py: the arguments of the second batch and what it asks of the VM and of the words-only copy."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp = tempfile.TemporaryDirectory()
+        cls.root = pathlib.Path(cls.temp.name)
+        cls.fixture, cls.home, cls.vm = cls.root / "repo", cls.root / "home", cls.root / "vm"
+        cls.words_dir, cls.packs, cls.wsl_json = cls.root / "repo-words", cls.root / "packs.json", cls.root / "wsl.json"
+        make_fixture(cls.fixture)
+        cls.vm.mkdir()
+        linux_pgr = cls.root / "pgr-linux"
+        linux_pgr.write_bytes(b"\x7fELF" + b"stand-in for the Linux build")
+        common.Pgr(stand_in(), home=cls.home).run("--root", cls.fixture, "refresh")
+        wsl = f'"{sys.executable}" -I "{FAKE_WSL}"'
+        quiet = io.StringIO()
+        with mock.patch.dict(os.environ, {"FAKE_WSL_ROOT": str(cls.vm)}), contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+            steps = (prepare_packs.main(["--pgr", stand_in(), "--fixture", str(cls.fixture), "--home", str(cls.home), "--out", str(cls.packs)]),
+                     prepare_words.main(["--pgr", stand_in(), "--fixture", str(cls.fixture), "--words", str(cls.words_dir), "--home", str(cls.home), "--packs", str(cls.packs)]),
+                     prepare_wsl.main(["--pgr", stand_in(), "--fixture", str(cls.fixture), "--linux-pgr", str(linux_pgr), "--home", str(cls.home),
+                                       "--packs", str(cls.packs), "--out", str(cls.wsl_json), "--wsl", wsl]))
+        assert steps == (0, 0, 0), quiet.getvalue()
+        cls.wsl = wsl
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.temp.cleanup()
+
+    def setUp(self):
+        self.work = pathlib.Path(tempfile.mkdtemp(dir=self.root))
+        self.my_home, self.my_vm = self.work / "home", self.work / "vm"
+        shutil.copytree(self.home, self.my_home)
+        shutil.copytree(self.vm, self.my_vm)
+        patch = mock.patch.dict(os.environ, {"FAKE_WSL_ROOT": str(self.my_vm)})
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def argv(self, half, tag="t1", **change):
+        given = {"--half": half, "--run-tag": tag, "--repo": str(self.fixture), "--repo-words": str(self.words_dir), "--packs": str(self.packs),
+                 "--team-notes": str(self.root / "none.json"), "--wsl-notes": str(self.wsl_json), "--wsl-distro": "Ubuntu", "--wsl-program": self.wsl,
+                 "--pgr": stand_in(), "--home": str(self.my_home), "--out": str(self.work / f"args-{half}.json")}
+        given.update({"--" + key.replace("_", "-"): value for key, value in change.items()})
+        return [item for pair in given.items() if pair[1] is not None for item in pair]
+
+    def refused(self, argv) -> str:
+        said = io.StringIO()
+        with contextlib.redirect_stderr(said):
+            self.assertEqual(round6_args.main(argv), 1)
+        return said.getvalue()
+
+    def test_args_for_the_halves_c_and_d_start_in_the_workflow(self):
+        want = {"c": ["gs", "n"], "d": ["gs"]}
+        for half in "cd":
+            out = self.work / f"args-{half}.json"
+            said = io.StringIO()
+            with contextlib.redirect_stdout(said):
+                self.assertEqual(round6_args.main(self.argv(half)), 0)
+            args = json.loads(out.read_text(encoding="utf-8"))
+            self.assertEqual(args["wsl"], {"distro": "Ubuntu", "repo": "/home/fakeuser/lxbench/repo", "pgr": "/home/fakeuser/lxbench/bin/pgr"})
+            self.assertEqual(sorted(args["packs"]), want[half])
+            self.assertEqual(("repoWords" in args, "loadouts" in args, "repoTeam" in args), (half == "c", False, False))
+            expected = {f"packs/{variant}/{letter}/{key}": common.sha256(args["packs"][variant][letter][key]["output"])
+                        for variant in args["packs"] for letter in common.SETS for key in common.KEYS}
+            self.assertEqual(args["sums"], expected)
+            self.assertEqual(args["matrix"], json.loads((HERE / f"round6-{half}.json").read_text(encoding="utf-8")))
+            if NODE:
+                done = run_node("--args", out)
+                self.assertEqual(done.returncode, 0, done.stdout)
+                self.assertIn(f"{common.count_matrix(args['matrix'])['agents']} agents", done.stdout)
+
+    def test_the_words_only_copy_must_exist_and_the_pgr_must_know_the_variable(self):
+        self.assertIn("--repo-words", self.refused(self.argv("c", repo_words=None)))
+        self.assertIn("no index yet", self.refused(self.argv("c", repo_words=str(self.work / "nothing"))))
+        with mock.patch.dict(os.environ, {"FAKE_PGR_IGNORE_NO_MODEL": "1"}):     # a pgr that ignores the variable shows its model
+            self.assertIn("words only", self.refused(self.argv("c", repo_words=str(self.fixture))))
+        # a copy built with the model, whatever the pgr knows: its status line says embeddings even when the call sets the variable
+        self.assertIn("words only", self.refused(self.argv("c", repo_words=str(self.fixture))))
+        self.assertIn("contains a space", self.refused(self.argv("c", repo_words="C:\\a path\\repo-words")))
+        # half d has no words-only arm: it needs neither the copy nor the packs of variant n
+        self.assertEqual(round6_args.main(self.argv("d", repo_words=None)), 0)
+
+    def test_the_vm_must_be_the_one_prepare_wsl_made(self):
+        lxbench = self.my_vm / "home" / "fakeuser" / "lxbench"
+        self.assertIn("pass --wsl-distro", self.refused(self.argv("c", wsl_distro=None, wsl_notes=str(self.root / "none.json"))))
+        self.assertIn("run prepare_wsl.py first", self.refused(self.argv("c", wsl_notes=str(self.root / "none.json"))))
+        self.assertIn("no distribution", self.refused(self.argv("c", wsl_distro="Other")))
+        self.assertIn("is not in the VM", self.refused(self.argv("c", wsl_dir="/home/fakeuser/elsewhere")))
+        with mock.patch.dict(os.environ, {"FAKE_WSL_PGR_VERSION": "0.2.7"}):
+            self.assertIn("the pgr in the VM says", self.refused(self.argv("c")))
+        changed = json.loads(self.wsl_json.read_text(encoding="utf-8"))
+        changed["pgr_version"] = "pgr 0.2.9"
+        other = self.work / "other-wsl.json"
+        other.write_text(json.dumps(changed), encoding="utf-8")
+        self.assertIn("run prepare_wsl.py again", self.refused(self.argv("c", wsl_notes=str(other))))
+        for index in (self.my_vm / "home" / "fakeuser" / ".local-index" / "rust" / "index").iterdir():
+            index.unlink()
+        self.assertIn("run prepare_wsl.py again", self.refused(self.argv("c")))
+        (lxbench / "bin" / "pgr").write_bytes(b"\x7fELF another build")
+        self.assertIn("not the build that prepare_wsl.py installed", self.refused(self.argv("c")))
+        (lxbench / "bin" / "pgr").unlink()
+        self.assertIn("is not in the VM", self.refused(self.argv("d")))
+
+    def test_a_run_tag_whose_banks_exist_in_the_vm_is_refused_for_the_hub_arms_only(self):
+        banks = self.my_vm / "home" / "fakeuser" / ".local-index" / "rust" / "banks"
+        (banks / "r6-t1-thv-orch-c-r1").mkdir(parents=True)
+        message = self.refused(self.argv("d"))
+        self.assertIn("used already", message)
+        self.assertIn("in the VM", message)
+        self.assertEqual(round6_args.main(self.argv("d", tag="t2")), 0)
+        self.assertEqual(round6_args.main(self.argv("c")), 0, "half c has no hub arm")
+
+    def test_the_counts_are_printed_for_the_four_files(self):
+        said = io.StringIO()
+        with contextlib.redirect_stdout(said):
+            self.assertEqual(round6_args.main(["--count"]), 0)
+        lines = said.getvalue().strip().split("\n")
+        self.assertEqual([line.split(":")[0] for line in lines], [f"round6-{half}.json" for half in "abcd"])
+        self.assertIn("57 cells, 81 agents (light 69, middle 12, top 0)", lines[0])
+        self.assertIn("24 cells, 120 agents (light 72, middle 0, top 48)", lines[1])
 
 
 if __name__ == "__main__":

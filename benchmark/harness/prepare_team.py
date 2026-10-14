@@ -187,15 +187,17 @@ def writable(function, path, _):
     function(path)
 
 
-def copy_fixture(fixture: pathlib.Path, team: pathlib.Path, replace: bool) -> None:
+def copy_fixture(fixture: pathlib.Path, team: pathlib.Path, replace: bool,
+                 maker: str = "prepare_team.py", suffix: str = ".round6-team") -> None:
     """Copy the fixture to the team folder. An existing team folder is removed only with --replace and only
-    when this script made it (it leaves a marker file beside it)."""
+    when this script made it (it leaves a marker file beside it). prepare_words.py makes its copy the same
+    way, under its own marker."""
     fixture, team = fixture.resolve(), team.resolve()
     if not fixture.is_dir():
         raise RoundSixError(f"the fixture {fixture} is not a folder")
     if team == fixture or fixture in team.parents or team in fixture.parents:
         raise RoundSixError("the team folder and the fixture must be two separate folders")
-    marker = team.with_name(team.name + ".round6-team")
+    marker = team.with_name(team.name + suffix)
     if team.exists():
         if not replace:
             raise RoundSixError(f"{team} exists; pass --replace to build it again")
@@ -204,7 +206,7 @@ def copy_fixture(fixture: pathlib.Path, team: pathlib.Path, replace: bool) -> No
         shutil.rmtree(team, onerror=writable)
     # Index data of other tools stays behind; runs-hub holds index homes that a test of pgr once left inside the fixture.
     shutil.copytree(fixture, team, ignore=shutil.ignore_patterns("__pycache__", ".codanna", ".token-goat", "graphify-out", "runs-hub"))
-    marker.write_text("made by prepare_team.py\n", encoding="utf-8")
+    marker.write_text(f"made by {maker}\n", encoding="utf-8")
 
 
 def apply_edit(team: pathlib.Path, edit: dict = EDIT) -> dict:

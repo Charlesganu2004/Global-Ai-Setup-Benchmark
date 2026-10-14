@@ -1,0 +1,4 @@
+[
+  {"arms": ["R6V", "R6Vh", "RN", "RNh", "TPN", "TPNh", "TPX", "TPXh"], "setup": "single", "tier": "C", "reps": ["r1", "r2", "r3"]},
+  {"arms": ["TPX", "TPXh"], "setup": "single", "tier": "B", "reps": ["r1", "r2", "r3"]}
+]

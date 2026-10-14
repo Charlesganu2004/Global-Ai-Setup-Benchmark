@@ -10,6 +10,14 @@ Behaviour switches for the tests, set in the environment:
   FAKE_PGR_VERSION      the version it prints (default 0.2.0)
   FAKE_PGR_EMPTY_PACK   a text; a pack whose task contains it prints nothing
   FAKE_PGR_FAIL_PACK    a text; a pack whose task contains it exits with 1
+  FAKE_PGR_IGNORE_NO_MODEL  set to 1: the stand-in ignores PGR_NO_MODEL, like a pgr that predates it
+  FAKE_PGR_STRIP        a folder whose path is left off the front of a root when the index is looked up, so that
+                        a copy of a virtual machine's folder (fake_wsl.py) keeps its index
+
+PGR_NO_MODEL=1 (a pgr 0.2 feature) makes the real engine behave as if no embedding model existed, at index
+build and at query. The stand-in does the same: the index remembers whether it was built with words only,
+the status line says what the index was built with (not what the call sets) and a pack made with the variable
+set differs from a pack made with the model.
 """
 from __future__ import annotations
 
@@ -84,18 +92,44 @@ class Bank:
         self.path.write_text(json.dumps(self.data, indent=1), encoding="utf-8")
 
 
+def marker_path(root: pathlib.Path) -> pathlib.Path:
+    text = str(root.resolve()).lower()
+    strip = os.environ.get("FAKE_PGR_STRIP", "").lower()     # fake_wsl.py: the folder that stands for / inside the VM
+    if strip and text.startswith(strip):
+        text = text[len(strip):]
+    return home() / "index" / hashlib.sha1(text.encode()).hexdigest()[:12]
+
+
+def no_model() -> bool:
+    return os.environ.get("PGR_NO_MODEL") == "1" and os.environ.get("FAKE_PGR_IGNORE_NO_MODEL") != "1"
+
+
+def built_words_only(root: pathlib.Path) -> bool:
+    """Whether the index was built with words only. The status line reports this, as the real pgr does: an index
+    built with the model says "embeddings" even when PGR_NO_MODEL=1 is set for the call."""
+    marker = marker_path(root)
+    return marker.exists() and marker.read_text(encoding="utf-8") == "words"
+
+
+def words_only(root: pathlib.Path) -> bool:
+    """Whether a query works on words alone: PGR_NO_MODEL is set, or the index was built that way."""
+    return no_model() or built_words_only(root)
+
+
 def status_line(root: pathlib.Path) -> str:
-    marker = home() / "index" / hashlib.sha1(str(root.resolve()).lower().encode()).hexdigest()[:12]
-    if not marker.exists():
+    if not marker_path(root).exists():
         return f"pgr: {root.name} | no index yet (run: pgr refresh)"
     defs = definitions(root)
-    return f"pgr: {root.name} | graph ready ({sum(len(v) for v in defs.values())} symbols, 0 links, 1s old) | search ready (10 chunks, embeddings) | memory 0 notes."
+    search = "words only" if built_words_only(root) else "embeddings"
+    return f"pgr: {root.name} | graph ready ({sum(len(v) for v in defs.values())} symbols, 0 links, 1s old) | search ready (10 chunks, {search}) | memory 0 notes."
 
 
 def refresh(root: pathlib.Path) -> None:
-    marker = home() / "index" / hashlib.sha1(str(root.resolve()).lower().encode()).hexdigest()[:12]
+    marker = marker_path(root)
     marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("ready", encoding="utf-8")
+    marker.write_text("words" if no_model() else "ready", encoding="utf-8")
+    if no_model():
+        print("pgr: no embedding model found, search uses words only", file=sys.stderr)
     print("pgr: index refreshed, 1 files changed, 1 ms", file=sys.stderr)
 
 
@@ -108,7 +142,8 @@ def pack(root: pathlib.Path, engines: list[str], task: str) -> str:
             return ""
     out = []
     defs = definitions(root) if "graph" in engines else {}
-    seed = hashlib.sha1((",".join(engines) + task).encode()).hexdigest()
+    words = words_only(root)
+    seed = hashlib.sha1((",".join(engines) + task + ("|words" if words else "")).encode()).hexdigest()
     if "graph" in engines:
         blocks = []
         for name in code_names(task)[:4]:
@@ -118,7 +153,7 @@ def pack(root: pathlib.Path, engines: list[str], task: str) -> str:
         if blocks:
             out += ["== names"] + blocks
     if "search" in engines:
-        out += ["== find", f"hit_{seed[:6]} a.py:1-9 (x)", f"  a stand-in hit for variant {','.join(engines)}"]
+        out += ["== find", f"hit_{seed[:6]} a.py:1-9 (x)", f"  a stand-in hit for variant {','.join(engines)}{' (words only)' if words else ''}"]
     if "graph" in engines:
         out += ["== graph", f"query: 2 nodes from {seed[6:12]}"]
     return "\n".join(out) + "\n" if out else "nothing found for this task\n"
