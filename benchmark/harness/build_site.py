@@ -6,15 +6,18 @@
 Reads   benchmark/data/results.json   every agent run, written by bench_parse.py
         benchmark/data/index.json     index build times and sizes
         benchmark/data/engine.json    optional: the "public" rows of engine speed
-        benchmark/data/install.json   optional: the "public" install block
+        benchmark/data/install.json   the "public" install block: release links, files, commands (the install page is built from it)
+        benchmark/data/video.json     optional: the films the page plays, and the files each can be played from
+        benchmark/data/codex.json     optional: read only to learn whether a second agent program was measured
         benchmark/harness/arms.json   what each method is and the commands it was given
-Writes  report/                       the full report, private: its data files, text and asset hashes
+Writes  report/                       the full report, in the repository and not served by the site: its data files, text and asset hashes
         docs/data/showcase.js         window.SHOWCASE, the public showcase's data
-        docs/*.html                   the showcase pages' computed text and asset hashes
+        docs/*.html                   the showcase pages' computed text, top bar, foot and asset hashes (the page shells, docs/assets and
+                                      docs/media are written by hand; this script fills the slots between the <!--slot:NAME--> marks)
         benchmark/RESULTS.md          the same numbers as tables
 
-The full report (report/) is not published. The showcase (docs/) is published by GitHub Pages, shows
-measured outcomes only, and every build ends by scanning it for anything that must not be public.
+The full report (report/) is in the repository but is not served by the site. The showcase (docs/) is published by GitHub Pages,
+shows measured outcomes only, and every build ends by scanning it for anything that must not be on the site.
     python benchmark/harness/build_site.py --guard DIR   run only that scan, on any folder
     python benchmark/harness/build_site.py --guard-selftest   plant one violation for each rule of the scan in a
                                                               scratch copy of docs/ and check that each is caught
@@ -34,7 +37,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 BENCH = HERE.parent
 REPO = BENCH.parent
-REPORT = REPO / "report"   # the full report: private, not published
+REPORT = REPO / "report"   # the full report: in the repository, not served by the site
 DOCS = REPO / "docs"       # the public showcase: published by GitHub Pages
 
 # Dollars per million tokens: input, output, cache read, cache write (5 minute).
@@ -47,6 +50,125 @@ ROLE_FIELDS = ("tokens", "requests", "tool_calls", "output", "cost_warm", "cost_
 CONTEXT_CHARS = {"skills": 33278, "instructions": 21660, "deferred": 15977, "rest": 5166}
 SHARED_PREFIX = 38476   # tokens every agent read from cache: system prompt and tool definitions
 TIER_ORDER = "CBA"
+
+
+def models_of() -> dict:
+    """benchmark/data/models.json: the models the three classes of the runs meant on the days of the runs, with the effort each
+    ran at, read from the run transcripts. The site names these models wherever it used to say light, middle or top class."""
+    path = BENCH / "data" / "models.json"
+    if not path.is_file():
+        raise SystemExit("benchmark/data/models.json is missing: the pages name the models the runs used")
+    data = json.loads(path.read_text(encoding="utf-8"))
+    tiers = {}
+    for item in data.get("tiers") or []:
+        for key in ("tier", "name", "effort"):
+            if not isinstance(item.get(key), str) or not item[key]:
+                raise SystemExit(f"models.json: every tier needs a {key}")
+        tiers[item["tier"]] = item
+    if sorted(tiers) != ["A", "B", "C"]:
+        raise SystemExit("models.json: tiers must be C, B and A")
+    codex = next((h for h in data.get("harnesses") or [] if h.get("model_name")), None)
+    return {"how": str(data.get("how", "")), "read": str(data.get("read", "")), "tiers": tiers, "codex": codex}
+
+
+MODELS = models_of()
+TIER_OF = {"light": "C", "mid": "B", "top": "A"}
+
+
+def model_label(tier: str) -> str:
+    """The model and its effort as a label: Claude Haiku 5.5, low effort."""
+    item = MODELS["tiers"][tier]
+    return f"{item['name']}, {item['effort']} effort"
+
+
+def model_at(tier: str) -> str:
+    """The same inside a sentence: Claude Haiku 5.5 at low effort."""
+    item = MODELS["tiers"][tier]
+    return f"{item['name']} at {item['effort']} effort"
+
+
+def models_line() -> str:
+    """The one short line that says what the model names mean: the runs asked for a class of model, and these are the models
+    that class meant on the days of the runs."""
+    dates = re.search(r"(\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})", MODELS["how"])
+    when = f" on the days of rounds one to five, {dates.group(1)} to {dates.group(2)}" if dates else " on the days of the runs"
+    named = ", ".join(model_at(tier) for tier in "CBA")
+    return (f"The runs asked for a class of model: the smallest, a middle one and the largest. These are the models those classes meant{when}: "
+            f"{named}. Round six, on {ROUND_SIX_DATE}, asked for the same classes; its records name only the model family, so its versions are taken to be the same.")
+
+
+def modelize(text):
+    """Say the model where a sentence says a class: the light, mid or top class and the tiers C, B and A become the model and
+    its effort from models.json. Strings only; anything else comes back unchanged."""
+    if not isinstance(text, str) or not text:
+        return text
+    low, mid, top = model_at("C"), model_at("B"), model_at("A")
+    both = {"light": low, "mid": mid, "top": top}
+    text = re.sub(r"(?i)\bthe light, mid and top (?:model )?classes\b", f"{low}, {mid} and {top}", text)
+    text = re.sub(r"(?i)\bthe light and mid (?:model )?classes\b", f"{low} and {mid}", text)
+    text = re.sub(r"(?i)\bthe light and top (?:model )?classes\b", f"{low} and {top}", text)
+    text = re.sub(r"(?i)\b(?:the )?(light|mid|top) (?:model )?class\b", lambda m: both[m.group(1).lower()], text)
+    text = re.sub(r"(?i)\bone (light|mid|top) agent\b", lambda m: f"one {MODELS['tiers'][TIER_OF[m.group(1).lower()]]['name']} agent", text)
+    # The class as an adjective: "light-class runs", "three light workers", "a top-tier orchestrator".
+    adjective = {key: f"{MODELS['tiers'][tier]['name']} ({MODELS['tiers'][tier]['effort']} effort)" for key, tier in TIER_OF.items()}
+    adjective.update({"middle": adjective["mid"], "apex": adjective["top"]})
+    text = re.sub(r"(?i)\b(light|mid|top)-class\b", lambda m: adjective[m.group(1).lower()], text)
+    text = re.sub(r"(?i)\b(light|mid) (workers?|agents?)\b", lambda m: f"{adjective[m.group(1).lower()]} {m.group(2)}", text)
+    text = re.sub(r"(?i)\b(top|apex|mid|middle)-tier (orchestrators?|reviewers?|workers?|subagents?)\b",
+                  lambda m: f"{adjective[m.group(1).lower()]} {m.group(2)}", text)
+    text = re.sub(r"(?i)\bboth model classes\b", "both models", text)
+    text = re.sub(r"(?i)\bmodel class\b", "model", text)
+    text = re.sub(r"(?i)\b(light|mid|top)(?=, (?:original|held-out) questions\b)", lambda m: both[m.group(1).lower()], text)
+    text = re.sub(r"(?i)\b(a|the) (larger|smaller) model class\b", lambda m: f"{m.group(1)} {m.group(2)} model", text)
+    text = re.sub(r"(?i)\b(?:the )?(?:cheapest|smallest|light) model tier\b", low, text)
+    text = re.sub(r"(?i)\bthe (light|top|mid|middle) model\b", lambda m: {"light": low, "top": top}.get(m.group(1).lower(), mid), text)
+    text = re.sub(r"(?i)\btier[\s_-]*([abc])(?:,\s*(?:scout|coder|apex))?\b", lambda m: model_at(m.group(1).upper()), text)
+    text = re.sub(r"(?i)\b(?:the )?(?:top|apex)[ -]tier\b", top, text)
+    text = re.sub(r"(?i)\b(?:the )?(?:mid|middle)[ -]tier\b", mid, text)
+    text = re.sub(r"(?i)\b(?:the )?(?:cheapest|light)[ -]tier\b", low, text)
+    text = re.sub(r"(?i)\bmodel classes\b", "models", text)
+    text = re.sub(r"(?i)\bthe (?:cheapest|smallest) model\b", low, text)
+    text = re.sub(r"(?i)\btier by tier\b", "model by model", text)
+    text = re.sub(r"(?i)\b(this|that|each|every|one|another|a|the same) tier\b", lambda m: f"{m.group(1)} model", text)
+    text = re.sub(r"(?i)\bmodel tiers\b", "models", text)
+    text = re.sub(r"(?i)\bmodel tier\b", "model", text)
+    text = re.sub(r"(?i)\btiers\b", "models", text)
+    return text
+
+
+def modelize_all(value):
+    """modelize over every string of a nested structure."""
+    if isinstance(value, str):
+        return modelize(value)
+    if isinstance(value, (list, tuple)):
+        return [modelize_all(item) for item in value]
+    if isinstance(value, dict):
+        return {key: modelize_all(item) for key, item in value.items()}
+    return value
+
+
+def footprint_of() -> dict | None:
+    """benchmark/data/footprint.json: the measured sizes on disk and the one sentence that says what the engine is written in."""
+    path = BENCH / "data" / "footprint.json"
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("how", "first_generation", "pgr", "language"):
+        if key not in data:
+            raise SystemExit(f"footprint.json lacks {key!r}")
+    return data
+
+
+def platforms_of() -> dict | None:
+    """benchmark/data/platforms.json: what was tested on which system."""
+    path = BENCH / "data" / "platforms.json"
+    if not path.is_file():
+        return None
+    data = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("tests", "same_answers", "installers"):
+        if not isinstance(data.get(key), list):
+            raise SystemExit(f"platforms.json lacks the list {key!r}")
+    return data
 # How the findings shown in the top-level README begin.
 README_FINDINGS = ("An agent starts", "Where the shipped build", "The shipped build on", "Does adding token-goat",
                    "Do the engines do as well", "The model tier moves", "In these runs orchestration",
@@ -479,6 +601,16 @@ def text_of(points: list[dict], cells: list[dict], agents: list[dict], index: di
     }
 
 
+def arm_detail(arm: dict) -> str:
+    """What the agent was given, as RESULTS.md words it. The held-out twin of a round-six arm is not run on questions nobody tuned for:
+    the pack of that round was written after the questions had been run."""
+    text = arm["detail"]
+    if arm.get("group") == "team" and "three questions nobody tuned for" in text:
+        text = text.replace("three questions nobody tuned for", "the held-out set of three questions, which for round six is a second set and not an untouched one, "
+                            "because the pack was written after these questions had been run")
+    return text
+
+
 def markdown(points: list[dict], index: dict, arms: dict, text: dict) -> str:
     name = {arm["id"]: arm["name"] for arm in arms["arms"]}
     order = [arm["id"] for arm in arms["arms"]]
@@ -509,7 +641,7 @@ def markdown(points: list[dict], index: dict, arms: dict, text: dict) -> str:
         cell = lambda v: "not measured" if v is None else f"{v:g}"
         out.append(f"| {s['name']} | {cell(s['cold'])} | {cell(s['unchanged'])} | {cell(s['one_file'])} | {cell(s['disk'])} |")
     out += ["", "## Methods", "", "| Code | Method | What the agent was given |", "|---|---|---|"]
-    out += [f"| {arm['id']} | {arm['name']} | {arm['detail']} |" for arm in arms["arms"] if arm["id"] in {p["arm"] for p in points}]
+    out += [f"| {arm['id']} | {arm['name']} | {arm_detail(arm)} |" for arm in arms["arms"] if arm["id"] in {p["arm"] for p in points}]
     assert set(order) >= {p["arm"] for p in points}, "a measured method is missing from arms.json"
     out += ["", "## How it was measured", ""] + [f"- {line}" for line in text["method"]] + [""]
     return "\n".join(out)
@@ -916,7 +1048,7 @@ def write_site_data(data: dict) -> list[tuple[str, int]]:
     written = []
     for name, statement, value in files:
         # "</" would end a script block early if it ever appeared inside the data.
-        body = json.dumps(rounded(value), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+        body = json.dumps(modelize_all(rounded(value)), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
         path = folder / name
         path.write_text("// Written by benchmark/harness/build_site.py. Do not edit by hand.\n"
                         + statement.replace("{}", body) + "\n", encoding="utf-8")
@@ -1085,9 +1217,31 @@ def measured_plan(agents: list[dict]) -> str:
 # and the guard at the end of the build stops it if one does.
 # ----------------------------------------------------------------------------------------------
 
-PUBLIC_CLASSES = (("C", "light", "Light"), ("B", "mid", "Mid"), ("A", "top", "Top"))
+PUBLIC_CLASSES = tuple((tier, cid, model_label(tier)) for tier, cid in (("C", "light"), ("B", "mid"), ("A", "top")))   # the ids stay light, mid and top in the data; the pages say the model
 PUBLIC_FAMILIES = {"control": "Control", "tool": "Separate tools", "engine-v1": "Our engine, first generation",
-                   "engine-v2": "Our engine, second generation"}
+                   "engine-v2": "Our engine, second generation", "team": "Our engine in team setups"}
+# The arms of the team round (group "team" in arms.json) are named here, in plain words and without an internal id. A team arm that
+# has results and no name here is refused, so an id can never reach a page. The demonstration set arms are not published.
+TEAM_PUBLIC = {
+    "R6": {"slug": "team-baseline", "name": "PGR, graph and search, round six", "family": "team", "order": 20},
+    "TP": {"slug": "team-brief-pack", "name": "PGR, graph and search, with a brief pack", "family": "team", "order": 21},
+    "TPG": {"slug": "team-graph-pack", "name": "PGR, code graph only, with a graph pack", "family": "team", "order": 22},
+    "TPS": {"slug": "team-search-pack", "name": "PGR, search only, with a search pack", "family": "team", "order": 23},
+    "TH": {"slug": "team-hub", "name": "PGR, graph and search, with a team hub", "family": "team", "order": 24},
+    "TPH": {"slug": "team-pack-and-hub", "name": "PGR, graph and search, with a brief pack and a team hub", "family": "team", "order": 25},
+    "R6V": {"slug": "team-ubuntu-vm", "name": "PGR, graph and search, in an Ubuntu virtual machine", "family": "team", "order": 26},
+    "THV": {"slug": "team-hub-ubuntu-vm", "name": "PGR, graph and search, with a team hub, in an Ubuntu virtual machine", "family": "team", "order": 27},
+    "TPHV": {"slug": "team-pack-and-hub-ubuntu-vm", "name": "PGR, graph and search, with a brief pack and a team hub, in an Ubuntu virtual machine", "family": "team", "order": 28},
+    "RN": {"slug": "team-no-neural-network", "name": "PGR, graph and search, without the neural network", "family": "team", "order": 29},
+    "TPN": {"slug": "team-brief-pack-no-neural-network", "name": "PGR, graph and search, with a brief pack, without the neural network", "family": "team", "order": 30},
+    "TPX": {"slug": "team-pack-only", "name": "A brief pack alone, without a lookup command", "family": "team", "order": 31},
+}
+TEAM_UNPUBLISHED = {"T0", "TL", "TI"}
+
+
+def public_arm(arm: dict) -> dict | None:
+    """The public name, slug, family and order of an arm: its own "public" object in arms.json, or its row of TEAM_PUBLIC."""
+    return arm.get("public") or TEAM_PUBLIC.get(arm["id"])
 BRAND = "PeterGanuRusty"          # the product; "PGR" is its short form and "pgr" its command
 PUBLIC_PAGES = (("index.html", "Overview"), ("benchmarks.html", "Benchmarks"), ("study.html", "Study"),
                 ("install.html", "Install"))
@@ -1099,9 +1253,9 @@ PUBLIC_QUESTIONS = (
     {"id": "purpose", "title": "Which function does a job",
      "text": "Given a described job, name the function that does it, say where it is defined and name its counterpart, the function that reverses it."},
 )
-PUBLIC_CLASS_TEXT = {"light": "The smallest model class, run at low reasoning effort.",
-                     "mid": "A middle model class, run at medium reasoning effort.",
-                     "top": "The largest model class, run at the highest reasoning effort."}
+PUBLIC_CLASS_TEXT = {"light": f"{MODELS['tiers']['C']['name']}, run at {MODELS['tiers']['C']['effort']} reasoning effort. The smallest of the three.",
+                     "mid": f"{MODELS['tiers']['B']['name']}, run at {MODELS['tiers']['B']['effort']} reasoning effort. The middle one.",
+                     "top": f"{MODELS['tiers']['A']['name']}, run at {MODELS['tiers']['A']['effort']} reasoning effort. The largest."}
 PUBLIC_SETUPS = ("One agent answering all three questions.",
                  "Three agents, one question each, with nobody checking their answers.",
                  "One agent that briefs three workers and checks what they return.")
@@ -1116,7 +1270,8 @@ PUBLIC_SETS = (
      "text": "The three lookups every round has used."},
     {"key": "B", "id": "held-out", "name": "Held-out",
      "text": "A second set of three questions of the same three shapes, written later by the same team. The people and "
-             "agents who built the engine did not see them while building it."},
+             "agents who built the engine through round five did not see them while building it. The pack of round six was written "
+             "after these questions had been run, so for round six they are a second set of questions, not an untouched one."},
 )
 SET_OF = {s["key"]: s["id"] for s in PUBLIC_SETS}
 TIER_OF_CLASS = {cid: tier for tier, cid, _ in PUBLIC_CLASSES}
@@ -1127,10 +1282,11 @@ BEST_CELLS = tuple((cid, s["id"]) for s in PUBLIC_SETS for _, cid, _ in PUBLIC_C
 BEST_LABEL = "Most reliable"
 TIE_TOKENS = 1000                    # configurations this close in tokens are said to tie
 EARLIER_LABEL = "Earlier session"
+ROUND_SIX_DATE = "2026-10-14"   # the day round six ran, as the commit that holds its results says; results.json carries no dates
+TEAM_LABEL = "Round six, run a day after round five."
 CONTROL_NOTE = "Its reads were altered by another tool on the test machine."
 CONTROL_LINK_TEXT = "Why this matters"
 CONTROL_LINK = "study.html#control"
-INSTALL_CONTACT = re.compile(r"^(?:[^@\s<>\"']+@[^@\s<>\"']+\.[A-Za-z]{2,}|https://[^\s<>\"']+)$")
 
 
 def public_point(p: dict, class_id: str) -> dict:
@@ -1152,7 +1308,8 @@ def best_config(configs: list[dict]) -> tuple[str | None, str | None]:
     least BEST_MIN_RUNS runs in each of the four BEST_CELLS, the highest share of fully correct runs out of all
     its runs; a tie goes to the lower mean tokens over the four cells. "light": when no configuration has all
     four cells, the earlier rule, the highest share of fully correct runs on the light class and the original
-    questions among those with at least BEST_MIN_RUNS runs there, then the fewer tokens."""
+    questions among those with at least BEST_MIN_RUNS runs there, then the fewer tokens. Every published configuration is
+    eligible, those of the team round included: the rule was set after round five and before round six ran."""
     from fractions import Fraction
     whole = []
     for config in configs:
@@ -1263,7 +1420,7 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
     best = next((c for c in configs if c["best"]), None)
     control = next((c for c in configs if c["family"] == "control"), None)
     first = first_generation(configs)
-    by_arm = {arm_id: by_slug[slug] for arm_id, slug in owner.items()}
+    by_arm = {arm_id: by_slug[slug] for arm_id, slug in owner.items() if slug in by_slug}
     light = {slug: cell_of(c, "light", "original") for slug, c in by_slug.items()}
     versus = versus_control(configs)
     headline = []
@@ -1291,14 +1448,21 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
         def classes_of(config: dict, sid: str) -> list:
             return [cell_of(config, cid, sid) for cid in ("light", "mid")]
         both = {config["slug"]: classes_of(config, "original") for config in (best, first)}
-        if all(pt and pt["turns"] <= 2.05 for pts in both.values() for pt in pts):
+        # A configuration whose agent has no command to call has no asking turn: its floor is the one turn that answers.
+        floor = {config["slug"]: 1.05 if config.get("commandless") else 2.05 for config in (best, first)}
+        if all(pt and pt["turns"] <= floor[slug] for slug, pts in both.items() for pt in pts):
             def spent(config: dict) -> str:
                 pts = both[config["slug"]]
                 return f"{tokens(pts[0]['tokens'])} tokens on the light class and {tokens(pts[1]['tokens'])} on the mid class"
-            text = ("Two turns is the floor for this task: one to ask and one to answer. On the original questions "
-                    f"\"{best['name']}\" answered in 2 turns on both classes, with {spent(best)}; \"{first['name']}\" also "
-                    f"took 2 turns on both, with {spent(first)}.")
-            if all(abs(a["tokens"] / z["tokens"] - 1) <= 0.01 for a, z in zip(both[best["slug"]], both[first["slug"]])):
+            if best.get("commandless"):
+                text = ("Two turns is the floor for a task that needs a lookup command: one to ask and one to answer. On the original questions "
+                        f"\"{first['name']}\" took 2 turns on both classes, with {spent(first)}. \"{best['name']}\" has no command to call: with the pack "
+                        f"already in its prompt it answered in 1 turn on both classes, with {spent(best)}.")
+            else:
+                text = ("Two turns is the floor for this task: one to ask and one to answer. On the original questions "
+                        f"\"{best['name']}\" answered in 2 turns on both classes, with {spent(best)}; \"{first['name']}\" also "
+                        f"took 2 turns on both, with {spent(first)}.")
+            if not best.get("commandless") and all(abs(a["tokens"] / z["tokens"] - 1) <= 0.01 for a, z in zip(both[best["slug"]], both[first["slug"]])):
                 text += (" On these lookups the first generation matched it in tokens and turns"
                          + ("; the measured difference between the two generations is speed, under Engine speed." if engine else "."))
             held = {config["slug"]: classes_of(config, "held-out") for config in (best, first)}
@@ -1475,7 +1639,8 @@ def public_findings(configs: list[dict], cells: list[dict], orchestration: dict,
             held_cells = tuple(cell for cell in BEST_CELLS if cell[1] == "held-out")
             held_counts = {key: cell_counts(config, held_cells) for key, (config, _) in counted.items()}
             if all(found and found[2] == len(held_cells) for found in held_counts.values()):
-                text += (f" On the held-out questions alone, {of(*held_counts['best'][:2])} against {of(*held_counts['first_generation'][:2])}.")
+                text += (f" On the held-out questions alone, {of(*held_counts['best'][:2])} against {of(*held_counts['first_generation'][:2])}"
+                         + (", though the held-out set is not held out for a round-six configuration." if best.get("session") == "team" else "."))
             findings["proof"] = dict(sums, text=text)
 
     # Orchestration: a reviewing agent on top of three light workers, against one light agent alone.
@@ -1626,20 +1791,33 @@ def study_facts(configs: list[dict], cells: list[dict], points: list[dict], owne
 
 
 def install_of() -> dict:
-    """The public install block: benchmark/data/install.json "public" when it exists, otherwise a private preview.
-    A "contact" field (an address or an https link) adds a "Request access" control to a private preview; without it
-    the page shows no control and no placeholder, because the owner has not given one."""
+    """The public install block: benchmark/data/install.json "public". It holds the release links, the two installers, the
+    program files and wheels with their sizes, the first commands, the rule an agent is given, and what was tested. The
+    install page and the commands on the other pages are built from it, so a new release is one edit of that file."""
     path = BENCH / "data" / "install.json"
-    install = (json.loads(path.read_text(encoding="utf-8")).get("public") if path.exists() else None) \
-        or {"status": "private-preview"}
-    if install.get("status") not in ("private-preview", "public"):
-        raise SystemExit("install.json: public.status must be 'private-preview' or 'public'")
-    if install["status"] == "public" and not isinstance(install.get("command"), str):
-        raise SystemExit("install.json: a public install needs a 'command' string")
-    if "contact" in install and install["contact"] in (None, ""):
-        del install["contact"]
-    if "contact" in install and not (isinstance(install["contact"], str) and INSTALL_CONTACT.match(install["contact"])):
-        raise SystemExit("install.json: public.contact must be an email address or an https link")
+    if not path.is_file():
+        raise SystemExit("benchmark/data/install.json is missing: the install page is built from it")
+    install = json.loads(path.read_text(encoding="utf-8")).get("public") or {}
+    if install.get("status") != "public":
+        raise SystemExit("install.json: public.status must be 'public'")
+    needed = ("version", "repository", "release_page", "download_base", "versioned_base", "installers", "programs", "wheels",
+              "support", "first_commands", "agent_rule", "tested", "licence")
+    missing = [key for key in needed if key not in install]
+    if missing:
+        raise SystemExit(f"install.json: public lacks {missing}")
+    base = str(install["repository"])
+    for key in ("release_page", "download_base", "versioned_base"):
+        if not str(install[key]).startswith(base + "/"):
+            raise SystemExit(f"install.json: public.{key} must be a link under the repository, {base}")
+    ids = [item.get("id") for item in install["installers"]]
+    if ids != ["windows", "unix"]:
+        raise SystemExit("install.json: public.installers must be the Windows one and then the macOS and Linux one")
+    if install.get("command") != install["installers"][0]["command"]:
+        raise SystemExit("install.json: public.command must be the Windows installer's command")
+    for group in ("programs", "wheels", "support"):
+        for item in install[group]:
+            if not isinstance(item.get("name"), str) or not isinstance(item.get("bytes"), int):
+                raise SystemExit(f"install.json: every entry of public.{group} needs a name and a size in bytes")
     return install
 
 
@@ -1670,13 +1848,14 @@ def engine_rows() -> list[dict]:
 
 
 VIDEO_KEYS = ("src", "poster", "captions", "width", "height", "seconds", "title")
-VIDEO_KINDS = ("ad", "explainer")   # in the order the page shows them: the ad first
+VIDEO_KINDS = ("trailer", "explainer")   # in the order the page shows them: the short film first
 
 
 def videos_of() -> list[dict]:
     """The public footage: benchmark/data/video.json "public" when that file exists, one film or a list of films;
     otherwise nothing, and then the page has no footage section. The files a film names must exist under
-    docs/media/. A film says what it is with "kind"; one that does not is an explainer."""
+    docs/media/. A film says what it is with "kind"; one that does not is an explainer. Each film carries the files it
+    can be played from (see film_sources), and a larger poster when one is beside the poster it names."""
     path = BENCH / "data" / "video.json"
     if not path.exists():
         return []
@@ -1700,11 +1879,16 @@ def videos_of() -> list[dict]:
             if not name.startswith("media/") or ".." in name or not (DOCS / name).is_file():
                 raise SystemExit(f"video.json: {where}.{key} must name an existing file under docs/media/, got {name!r}")
         film = {"kind": kind, **{key: video[key] for key in VIDEO_KEYS}}
+        film["sources"] = film_sources(video, where)
+        larger = str(video["poster"]).replace("-poster.", "-poster-2160.")
+        if larger != video["poster"] and (DOCS / larger).is_file():
+            film["poster_large"] = larger
         # The length the page shows is the length of the file, not a value typed into video.json that can fall behind it.
         measured = mp4_seconds(DOCS / str(video["src"]))
         if measured is not None and abs(measured - float(video["seconds"])) > 0.05:
             print(f"film {video['src']}: video.json says {video['seconds']} s, the file is {measured:.1f} s; the page shows the file's")
             film["seconds"] = round(measured, 1)
+        film["title"] = film_name(film)
         films.append(film)
     return sorted(films, key=lambda film: VIDEO_KINDS.index(film["kind"]))
 
@@ -1765,10 +1949,10 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
     set_order = [s["id"] for s in PUBLIC_SETS]
     hook_test = {arm["id"] for arm in arms["arms"] if arm.get("group") == "hooks"}
     base_of = lambda a: a.get("base", a["id"])
-    held = [a for a in arms["arms"] if a.get("group") == "heldout"]
+    held = [a for a in arms["arms"] if a.get("group") == "heldout" or (a.get("group") == "team" and a.get("base"))]
     configs, owner, claimed, not_repeated = [], {}, set(), []
-    for arm in sorted((a for a in arms["arms"] if "public" in a), key=lambda a: a["public"]["order"]):
-        spec = arm["public"]
+    for arm in sorted((a for a in arms["arms"] if public_arm(a)), key=lambda a: public_arm(a)["order"]):
+        spec = public_arm(arm)
         if spec["family"] not in PUBLIC_FAMILIES:
             raise SystemExit(f"arms.json: {arm['id']} has public family {spec['family']!r}, expected one of {sorted(PUBLIC_FAMILIES)}")
         members = [arm] + [h for h in held if base_of(h) == base_of(arm)]
@@ -1780,7 +1964,7 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
             owner[member["id"]] = spec["slug"]
             for tier, _, _ in PUBLIC_CLASSES:
                 found = pick(points, member["id"], "single", tier)
-                if found:
+                if found and found["set"] in SET_OF:
                     rows.append(public_point(found, class_of[tier]))
         keys = [(row["class"], row["set"]) for row in rows]
         if len(keys) != len(set(keys)):
@@ -1788,10 +1972,12 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
         if rows:
             rows.sort(key=lambda row: (set_order.index(row["set"]), class_order.index(row["class"])))
             configs.append({"slug": spec["slug"], "name": spec["name"], "family": spec["family"], "best": False,
+                            # the agent answers from a pack in its prompt and may call no command and no tool
+                            "commandless": arm.get("uses") == ["pack_only"],
                             # "day": measured on the day of the second session; "earlier": kept from the first session
-                            "session": "day" if arm.get("group") in ("rust", "rerun") else "earlier",
+                            "session": "team" if arm.get("group") == "team" else "day" if arm.get("group") in ("rust", "rerun") else "earlier",
                             "sets": [sid for sid in set_order if any(row["set"] == sid for row in rows)], "points": rows})
-            if arm.get("group") not in ("rust", "rerun"):
+            if arm.get("group") not in ("rust", "rerun", "team"):
                 not_repeated.append(spec["name"])
     best, rule = best_config(configs)
     for config in configs:
@@ -1831,7 +2017,7 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
                      if any(c["family"] == fid for c in configs)],
         "best_rule": rule,
         "labels": {"best": BEST_LABEL, "rule": best_rule(rule), "control_note": CONTROL_NOTE,
-                   "control_link_text": CONTROL_LINK_TEXT, "control_link": CONTROL_LINK, "earlier": EARLIER_LABEL},
+                   "control_link_text": CONTROL_LINK_TEXT, "control_link": CONTROL_LINK, "earlier": EARLIER_LABEL, "team": TEAM_LABEL},
         "versus": versus_control(configs),
         # The line under each leaderboard view, computed once and read by the page and by its script.
         "view_notes": {f"{cid}|{sid}": view_note(ordered_rows(configs, cid, sid))
@@ -1839,6 +2025,8 @@ def public_of(points: list[dict], cells: list[dict], agents: list[dict], index: 
         "configs": configs,
         "findings": public_findings(configs, cells, orchestration, hooks, arms, hook_test, owner, engine)}
     public["study"].update(study_facts(configs, cells, points, owner, arms, hook_test))
+    public["pick"] = pick_facts(configs)
+    public["team"] = team_facts(points, cells, agents, arms)
     if system:
         public["study"]["system"] = system.group(1)
     if engine:
@@ -1855,7 +2043,8 @@ def write_showcase_data(public: dict) -> int:
     folder = DOCS / "data"
     folder.mkdir(parents=True, exist_ok=True)
     # "</" would end a script block early if it ever appeared inside the data.
-    body = json.dumps(rounded(public), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+    shown = modelize_all({key: value for key, value in public.items() if key != "install"})   # the install page is written from it, the scripts do not read it
+    body = json.dumps(rounded(shown), ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
     path = folder / "showcase.js"
     path.write_text("// Generated. Do not edit by hand.\nwindow.SHOWCASE = " + body + ";\n", encoding="utf-8")
     return path.stat().st_size
@@ -1895,26 +2084,28 @@ def text_rows_html(rows: list[tuple[str, str]]) -> str:
 
 
 def index_words(public: dict) -> tuple[str, list[tuple[str, str]]]:
-    """The words of the Overview's opening, in two parts. The lead says what the product is and is the first thing read on
-    the first screen. The key is what a reader needs to take the numbers: where they come from, what a token and a turn are,
-    what the classes and the question sets are. The key is set out under the opening, as a list."""
+    """The words of the Overview's opening, in two parts. The lead says plainly what the product is, what it works with and what
+    it was measured under, and is the first thing read on the first screen. The key is what a reader needs to take the numbers:
+    where they come from, what a token and a turn are, what the classes and the question sets are."""
     behind = public["study"]["behind"]
     common = max(behind["by_size"], key=lambda size: behind["by_size"][size])
     most = behind["by_size"][common] * 2 > behind["cells"]
-    lead = (f"{BRAND} (PGR) is a command-line program that runs on the developer's own machine. An AI coding agent calls it to "
-            "look things up in the code it is working on, such as where a function is defined and what calls it, and nothing leaves "
-            "the machine.")
-    key = [("Evidence", "The results on this site come from one Python repository: "
+    lead = (f"{BRAND} (pgr) is a desktop command-line tool for AI coding agents, written in Rust. The agent asks it where a function "
+            "is defined and what calls it, and gets the answer in one step. It works with any agent that can run a command.")
+    key = [("Evidence", "The results on this site come from one repository, a Python project: "
                         f"{behind['runs']} runs of a single agent in {behind['cells']} cells, {number_word(int(common))} runs in "
-                        f"{'most of them' if most else 'the commonest cell size'}."),
+                        f"{'most of them' if most else 'the commonest cell size'}. The engine itself is written in Rust."),
            ("Tokens and turns", "A token count is all the text the model read or wrote over a task, including the conversation it reads "
                                 "again on every turn, and a turn is one round trip to the model."),
-           ("Model classes", "Model classes are named by size, the light class being the smallest."),
+           ("Models", models_line()),
            ("Questions", "The original questions are the three lookups used in every round; the held-out questions are a second set "
                          "of three.")]
-    if public["install"]["status"] == "private-preview":
-        key.append(("Status", "The package is in private preview."))
     return lead, key
+
+
+def lede_note_slot(public: dict) -> str:
+    """The line under the lede of the Overview: that it runs only on the visitor's machine, and what it was measured under."""
+    return f"It runs only on your own machine, with no account, no server and no network use. {harness_line()}"
 
 
 def key_slot(public: dict) -> str:
@@ -1927,20 +2118,20 @@ def watch_slot(public: dict) -> str:
     films = public.get("videos") or ([public["video"]] if public.get("video") else [])
     if not films:
         return ""
-    return f'<a class="btn" href="#films">Watch the {round(films[0]["seconds"])} second film</a>'
+    first = films[0]
+    return f'<a class="btn ghost" href="#films">Watch the {VIDEO_KIND_TEXT.get(first.get("kind", "explainer"), "film").lower()}, {first["seconds"]:.0f} seconds</a>'
 
 
 def lede_slot(page: str, public: dict) -> str:
-    study = public["study"]
     if page == "index.html":
         return index_words(public)[0]
     if page == "benchmarks.html":
         return ("Tokens, turns and mean score for each published configuration, measured on the same three lookups and on a second "
-                "set of three questions of the same shapes. Pick a model class and a question set to compare.")
+                "set of three questions of the same shapes. Pick a model and a question set to compare.")
     if page == "study.html":
         return "How the measurements were made, what they cover and what they leave out."
-    return ("PeterGanuRusty is in private preview: access is by invitation, and there is no public download yet."
-            if public["install"]["status"] == "private-preview" else "The package is public. One command installs it.")
+    return (f"{BRAND} (pgr) is a desktop command-line tool for AI coding agents, for Windows, macOS and Linux. It works with any agent "
+            f"that can run a command, and it is written in Rust. {harness_line()} One paste installs it.")
 
 
 GLUE = re.compile(r"(?<=\d) (?=(?:ms|s|MB|kB|k|M|%|times|seconds|turns|tokens|runs|run|files|lines|of)\b)|(?<=\d[kM]) (?=to \d)|(?<= to) (?=\d)|(?<=\d) (?=of \d)|(?<= of) (?=\d)")
@@ -1974,15 +2165,15 @@ def figures_slot(public: dict) -> str:
     # Each measure is a pair of lanes drawn to one scale, the comparison above and the best configuration below. Tokens and
     # turns are set against no index. Fully correct runs and the mean score are set against the first generation only:
     # another tool on the test machine altered the control's reads. The number beside each pair counts from the
-    # comparison's value to the best one's when it is first seen.
+    # comparison's value to the best one's when its row is lit, and the number is written finished.
     name, other = best["name"], (first["name"] if f else "")
     rows = [("Tokens per task", tokens(b["tokens"]),
              f"No index: {tokens(c['tokens'])}, {1 - b['tokens'] / c['tokens']:.0%} fewer in this cell" if c else "",
-             f' data-count="tokens" data-from="{c["tokens"]:.0f}" data-to="{b["tokens"]:.0f}"' if c else "",
+             "",
              [("ref", "No index", tokens(c["tokens"]), c["tokens"] / max(b["tokens"], c["tokens"])),
               ("best", name, tokens(b["tokens"]), b["tokens"] / max(b["tokens"], c["tokens"]))] if c else []),
             ("Turns per task", f"{b['turns']:.1f}", turns_note,
-             f' data-count="turns" data-from="{c["turns"]:.4f}" data-to="{b["turns"]:.4f}"' if c else "",
+             "",
              [("ref", "No index", f"{c['turns']:.1f}", c["turns"] / max(b["turns"], c["turns"])),
               ("best", name, f"{b['turns']:.1f}", b["turns"] / max(b["turns"], c["turns"]))] if c else []),
             ("Fully correct runs", of(b["perfect_runs"], b["runs"]), f"{first['name']}: {of(f['perfect_runs'], f['runs'])}" if f else "", "",
@@ -1997,15 +2188,39 @@ def figures_slot(public: dict) -> str:
         for label, value, note, attrs, lanes in rows)
     group = (f"{BEST_LABEL} configuration, light model class, original questions, one agent answering three lookups"
              + (". Tokens and turns are set against no index, fully correct runs and mean score against the first generation" if c and f else ""))
+    lead = ""
+    if c and c["tokens"] > b["tokens"]:
+        saving = 1 - b["tokens"] / c["tokens"]
+        across = (f"Across the {number_word(len(versus['cells']))} cells measured: {saving_range(versus)}."
+                  if versus and len(versus["cells"]) > 1 else "")
+        lead = (f'\n    <div class="saving-lead"><p class="lead-kicker">Fewer tokens than no index</p>'
+                f'<div class="ring"><svg viewBox="0 0 100 100" aria-hidden="true" focusable="false"><circle class="ring-track" cx="50" cy="50" r="44"/>'
+                f'<circle class="ring-fill" cx="50" cy="50" r="44" pathLength="1" style="--v:{saving:.4f}"/></svg>'
+                f'<p class="lead-num"><b>{esc(share(saving))}</b></p></div>'
+                '<p class="lead-cap">In this one cell: the light class, the original questions.</p>'
+                + (f'<p class="lead-range">{esc(across)}</p>' if across else "")
+                + f'<div class="gauge" aria-hidden="true"><span class="g-track"><i class="g-fill" style="--v:{b["tokens"] / c["tokens"]:.4f}"></i></span>'
+                f'<span class="g-labels"><span>{esc(tokens(b["tokens"]))} with pgr</span><span>{esc(tokens(c["tokens"]))} no index</span></span></div></div>')
+    return (f'<p class="group-title">{esc(group)}</p>\n    <div class="saving-grid">{lead}\n    <dl class="rl">{items}\n    </dl>\n    </div>')
+
+
+def notes_slot(public: dict) -> str:
+    """The two notes that qualify the headline figures, set under the chapter that shows them: that the saving is for one cell
+    and what the range over the cells is, and why fully correct runs and the mean score are not set against no index."""
+    found = headline_of(public)
+    if not found:
+        return ""
+    best, c = found["best"], found["c"]
+    versus = public.get("versus")
     notes = ""
     if versus and len(versus["cells"]) > 1:
         by_cell = "; ".join(f"{cell['class']} class, {cell['set']} questions, {cell['saving']:.0%}" for cell in versus["cells"])
-        notes += (f'\n    <p class="footnote">This is one cell. Across the {number_word(len(versus["cells"]))} cells where "{esc(best["name"])}" and '
+        notes += (f'\n      <p class="footnote">This is one cell. Across the {number_word(len(versus["cells"]))} cells where "{esc(best["name"])}" and '
                   f'no index were both measured, the saving in tokens was {saving_range(versus)} ({esc(by_cell)}).</p>')
     if c:
-        notes += (f'\n    <p class="footnote">Fully correct runs and mean score are not set against no index: another tool on the test machine '
+        notes += (f'\n      <p class="footnote">Fully correct runs and mean score are not set against no index: another tool on the test machine '
                   f'altered some of its reads, which lowered its correctness. <a href="{CONTROL_LINK}">Why this matters</a>.</p>')
-    return f'<p class="group-title">{esc(group)}</p>\n    <dl class="rl">{items}\n    </dl>\n    <div class="fine">{notes}\n    </div>'
+    return f'<div class="fine">{notes}\n    </div>' if notes else ""
 
 
 def proof_html(public: dict) -> str:
@@ -2023,6 +2238,9 @@ def proof_note(public: dict) -> str:
     """The sentence under the count of fully correct runs: which cells it covers, and what the held-out set is."""
     held = next((s for s in public["sets"] if s["id"] == "held-out"), None)
     about = f" The held-out questions are {held['text'][0].lower() + held['text'][1:]}" if held else ""
+    if any(c.get("session") == "team" for c in public["configs"]):
+        about += (f" Round six ran on {ROUND_SIX_DATE}, a day after round five. Its rows are set against their own baseline in the Round six chapter, "
+                  "except the highlighted one when it is a round-six row: its no-index figure is from round five.")
     return ('<p class="footnote">Counted over four cells: the light and mid classes, on the original and the held-out questions.'
             f'{esc(about)}</p>') if public["findings"].get("proof") else ""
 
@@ -2037,13 +2255,31 @@ def best_rule(rule: str | None = "cells") -> str:
                 "measured on both question sets, and the rule was set after the runs were known.")
     return (f"{label} marks the one configuration with the highest share of fully correct runs over four cells (the light and mid "
             "classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at "
-            f"least {BEST_MIN_RUNS} times in each of those four cells, and so measured on both question sets, were eligible, and the "
-            "rule was set after the runs were known.")
+            f"least {BEST_MIN_RUNS} times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after "
+            "the runs of rounds one to five were known and before round six ran.")
+
+
+def range_plot(versus: dict | None) -> str:
+    """The saving in tokens in each cell where the most reliable configuration and no index were both measured, on one axis: the
+    range it spans is drawn as a bar and each cell as a dot, so the single cell shown elsewhere is seen as one of several."""
+    if not versus or len(versus["cells"]) < 2:
+        return ""
+    cells = versus["cells"]
+    lo, hi = min(cell["saving"] for cell in cells), max(cell["saving"] for cell in cells)
+    top = 0.6 if hi <= 0.6 else -(-hi * 5 // 1) / 5
+    ticks = "".join(f'<span style="--v:{n * 0.2 / top:.4f}">{round(n * 20)}%</span>' for n in range(int(top / 0.2 + 0.5) + 1))
+    dots = "".join(f'<i class="rp-dot" style="--v:{cell["saving"] / top:.4f}"></i>' for cell in cells)
+    legend = "".join(f'<li><b>{cell["saving"]:.0%}</b><span>{esc(cell["class"])} class, {esc(cell["set"])} questions</span></li>'
+                     for cell in sorted(cells, key=lambda cell: -cell["saving"]))
+    return (f'<div class="rp" role="img" aria-label="Fewer tokens than no index in each of {number_word(len(cells))} cells: {esc(saving_range(versus))}">'
+            f'<div class="rp-axis" aria-hidden="true">{ticks}</div>'
+            f'<div class="rp-track" aria-hidden="true"><span class="rp-span" style="--a:{lo / top:.4f};--b:{hi / top:.4f}"></span>{dots}</div></div>'
+            f'<ul class="rp-legend">{legend}</ul>')
 
 
 def best_slot(public: dict) -> str:
-    """The most reliable configuration: its name, the facts about it that the headline figures above do not already
-    carry, the saving in each cell where it was set against no index, the count of fully correct runs over both question
+    """The most reliable configuration: its name, the saving in each cell where it was set against no index drawn on one axis, the
+    facts about it that the headline figures above do not already carry, the count of fully correct runs over both question
     sets, and the sentence that says how it was chosen."""
     found = headline_of(public)
     if not found:
@@ -2061,13 +2297,14 @@ def best_slot(public: dict) -> str:
     if found["c"]:
         rows.append(("Fewer tokens than no index, this cell", esc(f"{1 - pt['tokens'] / found['c']['tokens']:.0%}")))
     if versus and len(versus["cells"]) > 1:
-        dots = "".join(f'<i style="--v:{cell["saving"]:.4f}"></i>' for cell in versus["cells"])
-        rows.append(("Fewer tokens than no index, across the cells measured",
-                     f'<span class="range-dots" aria-hidden="true">{dots}</span>{esc(saving_range(versus))}'))
+        rows.append(("Fewer tokens than no index, across the cells measured", esc(saving_range(versus))))
+    if best.get("session") == "team" and found["c"]:
+        rows.append(("When no index ran", esc(f"Round five, a day before round six ({ROUND_SIX_DATE})")))
     items = "".join(f'\n      <div><dt>{esc(label)}</dt><dd>{glue(value)}</dd></div>' for label, value in rows)
+    plot = range_plot(versus)
     return (f'<p class="rl-who"><span class="rl-who-name">{esc(best["name"])}</span><span class="tag">{esc(BEST_LABEL)}</span></p>\n'
-            f'    <dl class="ledger">{items}\n    </dl>{proof_html(public)}\n'
-            f'    <div class="fine">{proof_note(public)}\n      <p class="footnote">{esc(best_rule(public.get("best_rule")))}</p>\n    </div>')
+            f'    {plot}\n    <dl class="ledger">{items}\n    </dl>{proof_html(public)}\n'
+            f'    <div class="fine">{proof_note(public)}\n      <p class="footnote">{esc(best_rule(public.get("best_rule")))}</p>\n    </div>{pick_slot(public)}')
 
 
 def board_row(config: dict, pt: dict) -> str:
@@ -2079,6 +2316,10 @@ def board_row(config: dict, pt: dict) -> str:
                   f'<a href="{CONTROL_LINK}">{esc(CONTROL_LINK_TEXT)}</a></span>')
     if config.get("session") == "earlier":
         notes += f'<span class="sub row-note" style="white-space:normal">{esc(EARLIER_LABEL)}</span>'
+    if config.get("session") == "team":
+        notes += f'<span class="sub row-note" style="white-space:normal">{esc(TEAM_LABEL)}</span>'
+    if config.get("commandless"):
+        notes += '<span class="sub row-note" style="white-space:normal">The agent has no command to call: the pack is in its prompt.</span>'
     return (f'\n        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">{esc(config["name"])}</span>{tag}{notes}</span></th>'
             f'<td data-label="Runs">{pt["runs"]}</td><td data-label="Tokens"><span class="v">{esc(tokens(pt["tokens"]))}{sub}</span></td>'
             f'<td data-label="Turns">{pt["turns"]:.1f}</td><td data-label="Mean score">{esc(share(pt["correct"]))}</td>'
@@ -2096,11 +2337,11 @@ def views(public: dict) -> list[tuple[dict, dict]]:
 
 
 def view_title(cls: dict, qset: dict) -> str:
-    return f"{cls['name']} class, {qset['name'].lower()} questions"
+    return f"{cls['name']}, {qset['name'].lower()} questions"
 
 
 def empty_html(cls: dict, qset: dict) -> str:
-    return (f'<p class="note empty">No configuration was measured on the {esc(cls["name"].lower())} class '
+    return (f'<p class="note empty">No configuration was measured on {esc(cls["name"])} '
             f'with the {esc(qset["name"].lower())} questions.</p>')
 
 
@@ -2165,7 +2406,7 @@ def seg_slot(public: dict) -> str:
                 f'<span class="seg-thumb" aria-hidden="true"></span>{buttons}\n    </div>')
     notes = "".join(f'<span data-set="{esc(s["id"])}">{esc(s["name"])} questions: {esc(s["text"][0].lower() + s["text"][1:])}</span> '
                     for s in public["sets"])
-    return ('<div class="seg-bar">\n    ' + group("Model class", "class", [(c["id"], c["name"]) for c in public["classes"]]) + '\n    '
+    return ('<div class="seg-bar">\n    ' + group("Model", "class", [(c["id"], c["name"]) for c in public["classes"]]) + '\n    '
             + group("Questions", "set", [(s["id"], s["name"]) for s in public["sets"]]) + '\n  </div>\n'
             f'  <p class="group-title seg-note" id="set-note">{notes.rstrip()}</p>\n'
             '  <p class="sr-only" id="seg-status" aria-live="polite"></p>')
@@ -2262,6 +2503,33 @@ def number_word(n: int, start: bool = False) -> str:
     return word.capitalize() if start else word
 
 
+def stats_html(items: list[tuple[str, str]]) -> str:
+    """The figures a section of the Study page is about, set large at its head: each is a number and the words for it."""
+    return '<ul class="stats">' + "".join(f'<li><b>{esc(figure)}</b><small>{esc(label)}</small></li>' for figure, label in items) + '</ul>'
+
+
+def bench_lead_slot(public: dict) -> str:
+    """The comparison the Benchmarks page opens with, beside its title: the tokens and turns of the most reliable configuration and
+    of no index in the headline cell, the saving in that one cell and across the cells, and how many runs stand behind it. The
+    figures are the ones the Overview gives, and count from the no-index value to the measured one when they come into view."""
+    found = headline_of(public)
+    if not found or not found["c"]:
+        return ""
+    b, c = found["b"], found["c"]
+    versus = public.get("versus")
+    across = f" Across {number_word(len(versus['cells']))} cells: {saving_range(versus)}." if versus and len(versus["cells"]) > 1 else ""
+    saving = 1 - b["tokens"] / c["tokens"]
+    figures = [
+        ("Tokens per task", tokens(b["tokens"]), "", f"No index: {tokens(c['tokens'])}"),
+        ("Fewer tokens", share(saving), "", f"In this one cell.{across}"),
+        ("Turns per task", f"{b['turns']:.1f}", "", f"No index: {c['turns']:.1f}"),
+        ("Runs in the cell", str(b["runs"]), "", f"{number_word(b['runs'], True)} runs cannot support a claim of significance, and this site makes none.")]
+    items = "".join(f'\n      <li class="bl-fig"><span class="bl-k">{esc(label)}</span><b{attrs}>{esc(value)}</b><span class="bl-v">{esc(glue(note))}</span></li>'
+                    for label, value, attrs, note in figures)
+    return (f'<div class="bench-lead"><p class="bl-cap">{esc(BEST_LABEL)} configuration against no index, light class, original questions.</p>'
+            f'<ul class="bl-figs">{items}\n    </ul>{pick_caveat(public)}</div>')
+
+
 def study_slots(public: dict) -> dict:
     study = public["study"]
     repo = study["repository"]
@@ -2274,7 +2542,7 @@ def study_slots(public: dict) -> dict:
     start = sessions["start_up"]
     names = {c["id"]: c["name"] for c in public["classes"]}
 
-    short = [("Repository", f"{repo['language']}, {repo['files']} files, about {repo['lines']:,} lines"),
+    short = [("Repository", f"A {repo['language']} project, {repo['files']} files, about {repo['lines']:,} lines"),
              ("Questions", f"{per_set} in each of {len(sets)} sets, each asked in every run on its set"),
              ("Runs per published cell", f"{sizes[0]} to {sizes[-1]}")]
     long = [("Runs behind the leaderboard",
@@ -2292,8 +2560,9 @@ def study_slots(public: dict) -> dict:
 
     cut = lambda text: text[0].lower() + text[1:]
     limits = [
-        ("One repository", f"Every result comes from one Python repository of {repo['files']} files. Other repositories may behave differently."),
-        ("One language", "Python only. Nothing here says how the configurations do on other languages."),
+        ("One repository", f"Every result comes from one repository of {repo['files']} files, a Python project. Other repositories may behave differently."),
+        ("One language", "The repository the questions were asked about is a Python project, and nothing here says how the configurations do on "
+                         "other languages. The engine itself is written in Rust; that is a separate matter from the language of the repository it is asked about."),
         ("Six questions",
          f"{number_word(per_set * len(sets), True)} lookup questions of modest difficulty, in {number_word(len(sets))} sets of "
          f"{number_word(per_set)}. Only one question separates the configurations: of the {graded['imperfect']} published single-agent runs "
@@ -2347,11 +2616,15 @@ def study_slots(public: dict) -> dict:
                          f"{held['runs_per_cell']['max']} runs in each cell."))
 
     # The two sessions, the start-up context and the memory.
+    team = public.get("team")
     session_rows = [(
-        "Two sessions",
-        "The results come from two sessions a few days apart. The first measured the earlier configurations. The second measured the "
-        "second-generation engine and the held-out questions, and repeated three earlier configurations: no index and two builds of the "
+        "Three sessions" if team else "Two sessions",
+        ("The results come from three sessions, the first a few days before the others. The first measured the earlier configurations. The second, round five, measured the "
+         if team else "The results come from two sessions a few days apart. The first measured the earlier configurations. The second measured the ")
+        + "second-generation engine and the held-out questions, and repeated three earlier configurations: no index and two builds of the "
         "first-generation engine. The leaderboard shows the repeats, which were measured on the same day as the second generation."
+        + (f" The third, round six, ran on {ROUND_SIX_DATE}, a day later, and measured the engine in team setups with its own baseline; the no-index agent was not run again, so the "
+           "highlighted configuration, which comes from round six, is set against the no-index agent of round five." if team else "")
         + (f" {number_word(len(sessions['not_repeated']), True)} configurations from the first session were not repeated. They keep their "
            f"first-session figures and are marked \"{EARLIER_LABEL}\" on the leaderboard: " + "; ".join(sessions["not_repeated"]) + ". Their "
            "tokens are not directly comparable with the rest." if sessions["not_repeated"] else "")),
@@ -2360,7 +2633,9 @@ def study_slots(public: dict) -> dict:
          f"{' and '.join(start['classes'])} {'class' if len(start['classes']) == 1 else 'classes'} it averaged {kilo(start['earlier'])} tokens "
          f"in the earlier runs of the three repeated configurations ({start['earlier_agents']} agents) and {kilo(start['later'])} in their "
          f"repeats ({start['later_agents']} agents). Every turn reads it again, so the same configuration costs more tokens now than it did "
-         "then. That is why the leaderboard compares runs made on the same day."),
+         "then. That is why the leaderboard compares runs made on the same day"
+         + (f", with one exception: the highlighted configuration of round six against the no-index agent of round five, whose start-up contexts differ by {abs(team['start_drift']):,.0f} tokens "
+            f"({abs(team['start_drift']) / team['start_five']:.1%})." if team and team.get("start_drift") is not None and team.get("start_five") else ".")),
         ("How the memory was filled",
          "Some configurations use a memory of earlier sessions. Before the runs, the memory was filled by one of two earlier sessions: one "
          "that answered the same questions the runs ask, and one that explored the repository without seeing any question. The first kind "
@@ -2376,7 +2651,7 @@ def study_slots(public: dict) -> dict:
         ("Where they come from",
          f"An agent starts with a context of about {kilo(tok['start'])} tokens: the instructions, skills and tool descriptions of the test "
          "machine. Every turn reads it again."
-         + (f" On the light class with the original questions that context made up {ctx['best']:.0%} of the tokens of \"{best['name']}\""
+         + (f" On the light class with the original questions that context and the conversation read again on each turn made up {ctx['best']:.0%} of the tokens of \"{best['name']}\""
             + (f" and {ctx['control']:.0%} of those of the no-index agent." if ctx["control"] else ".") if best and ctx["best"] else "")),
         ("What follows",
          f"Tokens and turns are therefore one measurement counted twice, and most of the saving shown here is the saving of turns: about "
@@ -2419,6 +2694,12 @@ def study_slots(public: dict) -> dict:
                 "it acted on " + ("; ".join(f"{o['name']} ({of(*o['acted'])} runs)" for o in touched) if touched else "none")
                 + f", and on none of the runs of the other {number_word(len(untouched))}"
                 + (f", among them \"{best['name']}\"" if best and any(o["name"] == best["name"] for o in untouched) else "") + "."))
+        tool = (public.get("team") or {}).get("tool")
+        if tool and tool["altered"]:
+            control_rows.append((
+                "How often, round six",
+                f"In round six the tool acted in {tool['acted']} of the round's {tool['runs']} runs and altered a read in {tool['altered']}, among them {tool['missed_altered']} of the "
+                f"{tool['missed']} runs that were not fully correct. The Benchmarks page gives each finding that rests on such a run with the change it would show without them."))
         control_rows.append((
             "The day's counts",
             f"In the second session the no-index agent was fully correct in {per_class(today['original'])} on the original questions"
@@ -2447,8 +2728,20 @@ def study_slots(public: dict) -> dict:
             "turns only. Fully correct runs and mean score are set only against the first-generation engine, which was measured on the same "
             "day on the same machine"
             + (" and which the tool did not act on" if acted and all(not o["acted"][0] for o in acted["others"] if "first generation" in o["name"].lower()) else "")
-            + ". Running the control again with that tool off, in the same session as the others, would remove the problem."))
+            + "." + (f" For the highlighted configuration of round six that comparison crosses a day: its runs were made on {ROUND_SIX_DATE}, the first generation's the day before." if team else "")
+            + " Running the control again with that tool off, in the same session as the others, would remove the problem."))
+    ctx_best = ctx["best"] if ctx.get("best") else None
+    stats = {
+        "stats_asked": stats_html([(str(per_set), "questions in a set"), (str(len(sets)), "question sets"), (str(per_set * len(sets)), "questions in all")]),
+        "stats_scale": stats_html([(str(behind["runs"]), "single-agent runs"), (str(behind["cells"]), "published cells"),
+                                   (f"{sizes[0]} to {sizes[-1]}", "runs in a cell"), (str(graded["imperfect"]), "runs not fully correct")]),
+        "stats_tokens": stats_html([(f"{tok['cached']:.0%}", "of the tokens were cache reads or writes"), (kilo(tok["start"]), "tokens of start-up context")]
+                                   + ([(f"{ctx_best:.0%}", "of the most reliable configuration's tokens were that context")] if ctx_best else [])),
+        "stats_sessions": stats_html([("3" if team else "2", "sessions" if team else "sessions, a few days apart"), (f"{kilo(start['earlier'])} to {kilo(start['later'])}", "tokens of start-up context, earlier to later")]),
+        "stats_limits": stats_html([("1", "repository"), ("1", "language"), (f"{sizes[0]} to {sizes[-1]}", "runs in a cell"), (str(per_set * len(sets)), "questions")]),
+    }
     return {
+        **stats,
         "questions": text_rows_html([(q["title"], q["text"]) for q in study["questions"]]),
         "sets": text_rows_html(set_rows),
         "graded": "".join(f"\n      <p>{esc(text)}</p>" for text in graded_rows) + "".join(
@@ -2459,170 +2752,231 @@ def study_slots(public: dict) -> dict:
         "setups": text_rows_html([(f"Setup {i + 1}", text) for i, text in enumerate(study["setups"])]),
         "scale": rows_html([(label, esc(value)) for label, value in short]) + "\n      " + text_rows_html(long),
         "tokens": text_rows_html(token_rows),
-        "classes": text_rows_html([(classes[c["id"]], c["text"]) for c in study["classes"]]),
+        "classes": text_rows_html([(classes[c["id"]], c["text"]) for c in study["classes"]]) + models_lanes(),
         "sessions": text_rows_html(session_rows),
         "control": text_rows_html(control_rows) if control_rows else "<p class=\"note\">The control was not run in both sessions.</p>",
         "limits": text_rows_html(limits)}
 
 
+def team_install_block(inst: dict, team: dict | None) -> str:
+    """The Install page's section for a team of agents: the pattern round six supports, in four steps, each marked for what was
+    measured and what is advice. Written only when round six is in the data; the figures are the ones the Benchmarks page gives."""
+    ev = (team or {}).get("evidence") or {}
+    if not all(key in ev for key in ("pack_alone", "briefs", "with_commands", "hub")):
+        return ""
+    newer = release_gap({"team": team, "install": inst})
+    late = ('\n      <div class="proto"><span class="tag">Version</span>\n        <p>Round six was measured with pgr ' + esc(newer) + ', which is not released yet. The release this page installs is '
+            + esc(inst["version"]) + '. Its <code>pgr pack</code> works, but its pack lacks the section of named definitions that the packs of round six opened with, so it is not the pack that was measured. '
+            'The commands <code>pgr handoff</code> and <code>pgr loadout</code> come with ' + esc(newer) + '. Run <code>pgr help</code> to see which commands your copy has.</p></div>' if newer else "")
+    pack, briefs, cmds, hub = ev["pack_alone"], ev["briefs"], ev["with_commands"], ev["hub"]
+    orchestrated = ev.get("orchestrated")
+    notes = ev.get("notes")
+
+    def step(title: str, measured: str, advice: str) -> str:
+        return (f'\n      <li><h3>{title}</h3><p class="team-m"><span class="tag">Measured</span> {esc(glue(measured))}</p>'
+                f'<p class="team-a"><span class="tag quiet">Advice</span> {advice}</p></li>')
+
+    steps = step(
+        "Run <code>pgr pack</code> on each subagent's task and paste the output into its brief",
+        f"In round six the harness made a pack for each question before the agent started and put it in the prompt. {PACK_MADE} Three subagents started together "
+        f"used {briefs['change']} tokens with a pack in each brief than without, and {of(briefs['perfect'], briefs['runs'])} runs were fully correct.",
+        "Give the command the task in the words you would give a colleague: a pack is built from the words it is given. Make one pack for each subagent's own task, not one for the whole job.")
+    steps += step(
+        "Tell it to answer from the pack, and to look up only what is missing",
+        f"Each pack came with the note that it may be all the agent needs and that anything it does not show can be looked up. Even so, an agent that also had the lookup commands ran one in "
+        f"{of(cmds['looked'], cmds['runs'])} runs and answered in one turn in {of(cmds['one_turn'], cmds['runs'])}. An agent with the pack and no command answered in {pack['turns']} on "
+        f"{pack['tokens']} tokens, fully correct in {of(pack['perfect'], pack['runs'])} runs.",
+        "Say it plainly in the brief, and keep the lookup command within reach for any work that is open-ended: an agent with no command cannot look further, and round six did not test open-ended work.")
+    steps += step(
+        "Give the reviewer the same packs",
+        (f"In the orchestrated runs the reviewer got the same packs as the subagents, and the total moved {orchestrated['change']} tokens against runs with no packs "
+         f"({of(orchestrated['perfect'], orchestrated['runs'])} runs fully correct), inside the spread of three runs. What the reviewer's packs are worth alone was not isolated."
+         if orchestrated else "In the orchestrated runs the reviewer got the same packs as the subagents. What the reviewer's packs are worth alone was not isolated."),
+        "A reviewer that starts from the packs can spend its calls on checking what the subagents said instead of finding it again.")
+    steps += step(
+        "Use the hub only for findings that cannot be looked up again",
+        f"On lookup work the hub used {hub['change']} tokens and gained no accuracy: {of(hub['perfect'], hub['runs'])} runs were fully correct, with the hub and without."
+        + (f" On a demonstration set whose answers are notes an earlier agent left, an agent got {of(*notes['none'])} note fields right with no notes and {of(*notes['brief'])} with the notes in its brief"
+           + ((", at the lowest mean tokens of the three setups" + ("" if notes.get("apart") else ", though the runs of the three overlap")) if notes.get("lowest") else "") + "." if notes else ""),
+        "File a decision, a ticket number, a reason, or a finding someone confirmed. Do not file what <code>pgr ask</code> answers again. <code>pgr handoff</code> files a note and "
+        "<code>pgr loadout</code> reads what was filed for a task; <code>pgr help</code> lists their options.")
+    return ('\n    <section class="block" aria-labelledby="team">\n      <h2 id="team" class="block-title">Use it in a team of agents</h2>\n'
+            '      <p class="block-lede">The pattern round six supports, in four steps. Each step says what was measured and what is advice that follows from it. '
+            'The questions were written by the builders of the engine and none of this was tested on open-ended work.</p>'
+            f'{late}\n      <ol class="steps team-steps">{steps}\n      </ol>\n    </section>\n')
+
+
 def install_slot(public: dict) -> str:
-    install = public["install"]
-    system = public["study"].get("system")
-    gives = rows_html(
-        [("Installation", "One command"), ("What is installed", "One program"), ("What it needs", "Nothing but the program"),
-         ("Used through", "An AI coding agent that can run a command on your machine"),
-         ("Systems", "Windows, macOS and Linux")]
-        + ([("Tested so far", f"{system} only. Every measurement on this site was made there.")] if system else []))
-    what = ('<section class="section" aria-labelledby="what-it-is">\n  <h2 id="what-it-is" class="section-title">What it is</h2>\n  '
-            '<div class="card prose">\n    <p>PeterGanuRusty is a command-line program that runs on the developer\'s own machine. An AI coding '
-            'agent calls it to look things up in the code it is working on, such as where a function is defined and what calls it.</p>\n    '
-            '<p>Nothing leaves the machine.</p>\n  </div>\n</section>\n')
-    ONWARD = ('<section class="section" aria-label="More on this site">\n  <p class="close-actions"><a class="btn quiet" href="study.html">'
-              'How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>\n</section>\n')
-    if install["status"] == "public":
-        extra = [("Version", esc(install["version"]))] if isinstance(install.get("version"), str) else []
-        return (what + '<section class="section" aria-labelledby="command">\n  <h2 id="command" class="section-title">Install command</h2>\n  '
-                '<div class="card install-card">\n    <div class="code-wrap"><pre class="code" id="install-command" tabindex="0">'
-                f'<code>{esc(install["command"])}</code></pre></div>\n    <div class="copy-row"></div>\n    '
-                + (rows_html(extra) + "\n  " if extra else "") + '</div>\n</section>\n'
-                '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing gives you</h2>\n  '
-                f'<div class="card">\n    {gives}\n  </div>\n</section>\n' + ONWARD)
-    # The "Request access" control exists only when install.json gives a contact; without one the page has no control.
-    contact = install.get("contact")
-    access = ""
-    if contact:
-        href = contact if contact.startswith("https://") else "mailto:" + contact
-        access = f'\n  <p class="close-actions"><a class="btn magnet" href="{esc(href)}">Request access</a></p>'
-    onward = ('<section class="section" aria-label="More on this site">\n  <p class="close-actions"><a class="btn" href="study.html">'
-              'How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>\n</section>\n')
-    return (what + '<section class="section" aria-labelledby="availability">\n  <h2 id="availability" class="section-title">Availability</h2>\n  '
-            '<div class="card">\n    '
-            + rows_html([("Status", '<span class="tag">Private preview</span>'), ("Access", "By invitation"),
-                         ("Public download", "None yet"), ("Public registry", "Not yet")]) +
-            '\n  </div>\n  <p class="footnote">The package is in private preview. Access is by invitation, and there is no public download yet.</p>'
-            + access + '\n</section>\n'
-            '<section class="section" aria-labelledby="what-you-get">\n  <h2 id="what-you-get" class="section-title">What installing will look like</h2>\n  '
-            f'<div class="card">\n    {gives}\n  </div>\n</section>\n' + onward)
+    """The Install page: the command for the visitor's system, the Python route, every release file with its size and link, what
+    an installer does and where it puts the file, the first commands, the rule to give an agent, what was tested and what was
+    not, and the licence. Everything is built from install.json, so a new release is one edit of that file."""
+    inst = public["install"]
+    by_id = {item["id"]: item for item in inst["installers"]}
+    latest, pinned = inst["download_base"], inst["versioned_base"]
+    version = inst["version"]
+    wheels = inst["wheels"]
+    toc = [("get", "Install"), ("python", "pip, pipx and uv"), ("files", "Release files"), ("how", "What it does"), ("first", "First commands"),
+           ("agent", "Your agent")] + ([("team", "A team of agents")] if team_install_block(inst, public.get("team")) else []) + [
+           ("tested", "What was tested"), ("licence", "Licence")]
+    toc_html = ('<nav class="toc" aria-label="On this page"><ul>' + "".join(f'<li><a href="#{anchor}">{esc(text)}</a></li>' for anchor, text in toc)
+                + '</ul></nav>')
+
+    def file_row(item: dict, base: str, kind: str) -> str:
+        os_name = OS_OF.get(item.get("system", ""), "")
+        mark = f' data-os="{os_name}"' if os_name else ""
+        return (f'\n          <li class="file"{mark}><a class="file-name" href="{esc(base)}/{esc(item["name"])}">{esc(item["name"])}</a>'
+                f'<span class="file-for">{esc(item.get("label", ""))}</span><span class="file-size">{esc(size_text(item["bytes"]))}</span></li>')
+
+    first_items = "".join(
+        f'\n        <li class="first-step"><p class="first-text">{esc(item["text"])}</p>{cmd_line(item["command"], "Copy: " + item["command"])}</li>'
+        for item in inst["first_commands"])
+    rule = "\n".join(inst["agent_rule"])
+    wheel_lines = "".join(
+        cmd_line(f"{tool} {pinned}/{wheel['name']}", f"Copy the command for {tool.split()[0]}, {wheel['label']}",
+                 f' data-tool="{tool.split()[0]}" data-sys="{wheel["system"]}"')
+        for wheel in wheels for tool in PYTHON_TOOLS)
+    tool_tabs = "".join(
+        f'<button type="button" role="radio" aria-checked="{"true" if n == 0 else "false"}" tabindex="{0 if n == 0 else -1}" data-value="{tool.split()[0]}">'
+        f'{tool.split()[0]}</button>' for n, tool in enumerate(PYTHON_TOOLS))
+    options = "".join(f'<option value="{esc(w["system"])}">{esc(w["label"])}</option>' for w in wheels)
+    ran = "".join(f"\n          <li>{esc(line)}</li>" for line in inst["tested"]["ran"])
+    not_run = "".join(f"\n          <li>{esc(line)}</li>" for line in inst["tested"]["not_run"])
+    what = (
+        '\n    <ol class="steps">'
+        f'\n      <li><h3>It downloads one program file</h3><p>The file for your system and its checksum list, SHA256SUMS.txt, from the release at {esc(inst["release_page"])}. '
+        'Nothing else is downloaded: no Python, no runtime, no packages.</p></li>'
+        '\n      <li><h3>It checks the file</h3><p>The installer compares the file with its published SHA-256. If they differ, it stops and nothing is installed.</p></li>'
+        '\n      <li><h3>It puts the file in a folder of your user account</h3>'
+        '<p>On Windows that is %LOCALAPPDATA%\\Programs\\pgr\\pgr.exe, and the folder is added to your user PATH, so open a new terminal afterwards. '
+        'On macOS and Linux it is ~/.local/bin/pgr; if that folder is not on your PATH, the installer prints the line to add. No administrator rights and no root are used.</p></li>'
+        '\n      <li><h3>It runs the program once</h3><p>The installer asks the new file for its version, so a file that cannot run on your system is reported at once.</p></li>'
+        '\n    </ol>')
+    return f'''<div class="install-layout">
+  {toc_html}
+  <div class="install-main">
+    <section class="block get" aria-labelledby="get">
+      <h2 id="get" class="block-title">Install with one command</h2>
+      <p class="block-lede">Your system is selected for you. Paste the line into PowerShell or a terminal. The installer needs no administrator rights and no root.</p>
+      {cmdbox_html(inst, big=True)}
+      <div class="get-grid">
+        <ul class="facts">
+          <li><b>One program file</b><span>{esc(size_text(inst["programs"][0]["bytes"]))} on Windows, about the same elsewhere.</span></li>
+          <li><b>Checked before it is installed</b><span>Against the published SHA256SUMS.txt.</span></li>
+          <li><b>Local only</b><span>No account, no server, no network use once it is installed.</span></li>
+          <li><b>Works with any agent</b><span>Any agent that can run a command. The benchmark on this site measured it under Claude Code.</span></li>
+        </ul>
+        {installer_term(inst)}
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="python">
+      <h2 id="python" class="block-title">Install with pip, pipx and uv</h2>
+      <p class="block-lede">These are optional ways to deliver the same program, which is written in Rust: the wheel carries the program itself and needs no Python packages. Pass the address of the wheel for your system, from the release page, to uv, pipx, or pip.</p>
+      <div class="py-controls" hidden>
+        <div class="seg" role="radiogroup" aria-label="Tool" data-seg="tool" style="--count:3"><span class="seg-thumb" aria-hidden="true"></span>{tool_tabs}</div>
+        <label class="select-wrap"><span class="sr-only">System</span><select class="select" data-wheel aria-label="System">{options}</select></label>
+      </div>
+      <div class="py-lines">{wheel_lines}</div>
+      <p class="fine-print">For another system, take the wheel from the list below; its name carries the version, {esc(version)}.</p>
+    </section>
+
+    <section class="block" aria-labelledby="files">
+      <h2 id="files" class="block-title">Release files</h2>
+      <p class="block-lede">Program files carry no version in their name, so the address <span class="mono-inline">{esc(latest)}/NAME</span> always gives the newest. Every file is on the <a href="{esc(inst["release_page"])}">release page</a>.</p>
+      <div class="files-grid">
+        <div class="file-group"><h3>Program files</h3><ul class="files">{"".join(file_row(item, latest, "program") for item in inst["programs"])}
+        </ul></div>
+        <div class="file-group"><h3>Wheels for pip, pipx and uv, version {esc(version)}</h3><ul class="files">{"".join(file_row(item, pinned, "wheel") for item in wheels)}
+        </ul></div>
+        <div class="file-group"><h3>Installers and checksums</h3><ul class="files">{"".join(file_row(item, latest, "support") for item in inst["support"])}
+        </ul></div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="how">
+      <h2 id="how" class="block-title">What the installer does</h2>{what}
+    </section>
+
+    <section class="block" aria-labelledby="first">
+      <h2 id="first" class="block-title">Your first three commands</h2>
+      <p class="block-lede">Open a terminal inside a git repository. Replace SomeFunction with a name from your code.</p>
+      <ol class="firsts">{first_items}
+      </ol>
+    </section>
+
+    <section class="block" aria-labelledby="agent">
+      <h2 id="agent" class="block-title">Tell your agent to use it</h2>
+      <p class="block-lede">An agent uses the command when its instructions say so. Paste these four lines into the instruction file your agent reads at the start of a session.</p>
+      <div class="rule-card"><pre class="rule" tabindex="0"><code>{esc(rule)}</code></pre>{copy_button(rule, "Copy the four lines for your agent")}</div>
+      <div class="proto"><span class="tag">Not part of the measured benchmark</span>
+        <p>The program also runs as a Model Context Protocol server, for agents that speak the protocol instead of running commands. Start it with the command below. The benchmark on this site measured agents that ran commands, not this route.</p>
+        {cmd_line("pgr mcp", "Copy: pgr mcp")}</div>
+    </section>
+
+{team_install_block(inst, public.get("team"))}
+    <section class="block" aria-labelledby="tested">
+      <h2 id="tested" class="block-title">What was tested, and what was not</h2>
+      <div class="tested-grid">
+        <div class="card-plain"><h3>What ran</h3><ul>{ran}
+        </ul></div>
+        <div class="card-plain"><h3>What did not run</h3><ul>{not_run}
+        </ul></div>
+      </div>{platform_block()}
+    </section>
+
+    <section class="block" aria-labelledby="licence">
+      <h2 id="licence" class="block-title">Licence</h2>
+      <p class="block-lede licence">{esc(inst["licence"])}</p>
+      <p class="close-actions"><a class="btn quiet" href="study.html">How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>
+    </section>
+  </div>
+</div>
+'''
 
 
-# The mark: a P and the token it hands over, one colour, drawn on a 24 unit grid. The tab bar uses it as the icon of Overview.
+# The mark: a P and the token it hands over, one colour, drawn on a 24 unit grid. The top bar and the foot show it.
 MARK_PATHS = '<path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/>'
 MARK_SVG = f'<svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false">{MARK_PATHS}</svg>'
-NAV_ICONS = {
-    "index.html": MARK_PATHS,
-    "benchmarks.html": '<path d="M5 20v-8M12 20V5M19 20v-5"/>',
-    "study.html": '<path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/>',
-    "install.html": '<path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/>',
-}
-
-
-def nav_slots(name: str, page: str) -> dict:
-    """The sidebar and the tab bar: plain links, the current page marked, and under it the sections
-    of this page read from its own headings, so a renamed section cannot leave the list behind."""
-    import html
-    import re
-    sections = "".join(
-        f'\n          <li><a href="#{m.group(1)}">{html.unescape(re.sub(r"<[^>]+>", "", m.group(2))).strip()}</a></li>'
-        for m in re.finditer(r'<h2 id="([^"]+)"[^>]*>(.*?)</h2>', page, re.S))
-    side, tabs, at = [], [], 0
-    for n, (file, title) in enumerate(PUBLIC_PAGES):
-        here = ' aria-current="page"' if file == name else ""
-        at = n if here else at
-        inner = f'\n        <ul class="side-sections" aria-label="On this page">{sections}\n        </ul>' if here and sections else ""
-        side.append(f'\n        <li><a href="{file}"{here}>{title}</a>{inner}</li>')
-        tabs.append(f'\n    <a href="{file}"{here}><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">{NAV_ICONS[file]}</svg>'
-                    f'<span>{title}</span></a>')
-    return {"sidebar": ('<header class="sidebar">\n    <p class="brand">' + MARK_SVG + f'<span>{BRAND}</span></p>\n'
-                        f'    <nav aria-label="Pages">\n    <div class="side-wrap">\n      <span class="side-ind" aria-hidden="true" style="--i:{at}"></span>\n'
-                        '      <ul class="side-pages">' + "".join(side) + "\n      </ul>\n    </div>\n  </nav>\n  </header>"),
-            "tabbar": (f'<nav class="tabbar" aria-label="Pages">\n    <span class="tab-ind" aria-hidden="true" style="--n:{len(PUBLIC_PAGES)};--i:{at}"></span>'
-                       + "".join(tabs) + "\n  </nav>")}
+def nav_slots(name: str, sections: dict, public: dict) -> dict:
+    """The top bar and the foot of a page. The foot holds the site map, every page with its sections as links: it is the
+    way round the site without a script, and the command palette reads it."""
+    install = public["install"]
+    by_id = {item["id"]: item for item in install["installers"]}
+    current = ' aria-current="page"'
+    links = "".join(f'\n      <a href="{file}"{current if file == name else ""}>{title}</a>' for file, title in PUBLIC_PAGES)
+    bar = (f'<header class="nav" id="nav" data-cmd-windows="{esc(by_id["windows"]["command"])}" data-cmd-unix="{esc(by_id["unix"]["command"])}">\n'
+           f'    <div class="nav-in">\n      <a class="brand" href="index.html" aria-label="{BRAND}, overview">{MARK_SVG}<span>{BRAND}</span></a>\n'
+           f'      <nav class="nav-links" id="nav-links" aria-label="Pages"><span class="nav-ind" aria-hidden="true"></span>{links}\n      </nav>\n'
+           '      <div class="nav-tools">\n'
+           '        <button type="button" class="kbd-btn" data-palette aria-haspopup="dialog" aria-label="Open the command palette"><span>Search</span><kbd data-mod>Ctrl</kbd><kbd>K</kbd></button>\n'
+           '        <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch the theme"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+           '<circle class="sun" cx="12" cy="12" r="4.2"/><path class="rays" d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/>'
+           '<path class="moon" d="M19.6 14.4A8 8 0 0 1 9.6 4.4a8 8 0 1 0 10 10z"/></svg></button>\n'
+           f'        <a class="icon-btn" href="{esc(install["repository"])}" aria-label="The repository on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">'
+           '<path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>\n'
+           '      </div>\n    </div>\n  </header>')
+    columns = "".join(
+        f'\n      <div class="sm-col"><a class="sm-page" href="{file}">{title}</a><ul>'
+        + "".join(f'<li><a href="{file}#{anchor}">{esc(text)}</a></li>' for anchor, text in sections.get(file, []))
+        + "</ul></div>" for file, title in PUBLIC_PAGES)
+    foot = ('<footer class="foot" id="foot">\n    <div class="foot-in">\n      <div class="foot-brand"><p class="foot-name">' + MARK_SVG + f'<span>{BRAND}</span></p>\n'
+            '        <p>A desktop command-line tool for AI coding agents.</p>\n'
+            f'        <p class="foot-built">Results built {esc(public["built"])}.</p></div>\n'
+            f'      <nav class="sitemap" aria-label="Site map">{columns}\n      </nav>\n    </div>\n'
+            f'    <div class="foot-line"><p>The benchmark pages report measured outcomes: counts of tokens, turns and answers. What is not measured is marked.</p>\n'
+            f'      <p class="foot-links"><a href="{esc(install["release_page"])}">Latest release</a><a href="{esc(install["repository"])}">Repository</a></p></div>\n  </footer>')
+    toc = ('<nav class="toc" aria-label="On this page"><ul>'
+           + "".join(f'<li><a href="#{anchor}">{esc(text)}</a></li>' for anchor, text in sections.get(name, [])) + '</ul></nav>')
+    return {"nav": bar, "foot": foot, "toc": toc}
 
 
 # --- the Overview streams, the footage and the turn runners -------------------------------------
 
-def nice_step(longest_k: float) -> int:
-    """A tick step, in thousands of tokens, that puts three or four ticks along the longest lane."""
-    for step in (10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000):
-        if longest_k / step <= 4.5:
-            return step
-    return 10000
-
-
-def hero_slot(public: dict) -> str:
-    """Two lanes drawn to one scale, the longer being the no-index run: lane length is tokens per task. The lanes,
-    their values and the difference are plain markup; a script lays a canvas of particles over them."""
-    found = headline_of(public)
-    if not found or not found["c"]:
-        return ""
-    b, c = found["b"], found["c"]
-    longest = max(b["tokens"], c["tokens"])
-
-    def width(pt: dict) -> str:
-        return f"{pt['tokens'] / longest * 100:.2f}".rstrip("0").rstrip(".")
-
-    def lane(kind: str, name: str, pt: dict, extra: str = "") -> str:
-        return (f'\n    <div class="lane lane-{kind}" style="--w:{width(pt)}%">'
-                f'<p class="lane-label"><span class="lane-name">{esc(name)}</span>'
-                f'<span class="lane-val"><b data-tok>{esc(tokens(pt["tokens"]))}</b> tokens, <b data-turns>{pt["turns"]:.1f}</b> turns</span></p>'
-                f'<div class="lane-track"></div>{extra}</div>')
-
-    saved = c["tokens"] - b["tokens"]
-    gap = (f'<div class="gap"><span>{esc(tokens(saved))} fewer tokens, {saved / c["tokens"]:.0%}</span></div>' if saved > 0 else "")
-    step = nice_step(longest / 1e3) * 1000
-    marks = [(k * step, "0" if k == 0 else tokens(k * step)) for k in range(int(longest * 0.93 // step) + 1)] + [(longest, tokens(longest))]
-    scale = "".join(f'<span style="--t:{value / longest * 100:.2f}" data-v="{value:.0f}">{esc(text)}</span>' for value, text in marks)
-    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. {found['best']['name']}: {tokens(b['tokens'])} tokens and "
-              f"{b['turns']:.1f} turns." + (f" That is {tokens(saved)} fewer tokens, {saved / c['tokens']:.0%}, in this one cell." if saved > 0 else ""))
-    versus = public.get("versus")
-    cell = (f"This is one cell, the light class with the original questions. Across the {number_word(len(versus['cells']))} cells where both "
-            f"were measured the saving was {saving_range(versus)}." if versus and len(versus["cells"]) > 1 else "")
-    return ('<figure class="card stream" id="stream" aria-labelledby="stream-title">\n  '
-            '<p class="stream-title" id="stream-title">Tokens per task, light model class, original questions, one agent answering three lookups</p>\n  '
-            '<div class="lanes">' + lane("ref", "No index", c) + lane("best", found["best"]["name"], b, gap) + '\n  </div>\n  '
-            f'<div class="scale" aria-hidden="true">{scale}</div>\n  '
-            '<p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task.'
-            + (f' {esc(cell)}' if cell else "") + '</p>\n  '
-            f'<p class="sr-only">{esc(spoken)}</p>\n</figure>')
-
-
-def stage_slot(public: dict) -> str:
-    """What the particle stage of the Overview reads out: the two streams by name with their tokens and turns, the
-    count that falls from the no-index value to the best one, and the difference. A script draws the streams and
-    drives these; a page without the stage shows the lanes of hero_slot, which carry the same numbers."""
-    found = headline_of(public)
-    if not found or not found["c"]:
-        return ""
-    b, c = found["b"], found["c"]
-
-    def tag(kind: str, name: str, pt: dict) -> str:
-        return (f'\n      <p class="body-tag tag-{kind}"><span class="bt-name">{esc(name)}</span>'
-                f'<span class="bt-val"><b>{esc(tokens(pt["tokens"]))}</b> tokens, <b>{pt["turns"]:.1f}</b> turns</span></p>')
-
-    saved = c["tokens"] - b["tokens"]
-    versus = public.get("versus")
-    # The saving is said of this one cell, with the range over the cells where both were measured beside it.
-    delta = (f'{tokens(saved)} fewer tokens, {saved / c["tokens"]:.0%}, on the light class with the original questions'
-             + (f'. Across {number_word(len(versus["cells"]))} cells: {saving_range(versus)}' if versus and len(versus["cells"]) > 1 else "")
-             if saved > 0 else "")
-    spoken = (f"No index: {tokens(c['tokens'])} tokens and {c['turns']:.1f} turns. {found['best']['name']}: "
-              f"{tokens(b['tokens'])} tokens and {b['turns']:.1f} turns." + (f" That is {delta}." if delta else ""))
-    return ('<div class="hero-read">\n    '
-            f'<p class="sr-only">{esc(spoken)}</p>\n    '
-            '<div class="hero-vis" aria-hidden="true">' + tag("ref", "No index", c) + tag("best", found["best"]["name"], b) +
-            '\n      <div class="hero-count">\n        <p class="hero-count-label">Tokens per task</p>\n        '
-            f'<p class="hero-num" data-from="{c["tokens"]:.0f}" data-to="{b["tokens"]:.0f}">{esc(tokens(c["tokens"]))}</p>\n        '
-            f'<p class="hero-state"><span class="st-ref">No index</span><span class="st-best">{esc(found["best"]["name"])}</span></p>\n        '
-            + (f'<p class="hero-delta">{esc(delta)}</p>\n      ' if delta else "      ") + '</div>\n      '
-            '<p class="hero-key">One particle is <b data-per>10</b> tokens. The thickness of a stream is its tokens per task.</p>\n    '
-            '</div>\n  </div>')
-
-
 def problem_slot(public: dict) -> str:
-    """The chapter of the Overview: a task as a stack of turns. One block is one turn at the average tokens a turn, so a
-    stack is as tall as its tokens per task, and both stacks are drawn to one scale. The number over a stack is its turns:
-    the tokens of the whole task are the headline and are not repeated here. Under the heading are the two paragraphs, why a
-    turn costs what it does and how many turns each configuration took."""
+    """The first chapter of the Overview: a task as a stack of turns. One block is one turn at the average tokens a turn, so a
+    stack is as tall as its tokens per task, and both stacks are drawn to one scale. Under a stack are its turns and the tokens
+    of the whole task, written as measured and never counted up. A script lets the blocks land as the scroll passes and lights
+    the blocks already there each time one lands; the page is written finished."""
     found = headline_of(public)
     if not found or not found["c"]:
         return ""
@@ -2633,14 +2987,18 @@ def problem_slot(public: dict) -> str:
         count = max(1, min(12, -int(-pt["turns"] // 1)))           # whole turns, the last one possibly a part
         per = pt["tokens"] / pt["turns"]
         parts = [min(1.0, pt["turns"] - i) for i in range(count)]
-        slabs = "".join(f'<i class="slab" style="--h:{per * part / longest * 100:.3f}%;--i:{i}"><span>{i + 1}</span></i>'
+        slabs = "".join(f'<i class="slab" style="--h:{per * part / longest * 100:.3f}%;--i:{i}"><b class="ec"></b><span>{i + 1}</span></i>'
                         for i, part in enumerate(parts))
         return (f'\n      <div class="stack {kind}" style="--n:{count}">'
-                f'<p class="stack-total"><b>{pt["turns"]:.1f}</b> turns</p>'
                 f'<div class="stack-col">{slabs}</div>'
-                f'<p class="stack-name">{esc(name)}<span>about {esc(tokens(per))} a turn</span></p></div>')
+                f'<p class="stack-total"><b>{pt["turns"]:.1f}</b> turns</p>'
+                f'<p class="stack-name">{esc(name)}<span>about {esc(tokens(per))} a turn, <b class="stack-tok">{esc(tokens(pt["tokens"]))}</b> in all</span></p></div>')
 
-    floor = ("Two turns is the floor for a lookup: one to ask and one to answer. " if b["turns"] < 2.05 else "")
+    with_commands = ((public.get("team") or {}).get("evidence") or {}).get("with_commands")
+    floor = ("Two turns is the floor for a lookup that needs a command: one to ask and one to answer. A pack in the prompt, with no command to call, takes the asking turn away"
+             + (f"; given the commands as well, agents still ran a lookup in {of(with_commands['looked'], with_commands['runs'])} runs. " if with_commands else ". ")
+             if found["best"].get("commandless") and b["turns"] < 1.05
+             else "Two turns is the floor for a lookup: one to ask and one to answer. " if b["turns"] < 2.05 else "")
     held = (cell_of(found["best"], "light", "held-out"), cell_of(found["control"], "light", "held-out"))
     later = (f" On the held-out questions it took {held[0]['turns']:.1f} turns, and no index {held[1]['turns']:.1f}." if all(held) else "")
     return ('<section class="chapter ch-problem pin" aria-labelledby="problem">\n  <div class="pin-stage">\n    '
@@ -2652,42 +3010,62 @@ def problem_slot(public: dict) -> str:
             f'<p class="ch-lede">{floor}{esc(found["best"]["name"])} took {b["turns"]:.1f} turns per task on the light class and the original '
             f'questions. No index took {c["turns"]:.1f}.{esc(later)}</p>\n    </div>\n    '
             '<figure class="stacks" aria-labelledby="stacks-cap">' + stack("ref", "No index", c) + stack("best", found["best"]["name"], b) +
-            '\n      <figcaption id="stacks-cap">One block is one turn, at the average tokens a turn. Both stacks are drawn to one scale. '
-            'Light model class, original questions, one agent answering three lookups.</figcaption>\n    </figure>\n  </div>\n</section>')
+            '\n      <figcaption id="stacks-cap">One block is one turn, at the average tokens a turn, and each turn reads the blocks below it again. '
+            'Both stacks are drawn to one scale. Light model class, original questions, one agent answering three lookups.</figcaption>\n    </figure>\n  </div>\n</section>')
 
 
 VIDEO_TYPES = {"mp4": "video/mp4", "webm": "video/webm"}
-VIDEO_KIND_TEXT = {"ad": "Ad", "explainer": "Explainer"}
+VIDEO_KIND_TEXT = {"trailer": "Trailer", "explainer": "Explainer"}
+
+
+def film_name(video: dict) -> str:
+    """What the page calls a film: the title video.json gives it. Its kind (trailer or explainer) is shown beside the length
+    measured from the file, so the length cannot disagree with the file. A length spoken in the title ("in twenty seconds") is
+    set to the file's length when it is not the same."""
+    title = str(video["title"])
+    seconds = round(float(video["seconds"]))
+    tens = {10: "ten", 20: "twenty", 30: "thirty", 40: "forty", 50: "fifty", 60: "sixty"}
+    spoken = tens.get(seconds, NUMBER_WORDS[seconds] if 0 <= seconds < len(NUMBER_WORDS) else str(seconds))
+    return re.sub(r"\b(\w+) seconds\b", lambda m: f"{spoken} seconds" if m.group(1).lower() in set(tens.values()) | set(NUMBER_WORDS) | {str(n) for n in range(1, 300)} else m.group(0), title)
 
 
 def video_slot(public: dict) -> str:
     """The footage section: present only when the data holds a film. Both films are framed alike and drawn at the same size;
-    with a script one is shown at a time and a control chooses it, without one both are listed. Each is a native player that
-    never starts with sound by itself; a script replaces its controls with the page's own."""
+    with a script one is shown at a time and a control chooses it, without one both are listed. Without a script each is a
+    native player that never starts with sound by itself and loads nothing until it is played; with one, the page's own control
+    bar replaces the native one (play, a scrub bar, captions, the quality, full screen). The 1080p file comes first, so a
+    browser with no script plays that; a script picks the size by the screen and offers the others as a quality choice."""
     films = public.get("videos") or ([public["video"]] if public.get("video") else [])
     if not films:
         return ""
 
+    def kind_of(video: dict) -> str:
+        return VIDEO_KIND_TEXT.get(video.get("kind", "explainer"), str(video.get("kind", "explainer")).capitalize())
+
     def player(video: dict) -> str:
         kind = video.get("kind", "explainer")
-        mime = VIDEO_TYPES.get(str(video["src"]).rsplit(".", 1)[-1].lower())
-        source = f'<source src="{esc(video["src"])}"' + (f' type="{mime}"' if mime else "") + ">"
         width, height = int(video["width"]), int(video["height"])
+        offered = json.dumps([{"src": item["src"], "w": item["width"], "h": item["height"], "fps": item["fps"], "type": item["type"],
+                               "mb": item["megabytes"], "label": item["label"]} for item in video["sources"]], separators=(",", ":"))
+        large = f' data-poster-large="{esc(video["poster_large"])}"' if video.get("poster_large") else ""
+        # In a single-quoted attribute a link ends at the closing quote, so the guard sees exactly the address that was approved.
+        offered_attr = offered.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&#39;")
         return (f'\n    <figure class="cine" data-kind="{esc(kind)}">\n      '
                 f'<div class="cine-frame" style="aspect-ratio:{width}/{height}">\n        '
-                f'<video controls playsinline preload="none" width="{width}" height="{height}" poster="{esc(video["poster"])}" '
-                f'aria-label="{esc(video["title"])}">\n          '
-                f'{source}\n          <track kind="captions" src="{esc(video["captions"])}" srclang="en" label="English" default>\n          '
+                f'<video controls playsinline preload="none" width="{width}" height="{height}" poster="{esc(video["poster"])}"{large} '
+                f"data-sources='{offered_attr}' data-seconds=\"{video['seconds']}\" aria-label=\"{esc(film_name(video))}\">\n          "
+                f'<source src="{esc(video["src"])}" type="video/mp4">\n          '
+                f'<track kind="captions" src="{esc(video["captions"])}" srclang="en" label="English" default>\n          '
                 '<p>This browser cannot play the video.</p>\n        </video>\n      </div>\n      '
-                f'<figcaption class="cine-cap"><span class="cine-title">{esc(video["title"])}</span>'
-                f'<span class="cine-meta">{VIDEO_KIND_TEXT[kind]}, {esc(format(video["seconds"], "g"))} seconds, with captions</span></figcaption>\n    </figure>')
+                f'<figcaption class="cine-cap"><span class="cine-title">{esc(film_name(video))}</span>'
+                f'<span class="cine-meta">{esc(kind_of(video))}, {video["seconds"]:.0f} seconds, with captions</span></figcaption>\n    </figure>')
 
     pick = ""
     if len(films) > 1:
         buttons = "".join(
             f'\n      <button type="button" role="radio" aria-checked="{"true" if n == 0 else "false"}" tabindex="{0 if n == 0 else -1}" '
-            f'data-value="{esc(video.get("kind", "explainer"))}">{VIDEO_KIND_TEXT[video.get("kind", "explainer")]}, '
-            f'{round(video["seconds"])} seconds</button>' for n, video in enumerate(films))
+            f'data-value="{esc(video.get("kind", "explainer"))}">{esc(kind_of(video))}, {video["seconds"]:.0f} seconds</button>'
+            for n, video in enumerate(films))
         pick = (f'\n  <div class="seg reel-pick" role="radiogroup" aria-label="Film" data-seg="film" style="--count:{len(films)}" hidden>'
                 f'<span class="seg-thumb" aria-hidden="true"></span>{buttons}\n  </div>')
     return ('<section class="section cinema" aria-labelledby="films">\n  '
@@ -2716,8 +3094,8 @@ def runners_slot(public: dict) -> str:
         if not rows:
             inner = empty_html(cls, qset)
         elif not control or not other:
-            inner = (f'<p class="note empty">No index and one other configuration were not both measured on the '
-                     f'{esc(cls["name"].lower())} class with the {esc(qset["name"].lower())} questions.</p>')
+            inner = (f'<p class="note empty">No index and one other configuration were not both measured on '
+                     f'{esc(cls["name"])} with the {esc(qset["name"].lower())} questions.</p>')
         else:
             config, pt = other
             who = f"the {BEST_LABEL.lower()} configuration" if config["best"] else config["name"]
@@ -2739,43 +3117,1217 @@ def runners_slot(public: dict) -> str:
 
 def showcase_slots(public: dict) -> dict:
     study = study_slots(public)
-    common = {"built": esc(public["built"])}
-    return {
-        "index.html": dict(common, lede=esc(lede_slot("index.html", public)), watch=watch_slot(public), stage=stage_slot(public),
-                           hero=hero_slot(public), key=key_slot(public), problem=problem_slot(public), figures=figures_slot(public),
-                           video=video_slot(public), best=best_slot(public)),
-        "benchmarks.html": dict(common, lede=esc(lede_slot("benchmarks.html", public)), seg=seg_slot(public),
-                                boards=boards_slot(public), charts=charts_slot(public), engine=engine_slot(public),
-                                headline=headline_slot(public), findings=findings_slot(public),
-                                runners=runners_slot(public)),
-        "study.html": dict(common, lede=esc(lede_slot("study.html", public)), **study),
-        "install.html": dict(common, lede=esc(lede_slot("install.html", public)), install=install_slot(public)),
+    study["lab"] = lab_slot(public)
+    study["second"] = codex_study_slot(public)
+    study["team"] = team_study_slot(public)
+    slots = {
+        "index.html": {"lede": esc(lede_slot("index.html", public)), "ledenote": esc(lede_note_slot(public)), "watch": watch_slot(public), "cmdbox": cmdbox_slot(public),
+                       "scene": scene_slot(public), "key": key_slot(public), "problem": problem_slot(public),
+                       "figures": figures_slot(public), "video": video_slot(public), "best": best_slot(public),
+                       "notes": notes_slot(public), "term": term_slot(public), "size": size_slot(public),
+                       "team": team_overview_slot(public), "platforms": esc(platform_line())},
+        "benchmarks.html": {"lede": esc(lede_slot("benchmarks.html", public)), "seg": seg_slot(public),
+                            "boards": boards_slot(public), "charts": charts_slot(public), "engine": engine_slot(public),
+                            "headline": headline_slot(public), "findings": findings_slot(public), "runners": runners_slot(public),
+                            "lead": bench_lead_slot(public), "harness-two": codex_slot(public), "size": size_slot(public),
+                            "team": team_bench_slot(public)},
+        "study.html": dict(lede=esc(lede_slot("study.html", public)), **study),
+        "install.html": {"lede": esc(lede_slot("install.html", public)), "install": install_slot(public)},
     }
+    # Where a sentence said a class of model, the page says the model and its effort.
+    return {page: {name: modelize(text) for name, text in filled.items()} for page, filled in slots.items()}
 
 
 def write_showcase_pages(public: dict) -> list[str]:
     """Write the numbers and findings into the four pages, so they are there without JavaScript and
-    cannot fall behind the data. Every slot a page holds must be filled, and every slot filled must exist."""
-    import re
+    cannot fall behind the data. Every slot a page holds must be filled, and every slot filled must exist. The top bar and the
+    foot are filled last: the foot lists the sections of every page, read from the pages as they now are."""
     slot = re.compile(r"<!--slot:([\w-]+)-->(.*?)<!--/slot:\1-->", re.S)
-    changed = []
+    pages, before = {}, {}
     for name, filled in showcase_slots(public).items():
         path = DOCS / name
         if not path.is_file():
             raise SystemExit(f"{path.relative_to(REPO)} is missing")
-        raw = path.read_bytes().decode("utf-8").replace("\r\n", "\n")
-        wanted = {m.group(1) for m in slot.finditer(raw)} - {"sidebar", "tabbar"}
+        before[name] = path.read_bytes().decode("utf-8")
+        raw = before[name].replace("\r\n", "\n")
+        wanted = {m.group(1) for m in slot.finditer(raw)} - NAV_SLOTS
         if wanted != set(filled):
             raise SystemExit(f"{name}: slots in the page {sorted(wanted)} do not match the slots built {sorted(filled)}")
-        page = slot.sub(lambda m: f"<!--slot:{m.group(1)}-->{filled[m.group(1)]}<!--/slot:{m.group(1)}-->"
-                        if m.group(1) in filled else m.group(0), raw)
-        navs = nav_slots(name, page)
+        pages[name] = slot.sub(lambda m: f"<!--slot:{m.group(1)}-->{filled[m.group(1)]}<!--/slot:{m.group(1)}-->"
+                               if m.group(1) in filled else m.group(0), raw)
+        pages[name] = re.sub(r'(<meta name="description" content="[^"]*?)Measured under Claude Code\.[^"]*?(?:\(see Benchmarks\)\.)?(")',
+                             lambda m: m.group(1) + esc(harness_line()) + m.group(2), pages[name])
+    sections = {name: sections_of(page) for name, page in pages.items()}
+    changed = []
+    for name, page in pages.items():
+        navs = nav_slots(name, sections, public)
         page = slot.sub(lambda m: f"<!--slot:{m.group(1)}-->{navs[m.group(1)]}<!--/slot:{m.group(1)}-->"
                         if m.group(1) in navs else m.group(0), page)
-        if page != path.read_bytes().decode("utf-8"):
-            path.write_bytes(page.encode("utf-8"))
+        if page != before[name]:
+            (DOCS / name).write_bytes(page.encode("utf-8"))
             changed.append(name)
     return changed
+
+
+PYTHON_TOOLS = ("uv tool install", "pipx install", "pip install")
+PGR_COMMANDS = ("refresh", "ask", "about", "find", "affected", "recall", "retain", "pack", "handoff", "loadout", "help", "mcp")   # the product's own commands the pages may show
+HARNESS_NAMES = ("Claude Code", "Codex CLI", "Model Context Protocol", "pgr command", "mean reciprocal rank")   # phrases the pages may use, exactly as written
+# What the pages may say about the language of the engine, besides the sentence footprint.json carries.
+RUST_PHRASES = ("written in Rust", "the Rust program", "pip, pipx and uv", "Mean reciprocal rank", "Programs\\pgr to your user PATH")
+# A link that goes on, with a path or a name, is not the link that was approved: the address ends where nothing of an address follows.
+LINK_END = r"(?![\w/#?&=%~-])"
+# A name of an agent program followed by a version number says which build was measured, and a version is never named on the site.
+HARNESS_VERSION = re.compile(r"(?:Claude Code|Codex CLI)\s*(?:v\d|version\s*\d|\d+(?:\.\d+)+)", re.I)
+
+
+def approved_strings(install: dict | None) -> list[str]:
+    """The text the guard lets through, longest first and in every spelling a file may hold it (plain, escaped for a script,
+    escaped for a page): the product's own commands, the install commands and the release links of install.json, and the
+    names of the agent programs the benchmark ran under. Anything else the guard checks for stays checked."""
+    import html
+    found = [f"pgr {name}" for name in PGR_COMMANDS] + list(HARNESS_NAMES) + list(RUST_PHRASES)
+    found += [item["name"] for item in MODELS["tiers"].values()]                      # exactly the models of models.json
+    if MODELS["codex"]:
+        found.append(str(MODELS["codex"]["model_name"]))
+    footprint = footprint_of()
+    if footprint:
+        found += [str(footprint["language"]), str(footprint["how"])]
+        if footprint.get("pgr_0_2"):
+            found += [str(footprint["pgr_0_2"]["how"])]
+    if install:
+        found += [item["command"] for item in install["installers"]]
+        found += [item["command"] for item in install["first_commands"]]
+        for wheel in install["wheels"]:
+            url = f"{install['versioned_base']}/{wheel['name']}"
+            found += [f"{tool} {url}" for tool in PYTHON_TOOLS]
+    out = []
+    for text in found:
+        out += [text, json.dumps(text)[1:-1], html.escape(text), html.escape(text, quote=False)]
+    return sorted(set(out), key=len, reverse=True)
+
+
+def approved_links(install: dict | None) -> list["re.Pattern"]:
+    """The addresses the guard lets through, each exactly as approved and nothing that continues them: the repository, the release
+    page, and each release file by its name. A link into another folder of the repository (the report, a blob, a tree) is not
+    one of them and is refused as a request to another host."""
+    if not install:
+        return []
+    urls = [install["repository"], install["release_page"], install["download_base"], install["versioned_base"], f"{install['download_base']}/NAME"]
+    urls += [f"{install['download_base']}/{item['name']}" for group in ("programs", "support") for item in install[group]]
+    urls += [f"{install['versioned_base']}/{item['name']}" for item in install["wheels"]]
+    urls += release_film_urls()
+    return [re.compile(re.escape(url) + LINK_END) for url in sorted(set(urls), key=len, reverse=True)]
+
+
+def codex_facts() -> dict | None:
+    """What benchmark/data/codex.json says about the second agent program, once it holds finished sessions: for each question set,
+    the mean tokens and commands of a session without an index and with pgr, the saving the file computes, how many sessions were
+    fully correct, and the lowest and highest session of each cell. Only the summary, the saving block and the token totals of the
+    sessions are read: the setup, the prompts and the command template of that file cannot reach a page."""
+    path = BENCH / "data" / "codex.json"
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        sets = []
+        for key, set_id in (("A", "original"), ("B", "held-out")):
+            sides = {}
+            for method, label in (("no-index", "none"), ("pgr", "pgr")):
+                row = data["summary"][method][key]
+                if not row["with_usage"] or row["with_usage"] != row["sessions"]:
+                    return None
+                totals = [float(x["usage"]["total_tokens"]) for x in data["sessions"] if x["method"] == method and x["set"] == key]
+                sides[label] = {"tokens": float(row["mean_total_tokens"]), "commands": float(row["mean_commands"]),
+                                "perfect": int(row["fully_correct"]), "of": int(row["of"]), "sessions": int(row["sessions"]),
+                                "low": min(totals), "high": max(totals)}
+            saved = float(data["pgr_saving_vs_no_index"][key]["total_tokens_saved_percent"])
+            sets.append({"id": set_id, "key": key, "saved": saved, **sides})
+        sessions = len(data["sessions"])
+        effort = str(data.get("effort", ""))
+    except (ValueError, KeyError, TypeError):
+        return None
+    if not sessions or not all(item["none"]["tokens"] > 0 for item in sets):
+        return None
+    for item in sets:
+        item["change"] = item["pgr"]["tokens"] / item["none"]["tokens"] - 1
+        gap = abs(item["none"]["tokens"] - item["pgr"]["tokens"])
+        widest = max(item["none"]["high"] - item["none"]["low"], item["pgr"]["high"] - item["pgr"]["low"])
+        item["spread_wider_than_gap"] = widest >= gap
+    every = sum(side["perfect"] for item in sets for side in (item["none"], item["pgr"]))
+    total = sum(side["of"] for item in sets for side in (item["none"], item["pgr"]))
+    return {"sets": sets, "sessions": sessions, "per_cell": min(side["sessions"] for item in sets for side in (item["none"], item["pgr"])),
+            "all_correct": every == total, "correct": every, "of": total, "effort": effort}
+
+
+def codex_verdict(found: dict) -> str:
+    """The result in a few words, from the signs of the two changes, so that a mixed result is never described as a saving."""
+    signs = {item["change"] < 0 for item in found["sets"]}
+    return "saved tokens on both question sets" if signs == {True} else "cost more tokens on both question sets" if signs == {False} else "showed no consistent saving"
+
+
+def codex_headline(found: dict) -> str:
+    """The headline of the second-harness block, from the signs of the two changes."""
+    verdict = codex_verdict(found)
+    return {"saved tokens on both question sets": "Fewer tokens with pgr on both question sets under that agent program.",
+            "cost more tokens on both question sets": "More tokens with pgr on both question sets under that agent program."}.get(
+                verdict, "No consistent saving was shown under that agent program.")
+
+
+def codex_direction(item: dict) -> str:
+    """Fewer or more tokens with pgr on one question set, from the sign of the change."""
+    return "fewer" if item["change"] < 0 else "more"
+
+
+def second_harness() -> str | None:
+    """The second agent program the benchmark ran under, once benchmark/data/codex.json holds its finished sessions."""
+    return "Codex CLI" if codex_facts() else None
+
+
+def harness_line() -> str:
+    """What the benchmark ran under: always Claude Code. Once the sessions of the second agent program are in, a second sentence
+    says that a smaller check was made under it and how it came out; its figures are on the Benchmarks page and are not added to
+    the Claude Code ones."""
+    found = codex_facts()
+    if not found:
+        return "Measured under Claude Code."
+    return f"Measured under Claude Code. A smaller check under the Codex CLI {codex_verdict(found)} (see Benchmarks)."
+
+
+def codex_model_line() -> str:
+    """The agent program and its model, as models.json names them."""
+    codex = MODELS["codex"]
+    if not codex:
+        return "the Codex CLI"
+    return f"the Codex CLI with {codex['model_name']} at {codex.get('effort', 'default')} effort"
+
+
+def codex_slot(public: dict) -> str:
+    """The small block of the Benchmarks page for the second agent program, never mixed with the Claude Code numbers: for each
+    question set the mean tokens of a session without an index and with pgr, to one scale, the sessions that were fully correct and
+    the lowest and highest session of each cell. The headline is what the numbers support: no consistent saving was shown."""
+    found = codex_facts()
+    if not found:
+        return ""
+    names = {item["id"]: item["name"] for item in public["sets"]}
+    cards = []
+    for item in found["sets"]:
+        none, with_pgr = item["none"], item["pgr"]
+        longest = max(none["tokens"], with_pgr["tokens"])
+        more = item["saved"] < 0
+        cards.append(
+            f'\n    <div class="card cx-card"><h3 class="cx-title">{esc(names[item["id"]])} questions</h3>'
+            f'\n      <p class="cx-verdict"><b>{abs(item["saved"]):.1f}%</b> {"more" if more else "fewer"} tokens with pgr</p>'
+            f'\n      <div class="rl-fig" aria-hidden="true">{lane_html("ref", "No index", tokens(none["tokens"]), none["tokens"] / longest)}'
+            f'{lane_html("best", "With pgr", tokens(with_pgr["tokens"]), with_pgr["tokens"] / longest)}</div>'
+            f'\n      <ul class="cx-facts"><li>Mean tokens in a session: {esc(tokens(none["tokens"]))} with no index, {esc(tokens(with_pgr["tokens"]))} with pgr.</li>'
+            f'<li>Fully correct sessions: {of(none["perfect"], none["of"])} with no index, {of(with_pgr["perfect"], with_pgr["of"])} with pgr.</li>'
+            f'<li>The sessions of a cell ranged from {esc(tokens(none["low"]))} to {esc(tokens(none["high"]))} with no index and from '
+            f'{esc(tokens(with_pgr["low"]))} to {esc(tokens(with_pgr["high"]))} with pgr'
+            f'{", a spread as wide as the gap between the means" if item["spread_wider_than_gap"] else ""}.</li></ul>\n    </div>')
+    limits = [f"{number_word(found['per_cell'], True)} sessions in each cell support no claim of significance.",
+              "One repository, the same Python project as the rest of this site.",
+              "The Codex CLI counts tokens its own way, with its own instructions, tools and caching, so its counts are not comparable with "
+              "the Claude Code counts on this site. Only the two methods inside this check can be compared with each other.",
+              "One agent answers three questions in a session. Orchestration, subagents and the memory were not measured under the Codex CLI.",
+              "The questions were written by the builders of pgr."]
+    every = ("Every session was fully correct, so correctness separated nothing." if found["all_correct"]
+             else f"{found['correct']} of {found['of']} sessions were fully correct.")
+    return ('<section class="section" aria-labelledby="second-harness">\n  <h2 id="second-harness" class="section-title">Under the Codex CLI</h2>\n  '
+            f'<p class="cx-headline">{esc(codex_headline(found))}</p>\n  '
+            f'<p class="group-title">A small second check with {esc(codex_model_line())}: the same three lookups, one agent a session, '
+            f'{number_word(found["per_cell"])} sessions in each cell, on both question sets. On the first set the sessions with pgr, against those with no index, used {codex_direction(found["sets"][0])} tokens; on the second set they used {codex_direction(found["sets"][1])}. '
+            f'{esc(every)} The figures are the means of the sessions of each cell, and they are not set beside the Claude Code figures above.</p>\n  '
+            f'<div class="cx-grid draw">{"".join(cards)}\n  </div>\n  '
+            f'<ul class="plain cx-limits">{"".join(f"<li>{esc(line)}</li>" for line in limits)}</ul>\n</section>\n')
+
+
+def codex_study_slot(public: dict) -> str:
+    """The method of the second check, for the Study page: what ran, how many sessions, what it cannot show."""
+    found = codex_facts()
+    if not found:
+        return ""
+    rows = [("Agent program and model", f"{codex_model_line()[0].upper()}{codex_model_line()[1:]}. Run on {found['sessions']} sessions."),
+            ("What was run", f"{number_word(found['per_cell'], True)} sessions in each of four cells: no index and pgr, on the original and on the held-out questions. "
+                             "One agent answers all three questions in a session."),
+            ("How it came out", f"{codex_verdict(found)[0].upper()}{codex_verdict(found)[1:]}. On the original questions the sessions with pgr, against those with no index, used {abs(found['sets'][0]['saved']):.1f}% "
+                                f"{'more' if found['sets'][0]['saved'] < 0 else 'fewer'} tokens, on the held-out questions {abs(found['sets'][1]['saved']):.1f}% "
+                                f"{'more' if found['sets'][1]['saved'] < 0 else 'fewer'}. "
+                                + ("Every session was fully correct." if found["all_correct"] else f"{found['correct']} of {found['of']} sessions were fully correct.")),
+            ("What it does not cover", "Other models, other efforts, other repositories and other agent programs. Orchestration, subagents and the memory."),
+            ("Why its counts stand alone", "The Codex CLI counts tokens its own way, with its own instructions, tools and caching. Only the two methods inside this check can be compared with each other; the counts are not comparable with the Claude Code counts.")]
+    return ('<section class="section" aria-labelledby="second">\n    <h2 id="second" class="section-title">A second agent program</h2>\n    '
+            f'<ul class="rows">{"".join(f"<li><b>{esc(a)}</b><span>{esc(glue(b))}</span></li>" for a, b in rows)}</ul>\n  </section>\n')
+
+
+def models_lanes() -> str:
+    """How many of the agent transcripts of the benchmark ran on each model, to one scale, with what models.json says about how that
+    was read. The block under the list of the three models on the Study page."""
+    items = [MODELS["tiers"][tier] for tier in "CBA" if MODELS["tiers"][tier].get("transcripts")]
+    if not items:
+        return ""
+    most = max(int(item["transcripts"]) for item in items)
+    lanes = "".join(lane_html("best", f"{item['name']}, {item['effort']} effort", f"{int(item['transcripts']):,} transcripts", int(item["transcripts"]) / most)
+                    for item in items)
+    return f'\n      <div class="rl-fig draw">{lanes}</div>\n      <p class="footnote">{esc(MODELS["how"])}</p>'
+
+
+def packed_how(packed: dict) -> str:
+    """footprint.json's note on the packed index, with its first words made into a sentence of their own."""
+    how = packed.get("how", "")
+    lead = "The same test repository indexed by the release build, every index file written"
+    return how.replace(lead, "The same test repository was indexed by pgr 0.2.0, with every index file written", 1) if how.startswith(lead) else how
+
+
+def size_slot(public: dict) -> str:
+    """Size on disk: the programs and runtimes of the first generation against the one pgr file, with and without its model, and
+    the index of the test repository for each. What is counted is said as benchmark/data/footprint.json says it."""
+    data = footprint_of()
+    if not data:
+        return ""
+    first, pgr = data["first_generation"], data["pgr"]
+    packed = data.get("pgr_0_2")   # the index of the next version, written with a lossless codec, measured in bytes
+    top_a = max(first["programs_and_runtimes_mb"], pgr["program_with_model_mb"], pgr["program_without_model_mb"])
+    # footprint.json counts in mebibytes (1,048,576 bytes); the pages use millions of bytes, the unit of the Install page.
+    mb = lambda value: f"{value * 1.048576:.1f} MB"
+    top_b = max(first["index_of_test_repository_mb"], pgr["index_of_test_repository_mb"]) * 1.048576
+    if packed:
+        top_b = max(top_b, packed["index_before_bytes"] / 1e6, packed["index_of_test_repository_bytes"] / 1e6)
+    parts = "; ".join(f"{part['what']}, {mb(part['mb'])}" for part in first["parts"])
+    programs = (lane_html("ref", "First generation: separate tools and their runtimes", mb(first["programs_and_runtimes_mb"]), first["programs_and_runtimes_mb"] / top_a)
+                + lane_html("best", "pgr, one file, with its model", mb(pgr["program_with_model_mb"]), pgr["program_with_model_mb"] / top_a)
+                + lane_html("best", "pgr, one file, without its model", mb(pgr["program_without_model_mb"]), pgr["program_without_model_mb"] / top_a))
+    index = lane_html("ref", "First generation", mb(first["index_of_test_repository_mb"]), first["index_of_test_repository_mb"] * 1.048576 / top_b)
+    if packed:
+        mb_b = lambda count: f"{count / 1e6:.1f} MB"
+        index += (lane_html("best", f"pgr {pgr['version']}", mb_b(packed["index_before_bytes"]), packed["index_before_bytes"] / 1e6 / top_b)
+                  + lane_html("best", "pgr 0.2.0, packed", mb_b(packed["index_of_test_repository_bytes"]), packed["index_of_test_repository_bytes"] / 1e6 / top_b)
+                  + lane_html("best", "pgr 0.2.0, packed, without the vectors", mb_b(packed["index_without_vectors_bytes"]), packed["index_without_vectors_bytes"] / 1e6 / top_b))
+    else:
+        index += (lane_html("best", "pgr", mb(pgr["index_of_test_repository_mb"]), pgr["index_of_test_repository_mb"] * 1.048576 / top_b)
+                  + lane_html("best", "pgr, without the vectors", mb(pgr["index_without_vectors_mb"]), pgr["index_without_vectors_mb"] * 1.048576 / top_b))
+    apart = (f"Listed apart from the programs: the first generation's models, caches and index folders hold {mb(first['models_and_index_data_mb'] if 'models_and_index_data_mb' in first else first['models_caches_and_index_data_mb'])}, "
+             f"for a total of {mb(first['total_mb'])}. The new program is {pgr['files']} file."
+             + (f" The model inside the program file was {packed['model_in_program']}." if packed and packed.get("model_in_program") else ""))
+    when_packed = f"; the packed index of pgr 0.2.0 on {packed['measured']}" if packed and packed.get("measured") else ""
+    return (f'<h2 id="size" class="section-title">Size on disk</h2>\n    <p class="group-title">{esc(data["how"])} Sizes are in megabytes of a million bytes, the unit of the Install page. Measured {esc(data["measured"])} on {esc(data["machine"])}{esc(when_packed)}.</p>\n    '
+            f'<div class="size-grid draw">\n      <div class="card size-card"><h3>Programs and runtimes</h3><div class="rl-fig">{programs}</div>'
+            f'<p class="footnote">The first generation is {esc(parts)}.</p></div>\n      '
+            f'<div class="card size-card"><h3>Index of the test repository</h3><div class="rl-fig">{index}</div>'
+            '<p class="footnote">The index is what the engine builds once for a repository and reads on every lookup.'
+            + (f' The packed index of pgr 0.2.0 is {abs(packed["index_change_percent"]):.0f}% smaller than the one before, {mb_b(packed["index_before_bytes"])} to '
+               f'{mb_b(packed["index_of_test_repository_bytes"])}, and lossless. {esc(packed_how(packed))}' if packed else "")
+            + '</p></div>\n    </div>\n    '
+            f'<p class="footnote">{esc(apart)}</p>\n    <p class="lang-line">{esc(data["language"])}</p>')
+
+
+def platform_line() -> str:
+    """One line for the Overview: what was tested on which system, and that the Windows and Linux builds gave the same answers."""
+    data = platforms_of()
+    if not data:
+        return ""
+    systems = [item["system"] for item in data["tests"]]
+    same = str(data["same_answers"][0]["result"]).split(" (")[0] if data["same_answers"] else ""
+    where = " and on ".join(systems[:2]) + (f", and the engine's tests also run on {systems[2]} build machines" if len(systems) > 2 else "")
+    return f"Tested on {where}. " + (f"Same answers on Windows and Linux: {same}." if same else "")
+
+
+def plain_pip(text: str) -> str:
+    """The test notes name the pip route as a command; the page says it in words."""
+    return text.replace("pip install of the wheel from the release", "installing the wheel from the release with pip")
+
+
+def platform_block() -> str:
+    """What was tested where, for the Install page: the test suites, the identical answers, the installers, and what was built
+    and not run on this machine."""
+    data = platforms_of()
+    if not data:
+        return ""
+    tests = "".join(f"\n          <li><b>{esc(t['system'])}</b> ({esc(t['where'])}): {esc(t['what'])}. {esc(t['result'])}.</li>" for t in data["tests"])
+    same = "".join(f"\n          <li>{esc(t['what'])}: {esc(t['result'])}.</li>" for t in data["same_answers"])
+    ran = "".join(f"\n          <li><b>{esc(t['system'])}</b>: {esc(plain_pip(t['what']))}: {esc(t['result'])}.</li>" for t in data["installers"])
+    built = "".join(f"\n          <li>{esc(line)}</li>" for line in data.get("built_not_run_here") or [])
+    return (f'\n      <p class="block-lede">Checked {esc(data["checked"])}.</p>\n      <div class="tested-grid">\n'
+            f'        <div class="card-plain"><h3>Test suites</h3><ul>{tests}\n        </ul></div>\n'
+            f'        <div class="card-plain"><h3>Same answers on different systems</h3><ul>{same}\n        </ul></div>\n'
+            f'        <div class="card-plain"><h3>The installers, run from the public release</h3><ul>{ran}\n        </ul></div>\n'
+            f'        <div class="card-plain"><h3>Built but not run here</h3><ul>{built}\n        </ul></div>\n      </div>')
+
+
+LAB_NAMES = {"words": "Words only, no neural network", "meaning": "Meaning only, with embeddings", "hybrid": "Both together, the default"}
+LAB_LIMITS = (
+    "The queries come from developer-written test names and commit subjects, not from questions an agent would ask.",
+    "Credit for a commit subject is file-level and lenient: any hit in a changed file counts.",
+    "There are five code bases in three languages. One of them has no named tests, so it is judged on commit subjects alone.",
+    "The default variant was built by people who had seen none of these challenges, and the figures here are the held-out half.",
+    "Pooled rows weight each challenge equally, so the larger code bases count more.",
+    "A test-name query and its answer share words by construction. The numbers compare variants; they are not a forecast of agent behaviour.",
+    "Credit by cover matching goes to a block that contains the function, so a variant that returns coarser blocks gains from it. The data file keeps the exact-matching numbers beside the main ones for that reason.",
+    "Answers in example, documentation, compatibility and legacy folders are left out, because the engine demotes most of them on purpose. A change to that policy is not measured here.",
+    "A variant whose weights were searched with the tuning tool was searched on the tune half only and is judged here on the held-out half. The tune half holds "
+    "few test-name challenges and a few hundred commit-subject challenges, so a tuned variant can fit it and gain nothing held out.")
+
+
+def lab_facts() -> dict | None:
+    """benchmark/data/search_lab.json: for the held-out half, the pooled recall at 1 and at 5 and the mean reciprocal rank of each
+    variant on the commit-subject challenges with their intervals, the paired difference of each against the default, and the size
+    of the test-name set."""
+    path = BENCH / "data" / "search_lab.json"
+    if not path.is_file():
+        return None
+    try:
+        lab = json.loads(path.read_text(encoding="utf-8"))
+        half = lab["evaluation"]["held-out"]
+        base = half["baseline"]
+        rows = {m["variant"]: m for m in half["metrics"] if m["scope"] == "pooled" and m["kind"] == "C"}
+        pairs = {m["variant"]: m for m in half["paired"] if m["scope"] == "pooled" and m["kind"] == "C"}
+        tests = {m["variant"]: m for m in half["metrics"] if m["scope"] == "pooled" and m["kind"] == "T"}
+        corpora = len(lab["corpora"])
+        c_corpora = len({cell["corpus"] for cell in half["cells"] if cell["kind"] == "C" and cell["n"] > 0})
+        shares = sorted(float(entry["stats"]["c_top_file_share"]) for entry in lab["challenges"]["per_corpus"].values()
+                        if "c_top_file_share" in entry.get("stats", {}) and entry["funnel"]["C"]["kept"] >= 10)
+        resamples, interval, limits = int(lab["bootstrap"]["resamples"]), float(lab["bootstrap"]["interval"]), len(lab["limits"])
+    except (ValueError, KeyError, TypeError):
+        return None
+    if base not in rows or not set(LAB_NAMES) <= set(rows):
+        return None
+    if limits != len(LAB_LIMITS):
+        raise SystemExit(f"search_lab.json states {limits} limits and LAB_LIMITS of build_site.py says {len(LAB_LIMITS)}: put the change in plain words")
+    return {"rows": rows, "pairs": pairs, "tests": tests, "base": base, "corpora": corpora, "k": lab.get("k"), "c_corpora": c_corpora,
+            "shares": shares, "resamples": resamples, "interval": interval}
+
+
+def lab_slot(public: dict) -> str:
+    """One block of the Study page: the search without a neural network, measured on challenges made from five code bases."""
+    found = lab_facts()
+    if not found:
+        return ""
+    pct = lambda cell: f"{cell['v'] * 100:.1f}%"
+    span = lambda cell: f"{cell['lo'] * 100:.1f}% to {cell['hi'] * 100:.1f}%"
+    # A figure between 0 and 1 drawn as a bar, with its interval as a bracket on the same scale.
+    mbar = lambda cell: (f'<span class="mbar" aria-hidden="true"><i style="--v:{cell["v"]:.4f}"></i>'
+                         f'<b style="--a:{cell["lo"]:.4f};--b:{cell["hi"]:.4f}"></b></span>')
+    order = [found["base"]] + [v for v in LAB_NAMES if v != found["base"]]
+    body = ""
+    for variant in order:
+        m = found["rows"][variant]
+        body += (f'\n        <tr><th scope="row" class="cfg"><span class="lab-name">{esc(LAB_NAMES[variant])}</span></th>'
+                 f'<td data-label="Recall at 1">{pct(m["recall1"])}<span class="sub">{span(m["recall1"])}</span>{mbar(m["recall1"])}</td>'
+                 f'<td data-label="Recall at 5">{pct(m["recall5"])}<span class="sub">{span(m["recall5"])}</span>{mbar(m["recall5"])}</td>'
+                 f'<td data-label="Mean reciprocal rank">{m["mrr"]["v"]:.3f}<span class="sub">{m["mrr"]["lo"]:.3f} to {m["mrr"]["hi"]:.3f}</span>{mbar(m["mrr"])}</td></tr>')
+    words = []
+    for variant in order[1:]:
+        pair = found["pairs"].get(variant)
+        if not pair:
+            continue
+        bits = []
+        for key, label in (("recall1", "recall at 1"), ("recall5", "recall at 5"), ("mrr", "mean reciprocal rank")):
+            cell = pair[key]
+            scale = 1 if key == "mrr" else 100
+            unit = "" if key == "mrr" else " points"
+            bits.append(f"{label} {cell['v'] * scale:+.{3 if key == 'mrr' else 1}f}{unit} (interval {cell['lo'] * scale:+.{3 if key == 'mrr' else 1}f} to "
+                        f"{cell['hi'] * scale:+.{3 if key == 'mrr' else 1}f}, {'excludes' if cell['excludes_zero'] else 'includes'} zero)")
+        words.append(f"<li><b>{esc(LAB_NAMES[variant])}</b>, against {esc(LAB_NAMES[found['base']].lower())}: {esc('; '.join(bits))}.</li>")
+    limits = list(LAB_LIMITS)
+    if found["shares"]:
+        low, high = found["shares"][0] * 100, found["shares"][-1] * 100
+        limits.insert(1, f"In {number_word(len(found['shares']))} of the code bases a single file is the answer to {low:.0f} to {high:.0f}% of the commit-subject challenges, "
+                         "so credit piles up on that file.")
+    tests = found["tests"].get(found["base"])
+    small = (f'<p class="cx-note">The test-name challenges are too few to settle anything: {tests["n"]} held-out queries pooled over all the code bases. '
+             f'For the default variant their recall at 1 is {pct(tests["recall1"])} with an interval of {span(tests["recall1"])}, wide enough to hold every variant. '
+             'They are reported and not interpreted.</p>' if tests else "")
+    return ('<section class="section" aria-labelledby="lab">\n    <h2 id="lab" class="section-title">Search without a neural network</h2>\n    '
+            f'<p class="group-title">Challenges made from {number_word(found["corpora"])} code bases, with no model and no human labels: the query is the words of a commit subject, '
+            f'and the right answer is a file that commit changed; the commit-subject challenges come from {number_word(found["c_corpora"])} of the code bases. '
+            'Three variants of the search are scored on the same challenges, held-out half. '
+            f'Intervals are {found["interval"]:.0%} from {found["resamples"]:,} resamples of the challenges.</p>\n    '
+            f'<div class="table-wrap draw"><table class="lab-table"><thead><tr><th scope="col">Variant</th><th scope="col">Recall at 1</th><th scope="col">Recall at 5</th>'
+            f'<th scope="col">Mean reciprocal rank</th></tr></thead><tbody>{body}\n      </tbody></table></div>\n    '
+            f'<p class="group-title">Paired difference against the default, on the same challenges:</p>\n    <ul class="plain lab-pairs">{"".join(words)}</ul>\n    '
+            f'{small}\n    <ul class="plain cx-limits">{"".join(f"<li>{esc(line)}</li>" for line in limits)}</ul>\n  </section>\n')
+
+
+# ----------------------------------------------------------------------------------------------
+# Round six: teams of agents. Every figure the three pages show about it is computed here from the team group of arms.json
+# and the parsed results; the guard reads these pages as it reads the rest.
+# ----------------------------------------------------------------------------------------------
+
+TEAM_SETS = (("original", ""), ("held-out", "h"))   # the held-out twin of a team arm has the id of the arm and an h
+TEAM_CLASS = {"C": "light", "B": "mid", "A": "top"}
+TEAM_NOTE_ARMS = (("T0", "no notes"), ("TL", "the agent loads the notes"), ("TI", "the notes in the brief"))
+
+
+def change_words(change: float) -> str:
+    """A change in tokens as a page words it: 32% fewer, 13% more, or about the same under half a percent."""
+    return "about the same" if abs(change) < 0.005 else f"{round(abs(change) * 100)}% {'fewer' if change < 0 else 'more'}"
+
+
+def changes_text(changes: list[float]) -> str:
+    """Several changes in tokens as one phrase: 27% to 32% fewer, or from 3% fewer to 3% more when they differ in sign."""
+    if all(c < 0 for c in changes) or all(c >= 0 for c in changes):
+        whole = sorted(round(abs(c) * 100) for c in changes)
+        low, high = whole[0], whole[-1]
+        word = "fewer" if changes[0] < 0 else "more"
+        if low == 0 and high > 0:
+            return f"up to {high}% {word}"
+        return f"{low}% {word}" if low == high else f"{low}% to {high}% {word}"
+    ordered = sorted(changes)
+    return f"from {change_words(ordered[0])} to {change_words(ordered[-1])}"
+
+
+def signed_range(changes: list[float]) -> str:
+    """Several changes in tokens as one range with its signs: −15% to +3%."""
+    sign = lambda value: ("−" if value < 0 else "+") + f"{round(abs(value) * 100)}%"
+    low, high = sign(min(changes)), sign(max(changes))
+    return low if low == high else f"{low} to {high}"
+
+
+def span_text(values: list[float], one) -> str:
+    """The lowest and the highest of some values, as one value when they print the same: 70k, or 70k to 71k."""
+    low, high = one(min(values)), one(max(values))
+    return low if low == high else f"{low} to {high}"
+
+
+def turns_phrase(values: list[float]) -> str:
+    """Turns as a page words them: one turn, or 2.0 to 2.7 turns."""
+    return "one turn" if all(abs(v - 1) < 0.05 for v in values) else span_text(values, lambda v: f"{v:.1f}") + " turns"
+
+
+def scaled(groups: list[tuple[str, list[tuple[str, str, float]]]]) -> list[dict]:
+    """Groups of lanes, (title, [(kind, name, tokens)]), drawn to one scale: the longest bar is the most tokens in any group."""
+    longest = max((value for _, items in groups for _, _, value in items), default=1.0) or 1.0
+    return [{"title": title, "items": [{"kind": kind, "name": name, "text": tokens(value), "value": round(value / longest, 4)}
+                                       for kind, name, value in items]} for title, items in groups]
+
+
+def team_facts(points: list[dict], cells: list[dict], agents: list[dict], arms: dict) -> dict | None:
+    """Round six in plain words with its numbers: what ran, what it found (one finding for each question the round asked) and
+    what it cannot show. None when the results hold no team cell. A finding is written only when the numbers it quotes exist."""
+    ids = {a["id"] for a in arms["arms"] if a.get("group") == "team"}
+    runs = [c for c in cells if c["complete"] and c["arm"] in ids]
+    if not runs:
+        return None
+    light, mid, top = (MODELS["tiers"][t]["name"] for t in "CBA")
+    named = {"light": "C", "mid": "B", "top": "A"}
+
+    def at(arm: str, setup: str, tier: str, sid: str) -> dict | None:
+        return pick(points, arm + dict(TEAM_SETS)[sid], setup, tier)
+
+    def row(pt: dict) -> dict:
+        return {"tokens": pt["tokens"], "turns": pt["requests"], "runs": pt["n"], "perfect": pt["spread"]["perfect_runs"],
+                "low": pt["spread"]["tokens"][0], "high": pt["spread"]["tokens"][1]}
+
+    def runs_at(arm: str, setup: str, tier: str, sid: str) -> list[dict]:
+        """The runs of one cell: an arm, a setup, a model and a question set."""
+        return [c for c in runs if c["arm"] == arm + dict(TEAM_SETS)[sid] and c["setup"] == setup and c["tier"] == tier]
+
+    def altered_in(pt: dict) -> int:
+        """How many runs of a point had a read altered by another tool on the test machine (the tool the Study page describes
+        under the no-index control). Such a run can lose lines it needed, or re-read them, so it is counted wherever it sits."""
+        return sum(c["hook_rewrites"] > 0 for c in runs if (c["arm"], c["setup"], c["tier"]) == (pt["arm"], pt["setup"], pt["tier"]))
+
+    def compare(base: tuple, other: tuple, tier: str = "C", tag: str = "") -> list[dict]:
+        """One entry for each question set: the base setup and the other, each as (arm, setup), on the same model. The tag says
+        which setup the pair is, for the rows and lanes of a finding that holds several. "altered" counts the runs of each side that
+        had a read altered by the other tool, and "clean" is the change in mean tokens with those runs set aside (None when it
+        would leave a side with no run, or when no run was altered)."""
+        found = []
+        for sid, _ in TEAM_SETS:
+            b, o = at(base[0], base[1], tier, sid), at(other[0], other[1], tier, sid)
+            if b and o:
+                hit = (altered_in(b), altered_in(o))
+                kept_b = [c["tokens"] for c in runs_at(base[0], base[1], tier, sid) if not c["hook_rewrites"]]
+                kept_o = [c["tokens"] for c in runs_at(other[0], other[1], tier, sid) if not c["hook_rewrites"]]
+                found.append({"set": sid, "class": TEAM_CLASS[tier], "tier": tier, "tag": tag, "base": row(b), "other": row(o),
+                              "change": o["tokens"] / b["tokens"] - 1, "altered": hit,
+                              "clean": (statistics.fmean(kept_o) / statistics.fmean(kept_b) - 1) if sum(hit) and kept_b and kept_o else None})
+        return found
+
+    def where(p: dict) -> str:
+        return f"{model_at(p['tier'])}, {p['set']} questions" + (f", {p['tag']}" if p.get("tag") else "")
+
+    def tool_note(pairs: list[dict]) -> str:
+        """When the other tool altered a read in a run of these pairs: how many runs, and what each such pair's change is without them.
+        An empty string when it altered none. Nothing here says the tool changed a result; it says a result rests on such a run."""
+        hit = [p for p in pairs if sum(p["altered"])]
+        if not hit:
+            return ""
+        count, total = sum(sum(p["altered"]) for p in pairs), sum(p["base"]["runs"] + p["other"]["runs"] for p in pairs)
+        aside = [p for p in hit if p["clean"] is not None]
+        return (f" Another tool on the test machine altered a read in {count} of the {total} runs of {'these pairs' if len(pairs) > 1 else 'this pair'}"
+                + ("; with those runs set aside the change would be " + "; ".join(f"{change_words(p['clean'])} ({where(p)})" for p in aside) if aside else "") + ".")
+
+    def overlaps(p: dict) -> bool:
+        """Whether, in one pair, the lowest and highest run of the two sides cover some tokens in common."""
+        return max(p["base"]["low"], p["other"]["low"]) <= min(p["base"]["high"], p["other"]["high"])
+
+    def overlap(pairs: list[dict]) -> bool:
+        """Whether, in every pair, the lowest and highest run of the two sides cover some tokens in common."""
+        return all(overlaps(p) for p in pairs)
+
+    def widest(pairs: list[dict]) -> float:
+        """How far apart the lowest and the highest of the three runs of one cell lie, at most, over both sides of every pair."""
+        return max(r["high"] / r["low"] - 1 for p in pairs for r in (p["base"], p["other"]) if r["low"] > 0)
+
+    def lane_groups(pairs: list[dict], base_name: str, other_name: str) -> list[tuple[str, list[tuple[str, str, float]]]]:
+        return [(where(p), [("ref", base_name, p["base"]["tokens"]), ("best", other_name, p["other"]["tokens"])]) for p in pairs]
+
+    def counted(pairs: list[dict], side: str | None = None) -> tuple[int, int]:
+        """Fully correct runs and runs over one side of every pair, or over both."""
+        sides = (side,) if side else ("base", "other")
+        return sum(p[s]["perfect"] for p in pairs for s in sides), sum(p[s]["runs"] for p in pairs for s in sides)
+
+    def altered_words(count: int) -> str:
+        """The mark a row carries when the other tool altered a read in some of its runs."""
+        return f", {count} {'run' if count == 1 else 'runs'} with a read altered by another tool" if count else ""
+
+    def pair_rows(pairs: list[dict], base_name: str, other_name: str) -> list[dict]:
+        return [{"label": f"{name}, {where(p)}", "value": f"{tokens(p[side]['tokens'])} tokens, {p[side]['turns']:.1f} turns, {of(p[side]['perfect'], p[side]['runs'])} fully correct"
+                                                         + altered_words(p["altered"][0 if side == "base" else 1])}
+                for p in pairs for name, side in ((base_name, "base"), (other_name, "other"))]
+
+    def point_row(label: str, pt: dict) -> dict:
+        return {"label": label, "value": f"{tokens(pt['tokens'])} tokens, {pt['requests']:.1f} turns, {of(pt['spread']['perfect_runs'], pt['n'])} fully correct" + altered_words(altered_in(pt))}
+
+    findings, figures, evidence = [], [], {}   # evidence: the figures the Install page quotes for its steps
+    all_points = [pt for pt in points if pt["arm"] in ids]
+    per_cell = sorted({pt["n"] for pt in all_points})
+    team_agents = [a for a in agents if a["arm"] in ids]
+
+    # 1. A pack and no tool at all.
+    quad = [(tier, sid, at("TPX", "single", tier, sid)) for tier in "CB" for sid, _ in TEAM_SETS]
+    if all(pt for _, _, pt in quad):
+        tok = [pt["tokens"] for _, _, pt in quad]
+        turns = [pt["requests"] for _, _, pt in quad]
+        k, n = sum(pt["spread"]["perfect_runs"] for _, _, pt in quad), sum(pt["n"] for _, _, pt in quad)
+        same_day = [at("R6", "single", "C", sid) for sid, _ in TEAM_SETS]
+        text = (f"With a pack in the prompt and no tool at all, one agent answered the three lookups in {turns_phrase(turns)} on {span_text(tok, tokens)} tokens "
+                f"and was fully correct in {of(k, n)} runs over four cells: {light} and {mid}, on the original and the held-out questions.")
+        rows = [point_row(f"A pack alone, {model_at(tier)}, {sid} questions", pt) for tier, sid, pt in quad]
+        groups = [(f"{model_at(tier)}, {sid} questions", [("best", "A pack alone", pt["tokens"])]) for tier, sid, pt in quad]
+        if all(same_day):
+            light_quad = [q for q in quad if q[0] == "C"]
+            cut = [1 - q[2]["tokens"] / s["tokens"] for q, s in zip(light_quad, same_day)]
+            text += (f" The baseline of the same round, one agent with the lookup command and no pack, needed {span_text([s['tokens'] for s in same_day], tokens)} tokens over "
+                     f"{turns_phrase([s['requests'] for s in same_day])} on {light}, so on that model the pack alone used {changes_text([-c for c in cut])} tokens."
+                     + tool_note(compare(("R6", "single"), ("TPX", "single"))))
+            rows += [point_row(f"Lookup command, no pack, {model_at('C')}, {sid} questions", pt) for (sid, _), pt in zip(TEAM_SETS, same_day)]
+            for (sid, _), s in zip(TEAM_SETS, same_day):
+                next(g for g in groups if g[0] == f"{model_at('C')}, {sid} questions")[1].append(("ref", "Lookup command, no pack", s["tokens"]))
+        findings.append({"id": "pack-alone", "title": "A pack alone", "text": text, "rows": rows, "lanes": scaled(groups)})
+        evidence["pack_alone"] = {"tokens": span_text(tok, tokens), "turns": turns_phrase(turns), "perfect": k, "runs": n}
+        figures.append((span_text(tok, tokens), f"tokens in {turns_phrase(turns)} with a pack and no tool at all; fully correct in {of(k, n)} runs", ""))
+
+    # 2. Packs in the briefs of three subagents started together, and of an orchestrated team.
+    para = compare(("R6", "parallel"), ("TP", "parallel"), tag="three subagents")
+    orch = compare(("R6", "orch"), ("TP", "orch"), tag="with an orchestrator")
+    if para:
+        k, n = counted(para)
+        text = (f"Three subagents started together, one question each, with nobody checking their answers ({light}): with a pack in each brief the three used "
+                f"{changes_text([p['change'] for p in para])} tokens than without, and every answer was fully correct ({of(k, n)} runs, both ways).")
+        rows = pair_rows(para, "No pack", "A pack in each brief")
+        if orch:
+            ko, no = counted(orch)
+            evidence["orchestrated"] = {"change": changes_text([p["change"] for p in orch]), "perfect": ko, "runs": no}
+            text += (f" With an orchestrator ({top}) that writes the briefs and checks the answers, the packs moved the total {changes_text([p['change'] for p in orch])} tokens "
+                     f"({of(ko, no)} runs fully correct)" + (", and the runs of the two sides overlap." if overlap(orch) else ".") + tool_note(orch))
+            rows += pair_rows(orch, "No pack", "A pack")
+        evidence["briefs"] = {"change": changes_text([p["change"] for p in para]), "perfect": k, "runs": n}
+        findings.append({"id": "pack-in-briefs", "title": "Packs in the briefs of three subagents", "text": text, "rows": rows,
+                         "lanes": scaled(lane_groups(para, "No pack", "A pack in each brief"))})
+        figures.append((changes_text([p["change"] for p in para]).replace(" fewer", ""),
+                        f"with a pack in the brief of each of three subagents; {of(k, n)} runs fully correct", "fewer tokens"))
+
+    # 3. One agent with the pack and the lookup commands as well.
+    solo = compare(("R6", "single"), ("TP", "single"), tag="one agent")
+    both = [c for c in runs if c["arm"] in ("TP", "TPh") and c["setup"] == "single"]
+    if solo and both:
+        looked, one_turn = sum(c.get("pgr_lookups", 0) > 0 for c in both), sum(c["requests"] <= 1 for c in both)
+        text = (f"One agent given the pack and the lookup commands as well, on {light}, used {changes_text([p['change'] for p in solo])} tokens than the same agent with no pack. "
+                f"Over its {number_word(len(both))} runs, on both models and both question sets, it ran a lookup anyway in {looked} and answered in one turn in {one_turn}: "
+                "with commands in reach, the pack did not take the asking turn away." + tool_note(solo))
+        evidence["with_commands"] = {"looked": looked, "runs": len(both), "one_turn": one_turn}
+        findings.append({"id": "pack-with-commands", "title": "A pack and the commands together", "text": text,
+                         "rows": pair_rows(solo, "No pack", "A pack and the commands"), "lanes": scaled(lane_groups(solo, "No pack", "A pack and the commands"))})
+
+    # 4. The team hub, on lookup work and on a demonstration set built to need it.
+    hub_a, hub_b = compare(("R6", "orch"), ("TH", "orch"), tag="orchestrated"), compare(("TP", "orch"), ("TPH", "orch"), tag="orchestrated")
+    if hub_a or hub_b:
+        hub = hub_a + hub_b
+        k, n = counted(hub)
+        text = (f"On lookup work an orchestrated team ({top} orchestrating, {light} answering) used {changes_text([p['change'] for p in hub])} tokens when its subagents filed what "
+                f"they found in the hub and the reviewer started from it, and gained no accuracy: {of(k, n)} runs were fully correct, with the hub and without." + tool_note(hub))
+        rows = pair_rows(hub_a, "No hub", "A team hub") + pair_rows(hub_b, "A pack, no hub", "A pack and a team hub")
+        notes = {}
+        for arm, _ in TEAM_NOTE_ARMS:
+            mine, point = [c for c in runs if c["arm"] == arm and c["tier"] == "C"], pick(points, arm, "single", "C")
+            if mine and point and all("note_fields" in c for c in mine):
+                notes[arm] = (sum(c["note_fields"]["right"] for c in mine), sum(c["note_fields"]["of"] for c in mine), point)
+        demo = len(notes) == 3 and len({v[1] for v in notes.values()}) == 1
+        lowest = apart = False
+        if demo:
+            spans = {arm: notes[arm][2]["spread"]["tokens"] for arm in notes}
+            lowest = min(notes, key=lambda arm: notes[arm][2]["tokens"]) == "TI"
+            apart = all(spans["TI"][1] < spans[other][0] for other in ("T0", "TL"))   # the slowest run with the notes in the brief is under every other run
+            rank = (", the lowest mean of the three" + ("" if apart else ", though the runs of the three overlap")) if lowest else ""
+            text += (f" A small demonstration set, written by the builders so that each answer needs a note an earlier agent filed, shows what the hub is for: {light} got "
+                     f"{of(notes['T0'][0], notes['T0'][1])} note fields right with no notes, {of(notes['TL'][0], notes['TL'][1])} when it loaded the notes itself and "
+                     f"{of(notes['TI'][0], notes['TI'][1])} when the notes were put in its brief{rank}: {tokens(notes['TI'][2]['tokens'])} tokens against "
+                     f"{tokens(notes['TL'][2]['tokens'])} to load them and {tokens(notes['T0'][2]['tokens'])} with none.")
+            rows += [{"label": f"Demonstration set, {label}, {model_at('C')}",
+                      "value": f"{of(notes[arm][0], notes[arm][1])} note fields right, {tokens(notes[arm][2]['tokens'])} tokens, {notes[arm][2]['requests']:.1f} turns"}
+                     for arm, label in TEAM_NOTE_ARMS]
+        evidence["hub"] = {"change": changes_text([p["change"] for p in hub]), "perfect": k, "runs": n}
+        if demo:
+            evidence["notes"] = {"none": [notes["T0"][0], notes["T0"][1]], "loaded": [notes["TL"][0], notes["TL"][1]], "brief": [notes["TI"][0], notes["TI"][1]],
+                                 "lowest": lowest, "apart": apart}
+        findings.append({"id": "hub", "title": "The team hub", "text": text, "rows": rows,
+                         "lanes": scaled(lane_groups(hub_a + hub_b, "No hub", "A team hub"))})
+        figures.append((changes_text([p["change"] for p in hub]).replace(" more", ""), "with the team hub on lookup work, and no accuracy gained", "more tokens"))
+        if demo:
+            figures.append((of(notes["TI"][0], notes["TI"][1]), f"note fields right with the notes in the brief, against {of(notes['T0'][0], notes['T0'][1])} with none; a demonstration set", ""))
+
+    # 5. The tools inside an Ubuntu virtual machine.
+    vm = (compare(("R6", "single"), ("R6V", "single"), tag="one agent") + compare(("TH", "orch"), ("THV", "orch"), tag="orchestrated, with the hub")
+          + compare(("TPH", "orch"), ("TPHV", "orch"), tag="orchestrated, with a pack and the hub"))
+    if vm:
+        k, n = counted(vm, "other")
+        kb, nb = counted(vm, "base")
+        text = (f"With the repository and the tools inside an Ubuntu virtual machine (WSL 2) and the agent outside it, {of(k, n)} runs were fully correct, against {of(kb, nb)} on Windows, "
+                f"and the mean tokens moved {changes_text([p['change'] for p in vm])} over {number_word(len(vm))} pairs, while the three runs of one cell differ from each other by up to "
+                f"{widest(vm):.0%}." + tool_note(vm) + " The tools ran inside the machine and no step used the desktop, the mouse or the keyboard; "
+                "nothing here measured an agent working beside a person at the same computer.")
+        findings.append({"id": "virtual-machine", "title": "The tools in a virtual machine", "text": text,
+                         "rows": pair_rows(vm, "On Windows", "In the virtual machine"), "lanes": scaled(lane_groups(vm, "On Windows", "In the virtual machine"))})
+        figures.append((of(k, n), "runs fully correct with the tools in an Ubuntu virtual machine; on Windows " + of(kb, nb), ""))
+
+    # 6. No neural network.
+    words, words_pack = compare(("R6", "single"), ("RN", "single"), tag="no pack"), compare(("TP", "single"), ("TPN", "single"), tag="with a pack")
+    if words:
+        kw, nw = counted(words, "other")
+        kb, nb = counted(words, "base")
+        lab = lab_facts()
+        tied = ""
+        if lab and "words" in lab["pairs"] and not any(lab["pairs"]["words"][key]["excludes_zero"] for key in ("recall1", "recall5", "mrr")):
+            tied = " In the search lab, on the Study page, the search without it was not told apart from the default."
+        text = (f"With the search working on words alone, {of(kw, nw)} runs were fully correct, against {of(kb, nb)} with the neural network, on {light}; the mean tokens moved "
+                f"{changes_text([p['change'] for p in words])}.{tied}")
+        # The runs that were not fully correct without the network: did the other tool alter a read in them?
+        word_runs = [c for sid, _ in TEAM_SETS for c in runs_at("RN", "single", "C", sid)]
+        missed = [c for c in word_runs if c["quality"] < 0.999]
+        missed_hit = [c for c in missed if c["hook_rewrites"] > 0]
+        untouched_right = all(c["quality"] >= 0.999 for c in word_runs if not c["hook_rewrites"])
+        if missed and len(missed_hit) == len(missed):
+            blame = "Both" if len(missed) == 2 else "All " + number_word(len(missed))
+            text += (f" {blame} of the runs that were not fully correct without the network had a read altered by another tool on the test machine"
+                     + (", and the runs without the network that the tool did not touch were all fully correct" if untouched_right else "")
+                     + ", so these runs cannot tell the missing network from that tool as the cause.")
+        elif missed_hit:
+            text += (f" {number_word(len(missed_hit), True)} of the {number_word(len(missed))} runs that were not fully correct had a read altered by another tool on the test machine, "
+                     "so these runs cannot fully separate the missing network from that tool.")
+        text += tool_note(words)
+        if words_pack:
+            kp, npk = counted(words_pack, "other")
+            text += f" With a pack made on the same words-only search, {of(kp, npk)} runs were fully correct."
+        findings.append({"id": "no-neural-network", "title": "No neural network", "text": text,
+                         "rows": pair_rows(words, "With the neural network", "Words only") + pair_rows(words_pack, "A pack, with the neural network", "A pack, words only"),
+                         "lanes": scaled(lane_groups(words + words_pack, "With the neural network", "Words only"))})
+        figures.append((of(kw, nw), f"runs fully correct without the neural network, against {of(kb, nb)} with it"
+                        + ("; " + ("both" if len(missed) == 2 else "all") + " of the misses had a read altered by another tool, so the network is not shown to be the cause"
+                           if missed and len(missed_hit) == len(missed) else ""), ""))
+
+    # 7. Three models, each in its role.
+    roles = compare(("R6", "orch"), ("R6", "orch-mid"), tag="no pack") + compare(("TP", "orch"), ("TP", "orch-mid"), tag="with a pack")
+    if roles:
+        k, n = counted(roles)
+        fewer, other_way = [p["change"] for p in roles if p["change"] < 0], [p["change"] for p in roles if p["change"] >= 0]
+        text = (f"{top} plans, {light} looks things up and {MODELS['tiers']['B']['name']} reviews, against the same team with {top} reviewing as well: the total moved "
+                f"{changes_text([p['change'] for p in roles])} tokens over {number_word(len(roles))} pairs, and {of(k, n)} runs were fully correct, both ways.")
+        shared = sum(overlaps(p) for p in roles)
+        if shared:
+            text += (f" In {number_word(shared)} of the {number_word(len(roles))} pairs the lowest and highest runs of the two sides cover tokens in common, "
+                     "so a difference there is not shown to be real.")
+        text += tool_note(roles)
+        findings.append({"id": "three-models", "title": "Three models, each in its role", "text": text,
+                         "rows": pair_rows(roles, "One model reviewing", "Three models in their roles"),
+                         "lanes": scaled(lane_groups(roles, "One model reviewing", "Three models in their roles"))})
+        figures.append((signed_range([p["change"] for p in roles]),
+                        f"with three models in their roles, against {top} reviewing as well: fewer in {number_word(len(fewer))} of {number_word(len(roles))} pairs"
+                        + (f", {changes_text(other_way)} in the other" if other_way else "") + (f"; the runs of the two sides overlap in {number_word(shared)} of them" if shared else "")
+                        + f"; {of(k, n)} runs fully correct", "change in tokens"))
+
+    cells_n = len(all_points)
+    try:
+        packs = json.loads((BENCH / "data" / "packs.json").read_text(encoding="utf-8"))["packs"]["gs"]
+        sizes = [q["tokens"] for letter in packs.values() for q in letter.values()]
+    except (OSError, ValueError, KeyError):
+        sizes = []
+    five = [c["start"] for c in cells if c["complete"] and c["arm"] == "RGS" and c["tier"] == "C" and c["setup"] == "single"]
+    six = [c["start"] for c in runs if c["arm"] == "R6" and c["tier"] == "C" and c["setup"] == "single"]
+    rewrote = [c for c in runs if c["hook_rewrites"] > 0]
+    missed_all = [c for c in runs if c["quality"] < 0.999]
+    tool = {"runs": len(runs), "acted": sum(c["hook_calls"] > 0 for c in runs), "altered": len(rewrote), "missed": len(missed_all),
+            "missed_altered": sum(c["hook_rewrites"] > 0 for c in missed_all)}
+    try:
+        version = json.loads((BENCH / "data" / "packs.json").read_text(encoding="utf-8"))["pgr_version"].split()[-1]
+    except (OSError, ValueError, KeyError, IndexError):
+        version = ""
+    intro = (f"Round six, run on {ROUND_SIX_DATE}, put the engine in the setups a team of agents uses: {len(team_agents)} agents in {len(runs)} runs over {cells_n} cells, "
+             f"{number_word(per_cell[0]) if len(per_cell) == 1 else 'one to ' + number_word(per_cell[-1])} runs a cell. Each finding below sets two setups of this round against "
+             "each other, on the same repository and the same question sets. The one comparison that crosses rounds is the highlighted configuration against no index, "
+             "because the no-index agent was last run in round five, a day earlier; it is marked where it appears. The builders of the engine wrote the questions.")
+    limits = [
+        f"{number_word(per_cell[-1], True)} runs a cell cannot support a claim of significance. A difference of one turn between two setups is noise, and so is a difference of one fully correct run.",
+        "The questions were written by the builders of the engine, and two of the three in each set name the function in backticks. That suits a pack, which is built from the words of the question. "
+        "The third describes a job in words; the pack alone answered it too.",
+        "None of this was tested on open-ended work: no bug to find, no change to make, no question that names no function and describes none.",
+        "The demonstration set was written to show one feature of the hub. It is not a test nobody tuned for.",
+        "The held-out questions are not held out for the packs of this round. The questions were written and committed before pgr 0.2.0, and the part of its pack that finds the "
+        "functions a question names was written after them. For round six they are a second set of questions, not an untouched one.",
+    ]
+    if tool["altered"]:
+        limits.insert(1, f"Another tool on the test machine, the one the Study page describes under the no-index control, was installed in round six as well. It altered a read in {tool['altered']} of the "
+                         f"round's {tool['runs']} runs, and in {tool['missed_altered']} of the {tool['missed']} runs that were not fully correct. A finding that rests on a pair with such a run says so, and "
+                         "gives the change without it. Running the round again with that tool off would settle it; that was not done.")
+    return {"agents": len(team_agents), "runs": len(runs), "cells": cells_n, "per_cell": per_cell, "intro": intro, "tool": tool, "pgr_version": version,
+            "figures": figures, "findings": findings, "evidence": evidence, "limits": limits,
+            "pack_tokens": {"low": min(sizes), "high": max(sizes), "count": len(sizes)} if sizes else None,
+            "start_drift": (statistics.fmean(six) - statistics.fmean(five)) if five and six else None,
+            "start_five": statistics.fmean(five) if five else None}
+
+
+def pick_facts(configs: list[dict]) -> dict | None:
+    """What the rule picked and why: the picked configuration, how many could have been picked, how many were fully correct in
+    every run of the four cells, and the three that follow it in the rule's order."""
+    best = next((c for c in configs if c["best"]), None)
+    if not best:
+        return None
+    order = []
+    for config in configs:
+        found = [cell_of(config, cid, sid) for cid, sid in BEST_CELLS]
+        if all(pt and pt["runs"] >= BEST_MIN_RUNS for pt in found):
+            order.append({"slug": config["slug"], "name": config["name"], "commandless": bool(config.get("commandless")),
+                          "perfect": sum(pt["perfect_runs"] for pt in found), "runs": sum(pt["runs"] for pt in found),
+                          "tokens": statistics.fmean(pt["tokens"] for pt in found), "turns": statistics.fmean(pt["turns"] for pt in found)})
+    order.sort(key=lambda r: (-r["perfect"] / r["runs"], r["tokens"]))
+    mine = next((r for r in order if r["slug"] == best["slug"]), None)
+    if not mine:
+        return None
+    return {**mine, "eligible": len(order), "all_correct": sum(r["perfect"] == r["runs"] for r in order),
+            "following": [r for r in order if r["slug"] != best["slug"]][:3]}
+
+
+PACK_MADE = "Making a pack used no language model: the program's own search found the matches, with its small neural table switched on."
+
+
+def release_gap(public: dict) -> str:
+    """The version of pgr that round six measured, when the release the Install page installs is older than it. Empty when the
+    release is as new as the round, or when either version is unknown."""
+    team, inst = public.get("team") or {}, public.get("install") or {}
+    parse = lambda text: tuple(int(part) for part in re.findall(r"\d+", str(text))[:3])
+    measured, shipped = parse(team.get("pgr_version", "")), parse(inst.get("version", ""))
+    return team["pgr_version"] if measured and shipped and shipped < measured else ""
+
+
+def pick_caveat(public: dict) -> str:
+    """One paragraph under the headline figures when the highlighted configuration is a pack alone: what it is and the four things to
+    read before relying on it, with a link to the section that gives them in full. Empty for any other pick."""
+    facts = public.get("pick")
+    if not facts or not facts["commandless"]:
+        return ""
+    version = release_gap(public)
+    made = f"A pack made by pgr {version}, not yet released, before the agent started; " if version else "A pack made before the agent started; "
+    return ('<p class="pick-line"><b>Read before relying on it.</b> ' + esc(made) + "the agent had no command to call. The builders wrote the questions, and the held-out set is not held out for it. "
+            "Open-ended work was not tested. The no-index figure is from round five. "
+            '<a href="#pick">What it means</a></p>')
+
+
+def pick_slot(public: dict) -> str:
+    """Beside the highlighted configuration, when the rule picked one that gives the agent no command: what the rule did, what that
+    means for a person setting up their own agents, what the questions were, what was not tested, which program version made the
+    packs, and that the saving against no index crosses rounds. Empty for any other pick."""
+    facts = public.get("pick")
+    if not facts or not facts["commandless"]:
+        return ""
+    team = public.get("team") or {}
+    version = release_gap(public)
+    after = "".join(f'<li><b>{esc(r["name"])}</b><span>{esc(of(r["perfect"], r["runs"]))} fully correct, {esc(tokens(r["tokens"]))} tokens, {r["turns"]:.1f} turns</span></li>'
+                    for r in facts["following"])
+    drift, start_five = team.get("start_drift"), team.get("start_five")
+    crossing = (f" The same configuration run in both rounds started with a context {abs(drift):,.0f} tokens {'larger' if drift > 0 else 'smaller'} in round six, "
+                f"{abs(drift) / start_five:.1%} of that context." if drift is not None and start_five else "")
+    unreleased = (('        <li><b>It was measured with a version that is not released.</b> The packs were made with pgr ' + esc(version) + '. The release the Install page installs is '
+                   + esc((public.get("install") or {}).get("version", "")) + '; its pack lacks the section of named definitions that these packs open with, so it is not the pack measured here.</li>\n')
+                  if version else "")
+    return ('\n    <div class="pick" id="pick">\n      <h3 class="pick-title">What the rule picked, and what that means</h3>\n'
+            f'      <p class="pick-text">The rule is the highest share of fully correct runs over four cells, then the fewest tokens. {number_word(facts["eligible"], True)} configurations were '
+            f'eligible and {number_word(facts["all_correct"])} of them were fully correct in every run of the four cells. A pack alone used the fewest tokens of those, so it is the one marked. '
+            'The rule was written after round five and before round six ran. After it, in the rule\'s order, and averaged over the same four cells:</p>\n'
+            f'      <ul class="pick-after">{after}</ul>\n'
+            '      <ul class="pick-caveats">\n'
+            '        <li><b>What a pack alone means for your own agents.</b> The harness that starts the agent runs <code>pgr pack</code> on the task and puts the output in the agent\'s brief. '
+            f'The agent answers from it and calls no command and no tool. {esc(PACK_MADE)} The agent made one call, with the pack in its prompt.</li>\n'
+            '        <li><b>The questions suit it.</b> The builders wrote them, and two of the three in each set name the function in backticks. A pack is built from the words of the question, so it finds such a function at once.</li>\n'
+            '        <li><b>The held-out questions are not held out for it.</b> The part of the pack that finds the functions a question names was written after the held-out questions had been run in round five. '
+            'For this pick they are a second set of questions, not an untouched one.</li>\n'
+            + unreleased +
+            '        <li><b>It has not been tested on open-ended work.</b> Nothing here asked an agent to find a bug, change code or explore a repository it was not pointed at. Where the pack misses what is needed, an agent with no command cannot look further.</li>\n'
+            f'        <li><b>The saving against no index crosses rounds.</b> No index was last run in round five, a day earlier than round six.{esc(crossing)}</li>\n'
+            '      </ul>\n    </div>')
+
+
+def team_lanes_html(groups: list[dict]) -> str:
+    """The lanes of one finding, a title and two bars for each pair, all drawn to the one scale scaled() chose."""
+    if not groups:
+        return ""
+    return ('\n      <div class="team-lanes draw">' + "".join(
+        f'<div class="team-lane"><p class="team-lane-title">{esc(group["title"])}</p><div class="rl-fig">'
+        + "".join(lane_html(item["kind"], item["name"], item["text"], item["value"]) for item in group["items"]) + "</div></div>"
+        for group in groups) + "</div>")
+
+
+def team_tiles(figures: list) -> str:
+    """The figures of round six set large: the number or range, the direction as a word under it when it is a change in tokens, and what it counts."""
+    items = "".join(f'<li><b><span class="fig-n">{esc(figure)}</span>' + (f'<i class="fig-dir">{esc(direction)}</i>' if direction else "")
+                    + f'</b><small>{esc(glue(label))}</small></li>' for figure, label, direction in figures)
+    return f'<ul class="stats team-stats">{items}</ul>'
+
+
+def team_overview_slot(public: dict) -> str:
+    """The Overview's chapter on round six: what it was, its headline figures set large, what it cannot show, and the way on."""
+    team = public.get("team")
+    if not team:
+        return ""
+    tiles = team_tiles(team["figures"])
+    fine = "".join(f'\n      <p class="footnote">{esc(glue(line))}</p>' for line in team["limits"][:3])
+    return ('<section class="chapter ch-team" aria-labelledby="teams">\n    <h2 id="teams" class="section-title">Teams of agents</h2>\n    '
+            f'<p class="group-title">{esc(glue(team["intro"]))}</p>\n    {tiles}\n    '
+            f'<div class="fine">{fine}\n    </div>\n    '
+            '<p class="close-actions"><a class="btn quiet" href="benchmarks.html#team">The whole round</a>'
+            '<a class="btn quiet" href="install.html#team">Use it in a team of agents</a></p>\n  </section>')
+
+
+def team_bench_slot(public: dict) -> str:
+    """The Benchmarks chapter on round six: what the rule picked from it, then one card for each finding with its numbers."""
+    team = public.get("team")
+    if not team:
+        return ""
+    cards = ""
+    for finding in team["findings"]:
+        rows = "".join(f'\n      <li class="row"><span class="label">{esc(r["label"])}</span><span class="value">{esc(glue(r["value"]))}</span></li>' for r in finding["rows"])
+        cards += (f'\n    <div class="card finding" id="team-{finding["id"]}">\n      <h3 class="finding-title">{esc(finding["title"])}</h3>\n'
+                  f'      <p class="finding-text">{esc(glue(finding["text"]))}</p>{team_lanes_html(finding["lanes"])}\n      <ul class="rows">{rows}\n      </ul>\n    </div>')
+    fine = "".join(f'\n      <p class="footnote">{esc(glue(line))}</p>' for line in team["limits"])
+    return ('<section class="section" aria-labelledby="team">\n    <h2 id="team" class="section-title">Round six: teams of agents</h2>\n    '
+            f'<p class="group-title">{esc(glue(team["intro"]))}</p>{pick_slot(public)}\n    <div class="finding-list">{cards}\n    </div>\n    '
+            f'<div class="fine">{fine}\n    </div>\n  </section>')
+
+
+def team_study_slot(public: dict) -> str:
+    """The Study page's section on round six: what ran, in plain words, and what it cannot show."""
+    team = public.get("team")
+    if not team:
+        return ""
+    light, mid, top = (MODELS["tiers"][t]["name"] for t in "CBA")
+    packs = team.get("pack_tokens")
+    drift = team.get("start_drift")
+    stats = stats_html([(f"{team['agents']}", "agents in team setups"), (f"{team['runs']}", "runs"), (f"{team['cells']}", "cells, three runs each" if team["per_cell"] == [3] else "cells")])
+    items = [
+        ("What ran", f"{team['agents']} agents in {team['runs']} runs over {team['cells']} cells, on the same Python repository as every round and the same two sets of three questions, "
+                     f"plus a small demonstration set. One agent answered all three questions on {light} at low effort or {mid} at medium effort; three subagents ({light}) were started "
+                     f"together, one question each; an orchestrator ({top} at maximum effort) wrote their briefs and checked their answers. Each finding on the Benchmarks page is between two setups of this round; the one comparison across rounds is the highlighted configuration against no index."),
+        ("A pack", (f"A pack is what the program's pack command prints for a question: the definitions, callers and matching code it finds, up to a fixed size "
+                    f"({packs['low']} to {packs['high']} tokens each in these runs, estimated at four bytes to a token). " if packs else "A pack is what the program's pack command prints for a question. ")
+                   + "The harness made each pack before the agent started and put it in the prompt. " + PACK_MADE + " A pack is part of the prompt, so the agent reads it again on every turn."),
+        ("A pack alone", "In this setup the agent has the pack in its prompt and may call no command and no tool, and may say that a field is unknown. It measures whether the pack is enough by itself, and what an answer costs when it is not."),
+        ("The team hub", "A shared bank of notes, kept by the program with no model and no server, built from the ideas of TencentCloud's TencentDB-Agent-Memory. Subagents file what they found; the reviewer starts from what was filed. "
+                         "A note says which roles filed it and how old it is, and is marked stale when the code it names has changed since."),
+        ("The demonstration set", "Three questions written by the builders to show one feature of the hub: each needs one lookup and one note that an earlier agent filed. A decision with a ticket, a note that has gone stale, and a fact confirmed by two roles. "
+                                  "The notes were filed before the runs. It is a demonstration, not a test nobody tuned for."),
+        ("The virtual machine", "An Ubuntu machine under WSL 2. The repository, the Linux build of the program, its index and the note banks are inside the machine and the agent stays outside it; code is printed from inside. "
+                                "Wall time is not compared, because it includes starting the machine for every call."),
+        ("No neural network", "The program with its one neural part, the table that gives search its sense of meaning, switched off for the index and for every call. Search then works on words alone."),
+        ("Three models, each in its role", f"{top} plans the work, {light} does the lookups and {mid} reviews the answers with the program's commands, against {top} doing the planning and the review."),
+    ]
+    if drift is not None:
+        items.append(("Across rounds", f"The no-index control ran in round five. The same configuration run in both rounds started with a context {abs(drift):,.0f} tokens "
+                                       f"{'larger' if drift > 0 else 'smaller'} in round six, so the saving of the highlighted configuration against no index crosses two rounds. "
+                                       f"The difference is {abs(drift) / team['start_five']:.1%} of that context."))
+    rows = "".join(f'\n        <li class="row stack"><span class="label">{esc(name)}</span><span class="detail">{esc(glue(text))}</span></li>' for name, text in items)
+    fine = "".join(f'<li>{esc(glue(line))}</li>' for line in team["limits"])
+    return ('<section class="section" aria-labelledby="team">\n    <h2 id="team" class="section-title">Round six: teams of agents</h2>\n    '
+            f'{stats}\n    <div class="card"><ul class="rows">{rows}\n      </ul></div>\n    <ul class="plain team-limits">{fine}</ul>\n  </section>')
+
+
+def round_six(public: dict) -> list[str]:
+    """The Round six section of RESULTS.md: what the team round ran and found, in the sentences the site gives, with every row."""
+    team = public.get("team")
+    if not team:
+        return []
+    out = ["", "## Round six: teams of agents", "", team["intro"], ""]
+    pick = public.get("pick")
+    if pick:
+        out += [f'The highlighted configuration ("{BEST_LABEL}" on the site) is {pick["name"]}: {of(pick["perfect"], pick["runs"])} fully correct over the four cells, '
+                f'{tokens(pick["tokens"])} tokens and {pick["turns"]:.1f} turns on average. {pick["eligible"]} configurations were eligible and {pick["all_correct"]} of them '
+                "were fully correct in every run of the four cells.", ""]
+        if pick["commandless"]:
+            version = team.get("pgr_version", "")
+            out += ["Read before relying on it: the agent had no command to call, and its pack was made before it started" + (f" by pgr {version}" if version else "") + ". "
+                    "The questions were written by the builders and two of the three in each set name the function in backticks, which suits a pack; the held-out set is not held out for it, "
+                    "because the part of the pack that finds the functions a question names was written after those questions had been run; nothing asked an agent to do open-ended work; "
+                    f"and the saving against no index crosses rounds, because no index was last run in round five, a day before round six ({ROUND_SIX_DATE}).", ""]
+    for finding in team["findings"]:
+        out += [f"### {finding['title']}", "", finding["text"], ""] + [f"- {row['label']}: {row['value']}" for row in finding["rows"]] + [""]
+    out += ["### What round six cannot show", ""] + [f"- {line}" for line in team["limits"]] + [""]
+    return out
+
+
+def size_text(count: int) -> str:
+    return f"{count / 1e6:.1f} MB" if count >= 1e5 else f"{count / 1e3:.1f} kB"
+
+
+ICON_COPY = ('<svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/>'
+             '<path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg>'
+             '<svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg>')
+
+
+def copy_button(text: str, label: str) -> str:
+    return (f'<button type="button" class="copy" data-copy="{esc(text)}" aria-label="{esc(label)}">{ICON_COPY}'
+            '<span class="copy-label">Copy</span></button>')
+
+
+def cmd_line(text: str, label: str, attrs: str = "") -> str:
+    return f'<div class="cmd-line"{attrs}><code>{esc(text)}</code>{copy_button(text, label)}</div>'
+
+
+def cmdbox_html(install: dict, big: bool = False) -> str:
+    """The install command with the system chosen by a control: the two commands are both in the page, a script shows the one
+    for the visitor's system, and without a script both are listed. A command is never cut short: where the line is too narrow
+    it wraps."""
+    by_id = {item["id"]: item for item in install["installers"]}
+    tabs = "".join(
+        f'<button type="button" role="radio" aria-checked="{"true" if n == 0 else "false"}" tabindex="{0 if n == 0 else -1}" '
+        f'data-sys="{item["id"]}">{esc(item["system"])}</button>' for n, item in enumerate(install["installers"]))
+    lines = "".join(cmd_line(item["command"], f"Copy the install command for {item['system']}", f' data-sys="{item["id"]}"')
+                    for item in (by_id["windows"], by_id["unix"]))
+    notes = "".join(f'<p class="cmd-note" data-sys="{item["id"]}">Run it in {esc(item["shell"])}. {esc(item["note"])}</p>' for item in install["installers"])
+    return (f'<div class="cmdbox{" big" if big else ""}" data-cmdbox><div class="cmd-tabs" role="radiogroup" aria-label="System">{tabs}</div>'
+            f'{lines}{notes}</div>')
+
+
+def cmdbox_slot(public: dict) -> str:
+    return cmdbox_html(public["install"])
+
+
+def installer_logs(inst: dict) -> str:
+    """What each installer prints, as the terminals on the Install page and at the foot of the Overview show it: one log for each
+    system, the command that was typed, the lines of the script, and the commands to run next."""
+    latest, version = inst["download_base"], inst["version"]
+    out = []
+    for item in inst["installers"]:
+        windows = item["id"] == "windows"
+        folder = "C:\\Users\\...\\AppData\\Local\\Programs\\pgr"
+        where = f"{folder}\\pgr.exe" if windows else "~/.local/bin/pgr"
+        after = (f'\n          <p class="lg">pgr: added {esc(folder)} to your user PATH. Open a new terminal to use the pgr command.</p>' if windows else "")
+        nexts = "".join(f'\n          <p class="lg lg-next"><span class="lg-cmd">{esc(cmd)}</span><span class="lg-note">{esc(note)}</span></p>' for cmd, note in (
+            ("pgr refresh", "build the index"), ("pgr ask about:SomeFunction", "definition, callers and what it calls"),
+            ('pgr find "where tokens expire"', "search by meaning"), ("pgr help", "every command")))
+        out.append(f'\n        <div class="log" data-sys="{item["id"]}">\n          <p class="lg lg-in"><span class="lg-cmd">{esc(item["command"])}</span></p>\n          '
+                   f'<p class="lg">pgr: downloading from {esc(latest)}</p>\n          '
+                   f'<p class="lg">pgr: installed pgr {esc(version)} to {esc(where)}</p>{after}\n          '
+                   f'<p class="lg lg-gap">Next, inside a git repository:</p>{nexts}\n        </div>')
+    return "".join(out)
+
+
+def installer_term(inst: dict) -> str:
+    """The terminal that replays the installer, for the Install page and the foot of the Overview."""
+    return ('<figure class="term term-install" data-install-term aria-label="What the installer prints">\n          '
+            '<figcaption class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>'
+            '<span class="term-title">Terminal</span><span class="term-state">done</span></figcaption>\n          '
+            f'<div class="term-body">{installer_logs(inst)}\n          </div>\n        </figure>')
+
+
+def term_slot(public: dict) -> str:
+    return installer_term(public["install"])
+
+
+SCENE_TASK = "Three lookups: who calls load, where parse_config is defined, and which function loads the settings."
+SCENE_ASK = 'pgr ask callers:load about:parse_config "find:where settings load"'
+SCENE_OUT = ("== callers:load", "  main  src/cli.py:7-40 @19", "== about:parse_config", "  src/config.py:41-58  (path, strict)",
+             "== find: where settings load", "  load_settings  src/config.py:12-30")   # the first four lines are the ones a short window shows
+
+
+def scene_slot(public: dict) -> str:
+    """The first screen of the Overview: two terminal windows replaying one session, an agent without an index and an agent
+    with pgr. The number of turns and the tokens each window shows are the measured means of the headline cell, which is one
+    agent answering three lookups; the file names in the replay are made up, and the page says so. The page is written
+    finished, every turn and every number in place, so it reads without a script; a script hides the turns and plays them in
+    order. The line that states the saving is always on the page, and the replay only lights it when both windows are done."""
+    found = headline_of(public)
+    if not found or not found["c"]:
+        return ""
+    b, c = found["b"], found["c"]
+    longest = max(b["tokens"], c["tokens"])
+
+    packed = bool(found["best"].get("commandless")) and b["turns"] < 1.5   # the agent has no command: one turn, the answer
+
+    def window(kind: str, title: str, pt: dict) -> str:
+        pack_only = packed and kind == "best"
+        n = 1 if pack_only else max(2, min(8, round(pt["turns"])))
+        per = pt["tokens"] / n
+        rows = []
+        for i in range(n):
+            if pack_only:
+                cmd, out = "answer", ["the pack is already in the prompt", "answers the three lookups"]
+            elif kind == "ref":
+                cmd = 'search "parse_config"' if i == 0 else ("answer" if i == n - 1 else "read file")
+                out = ["matches in several files"] if i == 0 else (["the conversation is read again"] if i < n - 1 else ["answers the three lookups"])
+            else:
+                cmd = SCENE_ASK if i == 0 else ("answer" if i == n - 1 else "read file")
+                out = list(SCENE_OUT) if i == 0 else (["answers the three lookups"] if i == n - 1 else ["the conversation is read again"])
+            lines = "".join(f'<span class="ol">{esc(line)}</span>' for line in out)
+            rows.append(f'\n        <li class="turn" style="--i:{i};--w:{per / longest * 100:.3f}%"><span class="turn-n">{i + 1}</span>'
+                        f'<span class="turn-cmd{" is-cmd" if i == 0 and not pack_only else ""}">{esc(cmd)}</span><span class="turn-plus">+{esc(tokens(per))}</span>'
+                        f'<span class="turn-out">{lines}</span></li>')
+        segs = "".join(f'<i class="blk" style="--i:{i};--w:{per / longest * 100:.3f}%"></i>' for i in range(n))
+        done = f"answered in {n} turn" + ("" if n == 1 else "s")
+        named = f'<span class="bt-name">{esc(found["best"]["name"])}</span>' if kind == "best" else ""
+        pack_line = ('<p class="term-task term-pack"><span>pack</span>Made by the program before the agent started: the definitions, callers and '
+                     'matching code for the three lookups.</p>\n      ' if pack_only else "")
+        return (f'\n    <figure class="term term-{kind}" data-turns="{n}" data-tokens="{pt["tokens"]:.0f}">\n      '
+                f'<figcaption class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>'
+                f'<span class="term-title">{esc(title)}</span><span class="term-state" data-done="{done}">{done}</span></figcaption>\n      '
+                f'<div class="term-body"><p class="term-task"><span>task</span>{esc(SCENE_TASK)}</p>\n      {pack_line}<ol class="turns">{"".join(rows)}\n      </ol></div>\n      '
+                f'<div class="meter"><div class="meter-track" aria-hidden="true">{segs}</div>'
+                f'<p class="meter-read"><span class="meter-label">Context read</span><b class="tok" data-to="{pt["tokens"]:.0f}">{esc(tokens(pt["tokens"]))}</b>'
+                f'<span class="meter-unit">tokens</span><span class="meter-turns">{n} turn{"" if n == 1 else "s"}</span>{named}</p></div>\n    </figure>')
+
+    saved = c["tokens"] - b["tokens"]
+    versus = public.get("versus")
+    across = (f" Across {number_word(len(versus['cells']))} cells: {saving_range(versus)}." if versus and len(versus["cells"]) > 1 else "")
+    delta = (f'<p class="duel-delta"><b>{esc(tokens(saved))} fewer tokens</b><span class="pct">{saved / c["tokens"]:.0%}</span>'
+             f'<span class="why">in this one cell, the light class with the original questions.{esc(across)}</span></p>' if saved > 0 else "")
+    spoken = (f"With no index, an agent read {tokens(c['tokens'])} tokens over {c['turns']:.1f} turns to answer three lookups. With "
+              f"{'a pack made by the program and no command to call' if packed else 'pgr'}: {tokens(b['tokens'])} tokens over {b['turns']:.1f} turns.")
+    return ('<div class="duel" id="duel" role="group" aria-label="Three lookups, replayed with and without an index">\n    '
+            f'<p class="sr-only">{esc(spoken)}</p>' + window("ref", "Agent, no index", c) + window("best", "Agent, with pgr", b) +
+            f'\n    <div class="duel-foot">{delta}<div class="duel-ctl" hidden></div></div>'
+            f'\n    {pick_caveat(public)}'
+            '\n    <p class="duel-key">An illustrative session. The turns and the tokens are the measured means for one agent answering three '
+            'lookups; the file names are made up.</p>\n  </div>')
+
+
+def sections_of(page: str) -> list[tuple[str, str]]:
+    """The sections of a page, read from its own headings, so a renamed section cannot leave the site map behind."""
+    import html
+    return [(m.group(1), html.unescape(re.sub(r"<[^>]+>", "", m.group(2))).strip())
+            for m in re.finditer(r'<h2 id="([^"]+)"[^>]*>(.*?)</h2>', page, re.S)]
+
+
+OS_OF = {"windows": "windows", "macos": "mac", "macos-intel": "mac", "linux": "linux", "linux-arm": "linux"}
+
+
+def mp4_dimensions(path: pathlib.Path) -> tuple[int, int] | None:
+    """The picture size an MP4 file declares in its first video track, or None when it holds no readable header."""
+    import struct
+    try:
+        with path.open("rb") as handle:
+            end = path.stat().st_size
+
+            def boxes(start: int, stop: int):
+                at = start
+                while at + 8 <= stop:
+                    handle.seek(at)
+                    size, kind = struct.unpack(">I4s", handle.read(8))
+                    head = 8
+                    if size == 1:
+                        size, head = struct.unpack(">Q", handle.read(8))[0], 16
+                    elif size == 0:
+                        size = stop - at
+                    if size < head:
+                        return
+                    yield kind, at + head, min(at + size, stop)
+                    at += size
+            for kind, body, stop in boxes(0, end):
+                if kind != b"moov":
+                    continue
+                for inner, start, limit in boxes(body, stop):
+                    if inner != b"trak":
+                        continue
+                    for leaf, begin, _ in boxes(start, limit):
+                        if leaf != b"tkhd":
+                            continue
+                        handle.seek(begin)
+                        version = handle.read(1)[0]
+                        handle.seek(begin + (88 if version == 1 else 76))
+                        width, height = struct.unpack(">II", handle.read(8))
+                        if width and height:
+                            return width >> 16, height >> 16
+    except (OSError, struct.error):
+        return None
+    return None
+
+
+RELEASE_FILES = "https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/"
+
+
+def film_label(height: int, fps: float) -> str:
+    return f"{height}p" + (f"{round(fps)}" if fps >= 50 else "")
+
+
+def film_sources(video: dict, where: str) -> list[dict]:
+    """The files a film can be played from, best first. video.json lists them in "sources", each with src, width, height, fps, type
+    and megabytes; a src that starts with "release:" is a file attached to the GitHub release and is linked from there. Without
+    that list the 1080p file named by "src" is the only one. A local file must exist under docs/media/, and its picture size is
+    read from the file."""
+    listed = video.get("sources")
+    found = []
+    for item in (listed if isinstance(listed, list) and listed else [{"src": video["src"]}]):
+        if not isinstance(item, dict) or not item.get("src"):
+            raise SystemExit(f"video.json: {where}.sources needs objects with a src")
+        name = str(item["src"])
+        if name.startswith("release:"):
+            file = name[len("release:"):]
+            if not re.fullmatch(r"[\w.-]+\.mp4", file):
+                raise SystemExit(f"video.json: {where}: a release source must name an .mp4 file, got {name!r}")
+            url = RELEASE_FILES + file
+            try:
+                width, height = int(item["width"]), int(item["height"])
+            except (KeyError, TypeError, ValueError):
+                raise SystemExit(f"video.json: {where}: the release source {name!r} needs a width and a height")
+        else:
+            if not name.startswith("media/") or ".." in name or not (DOCS / name).is_file():
+                raise SystemExit(f"video.json: {where} names a source that is not under docs/media/: {name!r}")
+            size = mp4_dimensions(DOCS / name)
+            if size is None:
+                try:
+                    size = (int(item["width"]), int(item["height"]))
+                except (KeyError, TypeError, ValueError):
+                    raise SystemExit(f"video.json: {where}: {name} holds no readable picture size and the source gives none")
+                print(f"film {name}: no readable header yet (it may still be rendering); the size video.json gives is used")
+            url, (width, height) = name, size
+        fps = float(item.get("fps") or 0)
+        found.append({"src": url, "width": width, "height": height, "fps": fps, "label": film_label(height, fps),
+                      "type": str(item.get("type") or 'video/mp4'),
+                      "megabytes": (round(float(item["megabytes"]), 1) if item.get("megabytes") is not None else None)})
+    return sorted(found, key=lambda item: (-item["height"], -item["fps"]))
+
+
+def release_film_urls() -> list[str]:
+    """The release addresses of the film files video.json names, so that the guard lets exactly those links through."""
+    path = BENCH / "data" / "video.json"
+    if not path.is_file():
+        return []
+    public = json.loads(path.read_text(encoding="utf-8")).get("public") or []
+    urls = []
+    for video in public if isinstance(public, list) else [public]:
+        for item in (video.get("sources") or []) if isinstance(video, dict) else []:
+            if isinstance(item, dict) and str(item.get("src", "")).startswith("release:"):
+                urls.append(RELEASE_FILES + str(item["src"])[len("release:"):])
+    return urls
+
+
+NAV_SLOTS = {"nav", "foot", "toc"}
 
 
 # --- the guard ------------------------------------------------------------------------------
@@ -2795,6 +4347,8 @@ FORBIDDEN_WORDS = (
     "local-index", "graphify-out", "results.json", "hooks.json", "engine.json", "install.json", "index.json",
     # other tools and vendors, and model families
     "codex", "copilot", "windsurf", "aider", "cline", "llama", "qwen", "mistral", "deepseek", "grok", "chatgpt", "gpt",
+    "gemma", "mixtral", "phi", "kimi", "nova", "cohere", "command r", "glm", "falcon", "jamba", "granite", "olmo", "starcoder", "codestral",
+    "pixtral", "bard", "palm", "yi", "ernie", "hunyuan", "minimax", "moonshot",
     # how the engine works, in words
     "vector index", "vector search", "vector store", "vector database", "nearest neighbour", "nearest neighbor",
     "graph traversal", "call graph", "rrf", "tokenizer", "inverted index", "cosine", "rust", "cargo", "ctags", "crate")
@@ -2811,9 +4365,20 @@ FORBIDDEN_PATTERNS = (
     ("an interpreter command", r"\bpython3?\s+-", None),
     ("a git command", r"\bgit\s+(?:clone|checkout|pull|push|commit|add|init)\b", None),
     ("a path of the setup", r"\.claude\b|\.codex\b|\.codanna\b|(?<![\w.])(?:setup|benchmark|harness|rust)[/\\]", None),
-    ("a model version", r"\bgpt-?\d\w*|\bo[134](?:-mini)?\b", None),
+    ("a model version", r"\bgpt-?\d\w*|\bo[1-9](?:-(?:mini|pro|preview))?\b", None),
+    # A parameter count written beside a model: 27B, 8x22B.
+    ("a model size", r"(?-i:\b(?:\d+x)?\d{1,3}B\b)", ("html", "vtt", "txt", "md", "json")),
+    # The three classes of model are named by the model, never by a label.
+    ("a model class label", r"\b(?:light|mid|middle|top)[ -](?:model[ -])?(?:class(?:es)?|tier)\b|\bmodel classes\b|\bclasses:\s*light\b|\b(?:light|mid) (?:workers?|agents?)\b|\b(?:light|mid|top), (?:original|held-out) questions\b", None),
     ("a tier label", r"\btier[\s_-]*[abc]\b", None),
     ("a request to another host", r"https?://(?!www\.w3\.org/2000/svg)|(?<![:\w])//[\w-]+\.[a-z]{2,}/|@import", None),
+    # The product's own commands are masked before the scan (see approved_strings), so what is left of "pgr" and a word is
+    # a command the pages may not show. The prose never writes the command name in lower case followed by a word.
+    ("an unlisted pgr command", r"\b(?-i:pgr)\s+[a-z-]+", None),
+    # The short film is a trailer. The word ad is not its name, in a label, a class, a file name or a link.
+    ("Python as the language of the engine", r"\b(?:engine|program|binary|pgr|tool)\s+(?:is |was |are )?(?:written|built|made|coded|implemented)\s+(?:in|with)\s+python|\bpython\s+(?:engine|program|binary|implementation)\b|\b(?:pgr|peterganurusty|the engine|the program|the tool)\s+(?:is|was|are)\s+(?:a |an |the )?python\b", None),
+    ("a film called an ad", r"(?:\b(?:an?|the) ad\b(?! hoc)|\bad[ ,.]+\d|>\s*ad\s*<|pgr-ad[-.]|[\"'=]ad[\"']|\bad (?:film|video)|\bad\s*\(\s*\d|\d[- ]sec(?:ond)?s?[- ]ad\b)", None),
+    ("the word ad", r"(?<![\w'./#-])ad(?![\w'-])(?! hoc)", ("html", "vtt", "txt", "md", "json")),
 )
 # Arm ids that are also ordinary names in markup, styles or scripts. They are not looked for inside identifiers.
 AMBIGUOUS_IDS = {"h1", "h2", "h3", "h4", "h5", "h6", "hb", "sb"}
@@ -2869,6 +4434,50 @@ def forbidden_checks(arms: dict) -> list[tuple[str, "re.Pattern", tuple | str | 
     checks += [(f"the command key {key!r}", re.compile(r"(?<![A-Za-z0-9])" + re.escape(key) + r"(?![A-Za-z0-9])"), None, key.lower())
                for key in sorted(uses)]
     return checks
+
+
+PROMPT_RUN = 7          # words in a row of the benchmark's prompts that no page may repeat
+_PROMPT_RUNS: frozenset | None = None
+
+
+def words_of(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def runs_of(words: list[str]) -> set:
+    return {tuple(words[i:i + PROMPT_RUN]) for i in range(len(words) - PROMPT_RUN + 1)}
+
+
+def prompt_runs() -> frozenset:
+    """Every run of PROMPT_RUN words in the prompts the agents were given (benchmark/data/codex.json and the workflow script),
+    less the runs of the question texts and the setups, which the pages show on purpose."""
+    global _PROMPT_RUNS
+    if _PROMPT_RUNS is None:
+        found: set = set()
+        codex = BENCH / "data" / "codex.json"
+        if codex.is_file():
+            for prompt in (json.loads(codex.read_text(encoding="utf-8")).get("prompts") or {}).values():
+                found |= runs_of(words_of(str(prompt)))
+        flow = HERE / "token-benchmark.workflow.js"
+        if flow.is_file():
+            flow_text = flow.read_text(encoding="utf-8")
+            first = flow_text.find("This is one run of a benchmark")
+            last = flow_text.find("return lines.join", first)
+            if first < 0 or last < 0:
+                raise SystemExit("token-benchmark.workflow.js: the prompt text was not found, so the guard cannot check the pages against it")
+            found |= runs_of(words_of(flow_text[first:last]))
+        shown = [q["text"] for q in PUBLIC_QUESTIONS] + [q["title"] for q in PUBLIC_QUESTIONS] + list(PUBLIC_SETUPS)
+        for text in shown:
+            found -= runs_of(words_of(text))
+        _PROMPT_RUNS = frozenset(found)
+    return _PROMPT_RUNS
+
+
+def prompt_run_in(text: str) -> str | None:
+    """The first run of the benchmark's prompts that the text repeats, or None."""
+    words = words_of(text)
+    runs = prompt_runs()
+    return next((" ".join(run) for run in zip(*[words[i:] for i in range(PROMPT_RUN)]) if run in runs), None)
 
 
 def views_of(text: str) -> list[tuple[str, str]]:
@@ -2928,7 +4537,7 @@ def identifier_problems(text: str, kind: str, arms: dict) -> list[str]:
 def public_names(arms: dict) -> tuple[set, set]:
     """The configuration names and slugs the public data may carry: those of the "public" objects in arms.json, the
     names of the families, and the name of the product."""
-    objects = [arm["public"] for arm in arms["arms"] if "public" in arm]
+    objects = [public_arm(arm) for arm in arms["arms"] if public_arm(arm)]
     return ({o["name"] for o in objects} | set(PUBLIC_FAMILIES.values()) | {BRAND, "PGR", "No index"}, {o["slug"] for o in objects})
 
 
@@ -2937,7 +4546,7 @@ def name_problems(root: pathlib.Path, arms: dict) -> list[str]:
     arms.json. A name or a slug typed into the data or into a page, or left over from an earlier build, is refused."""
     import html
     names, slugs = public_names(arms)
-    pairs = {(arm["public"]["slug"], arm["public"]["name"]) for arm in arms["arms"] if "public" in arm}
+    pairs = {(public_arm(arm)["slug"], public_arm(arm)["name"]) for arm in arms["arms"] if public_arm(arm)}
     problems = []
     data = root / "data" / "showcase.js"
     if data.is_file():
@@ -2978,18 +4587,14 @@ def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | N
     published: words in any case and any spelling, command lines and flags, identifiers and class names, text copied
     from arms.json, and configuration names that do not come from arms.json. The text is read as written and as
     decoded, and a word is looked for across line breaks. Exits with the file, the place and the offending text. The
-    things let through are the install command and the contact the owner chose to publish in install.json. Returns
+    text let through is what approved_strings names: the product's own commands, the install commands and release links of
+    install.json, and the names of the agent programs the benchmark ran under. Returns
     the number of files scanned. `only` limits the scan to those files (relative paths); the self-test uses it."""
     import html
     root = root or DOCS
     checks = checks or forbidden_checks(arms)
-    approved = []
-    if install and install.get("status") == "public":
-        command = install["command"]
-        approved += [command, json.dumps(command)[1:-1], html.escape(command), html.escape(command, quote=False)]
-    if install and install.get("contact"):
-        contact = install["contact"]
-        approved += [contact, "mailto:" + contact, html.escape(contact), html.escape("mailto:" + contact)]
+    approved = approved_strings(install)
+    links = approved_links(install)
     problems, scanned = [], 0
     for path in sorted(p for p in root.rglob("*") if p.is_file()):
         shown = path.relative_to(root).as_posix()
@@ -3001,8 +4606,11 @@ def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | N
             text = "" if kind in MEDIA_BINARY and shown.startswith("media/") else path.read_bytes().decode("utf-8")
         except UnicodeDecodeError:
             text = ""
-        for token in sorted(approved, key=len, reverse=True):
+        unmasked = text
+        for token in approved:
             text = text.replace(token, " ")
+        for link in links:
+            text = link.sub(" ", text)
         # Comment markers are not flags: the two dashes of "<!--" and "-->" are blanked before the check.
         flat = text.replace("<!--", "    ").replace("-->", "   ")
         seen = set()
@@ -3021,10 +4629,13 @@ def guard_public(arms: dict, install: dict | None = None, root: pathlib.Path | N
         for found in identifier_problems(flat, kind, arms):
             problems.append(f"  docs/{shown}: {found}")
         # Copied text may run over several lines: the long strings from arms.json are looked for in the whole file.
-        whole = re.sub(r"\s+", " ", flat).lower()
+        whole = re.sub(r"\s+", " ", unmasked.replace("<!--", "    ").replace("-->", "   ")).lower()
         for label, pattern, kinds, needle in checks:
             if kinds == "squash" and needle in whole:
                 problems.append(f"  docs/{shown}, whole file: {label}")
+        repeated = prompt_run_in(whole) if text else None
+        if repeated:
+            problems.append(f"  docs/{shown}, whole file: a run of the benchmark's prompt: {repeated!r}")
     problems += name_problems(root, arms)
     if problems:
         shown_problems = problems[:30] + ([f"  and {len(problems) - 30} more"] if len(problems) > 30 else [])
@@ -3049,18 +4660,40 @@ def unreferenced_media(root: pathlib.Path) -> list[str]:
     return sorted(f"media/{path.name}" for path in media.iterdir() if path.is_file() and f"media/{path.name}" not in text)
 
 
+def film_problems(public: dict, captions: dict) -> list[str]:
+    """What the films say against what the Overview says. The page names its highlighted configuration with its tokens and its saving
+    against no index, and the saving across the cells measured. The trailer says the first two in its captions and the explainer says
+    the third. A caption file without the figure belongs to an older headline: the film shows a result the page no longer gives. The
+    guard cannot tell, because it reads words and not numbers, so this check does. `captions` maps a file name to its text; one line
+    comes back for each figure that is missing."""
+    found = headline_of(public)
+    if not found or not found["c"]:
+        return []
+    b, c, versus = found["b"], found["c"], public.get("versus")
+    need = {"trailer": [(tokens(b["tokens"]), "the headline tokens"), (f"{1 - b['tokens'] / c['tokens']:.0%}", "the headline saving")],
+            "explainer": [(saving_range(versus), "the range of the saving across cells")] if versus and len(versus["cells"]) > 1 else []}
+    out = []
+    for name, text in sorted(captions.items()):
+        for film, figures in need.items():
+            if film in name:
+                out += [f"{name} does not say {figure!r}, {what} on the Overview" for figure, what in figures if figure not in text]
+    return out
+
+
 def guard_selftest(arms: dict, install: dict | None = None) -> int:
     """Plant one violation for each rule of the guard in a scratch copy of docs/ and check that the guard refuses it
-    with the rule's own message. The copy is removed afterwards; docs/ itself is never touched. Returns the number of
-    plants that were not caught (0 when every rule works)."""
+    with the rule's own message. The copy is removed afterwards; docs/ itself is never touched. The text the guard lets
+    through (the product's own commands, the install commands, the release links, the names of the two agent programs) is
+    planted too, to check that exactly that text passes and a near miss does not. Returns the number of plants that were not
+    caught (0 when every rule works)."""
     import shutil
     import tempfile
     names, slugs = public_names(arms)
     some_id = next(arm["id"] for arm in arms["arms"] if len(arm["id"]) >= 3 and arm["id"].lower() not in AMBIGUOUS_IDS)
-    # The copy of docs/ holds the owner's real contact link and install command, so the plants are checked against the
-    # real install block; the contact below is only a stand-in for a link the owner did not approve.
-    base = install or {"status": "private-preview"}
-    contact = "https://unapproved.example.test/request"
+    base = install
+    elsewhere = "https://downloads.example.test"
+    PROMPT_PLANTS = ("Be exact and do not guess. Stop as soon as the work is answered, then return the answer.",
+                     "This is one run of a benchmark that measures how many tokens a code lookup costs.")
     plants = [
         # (rule, file to write or edit, text or edit, text the refusal must contain)
         ("case-insensitive pattern", "plant.txt", "Run it on Tier A for a day.", "a tier label"),
@@ -3070,7 +4703,8 @@ def guard_selftest(arms: dict, install: dict | None = None) -> int:
         ("a caption file", "media/plant.vtt", "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nPowered by graphify.\n", "the word 'graphify'"),
         ("a flag in a caption file", "media/plant.vtt", "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nRun pgr affected X --depth 3\n", "a command-line flag"),
         ("a data file", "data/plant.json", '{"note": "uses Semble for search"}', "the word 'semble'"),
-        ("a bare subcommand", "plant.txt", "then call pgr about on the symbol", "the command 'pgr about'"),
+        ("a pgr command that is not listed", "plant.txt", "then run pgr snapshot on the shared notes", "an unlisted pgr command"),
+        ("a pgr command with a flag", "plant.html", "<code>pgr --bank team-notes recall</code>", "a command-line flag"),
         ("a character reference", "plant.html", "<p>&#103;raphify</p>", "after decoding"),
         ("an escape in a script", "assets/plant.js", "var s = '\\u0067raphify';", "after decoding"),
         ("strings joined by a script", "assets/plant.js", "var s = 'gra' + 'phify';", "after decoding"),
@@ -3080,7 +4714,38 @@ def guard_selftest(arms: dict, install: dict | None = None) -> int:
         ("an identifier in a script", "assets/plant.js", "var graphifyHelper = 1;", "identifier 'graphifyHelper'"),
         ("a class name in a style sheet", "assets/plant.css", ".lx-box { margin: 0; }", "identifier 'lx-box'"),
         ("an internal id in a class name", "plant.html", f'<div class="card {some_id.lower()}-card">x</div>', f"holds {some_id.lower()!r}"),
-        ("an unapproved link", "plant.html", f'<a href="{contact}">go</a>', "a request to another host"),
+        ("a link to another host", "plant.html", f'<a href="{elsewhere}/request">go</a>', "a request to another host"),
+        ("the install command with another host", "plant.html", f"<code>irm {elsewhere}/install.ps1 | iex</code>", "a request to another host"),
+        ("a pipe to a shell from another host", "plant.html", f"<pre>curl -fsSL {elsewhere}/install.sh | sh</pre>", "a package command"),
+        ("a package install from another host", "plant.txt", f"pip install {elsewhere}/pgr.whl", "a package command"),
+        ("another repository", "plant.html", '<a href="https://github.com/someone-else/tools/releases/latest">get it</a>', "a request to another host"),
+        ("an agent program outside its phrase", "plant.txt", "Tested with Codex and with Claude", "the word 'codex'"),
+        ("the protocol name in short", "plant.txt", "an mcp server for the agent", "the word 'mcp'"),
+        ("a path of the setup", "plant.txt", "the files are in the harness/ folder", "a path of the setup"),
+        ("a model of another version", "plant.txt", "Measured with Claude Haiku 4.5 at low effort.", "the word 'haiku'"),
+        ("a model of another vendor", "plant.txt", "Also tried with Gemini and GPT-5.", "the word 'gemini'"),
+        ("a model name split into parts", "plant.html", "<p>Claude <b>Opus</b> 5.5</p>", "the word 'opus'"),
+        ("a model class written as a label", "plant.txt", "Run it on Tier C for a day.", "a tier label"),
+        ("the engine in another language", "plant.txt", "The engine is written in Python.", "Python as the language of the engine"),
+        ("Rust mentioned beside a build tool", "plant.txt", "Built with cargo from a Rust crate.", "the word 'cargo'"),
+        ("a film called an ad", "plant.html", '<span class="cine-meta">Ad, 22 seconds, with captions</span>', "a film called an ad"),
+        ("a film file named for an ad", "plant.html", '<source src="media/pgr-ad-1080p.mp4">', "a film called an ad"),
+        ("a model family that is not in models.json", "plant.txt", "Also run with Gemma 3 27B.", "the word 'gemma'"),
+        ("a mixture-of-experts model", "plant.txt", "and Mixtral 8x22B", "the word 'mixtral'"),
+        ("small models", "plant.txt", "Phi-4 and Kimi K2 did worse.", "the word 'phi'"),
+        ("a small vendor model", "plant.txt", "o5-mini and Nova Pro were tried.", "a model version"),
+        ("a model size", "plant.html", "<p>A 70B model was tried.</p>", "a model size"),
+        ("a model class as a label", "plant.html", "<p>In 2 of 3 light-class runs and 0 of 3 mid-class runs.</p>", "a model class label"),
+        ("a model class in a caption", "media/plant.vtt", "WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nThree model classes: light, mid and top.\n", "a model class label"),
+        ("a class id in a list of cells", "plant.html", "<p>light, original questions, 54%; mid, held-out questions, 28%</p>", "a model class label"),
+        ("workers named by class", "plant.txt", "With a reviewer on top of three light workers.", "a model class label"),
+        ("a film called an ad, in words", "plant.txt", "Watch the 30-second ad.", "a film called an ad"),
+        ("a film called an ad, as a button", "plant.html", "<button>Ad (30 s)</button>", "a film called an ad"),
+        ("the word ad on its own", "plant.html", "<p>The ad has captions.</p>", "a film called an ad"),
+        ("pgr as a python tool", "plant.txt", "PGR is a Python tool.", "Python as the language of the engine"),
+        ("a prompt sentence of the codex runs", "plant.txt", PROMPT_PLANTS[0], "a run of the benchmark's prompt"),
+        ("a prompt sentence of the workflow", "plant.txt", PROMPT_PLANTS[1], "a run of the benchmark's prompt"),
+        ("an internal id of the team round", "plant.html", '<div class="card tphv-card">x</div>', "holds 'tphv'"),
         ("a configuration name not in arms.json", "plant.html", '<th class="cfg"><span class="cfg-name">PGR build 9</span></th>', "is not a public name"),
         ("a configuration slug not in arms.json", "data/showcase.js", "SLUG", "is not a public object of arms.json"),
     ]
@@ -3119,16 +4784,46 @@ def guard_selftest(arms: dict, install: dict | None = None) -> int:
                 data.write_text(original, encoding="utf-8")
                 if body != "SLUG":
                     planted.unlink()
-        # The contact the owner publishes is the one link that is let through.
+        # What the owner approved, exactly as approved: the commands, the release links and the two program names pass.
+        wheel = base["wheels"][0]
+        allowed = ([item["command"] for item in base["installers"]] + [item["command"] for item in base["first_commands"]]
+                   + [f"{tool} {base['versioned_base']}/{wheel['name']}" for tool in PYTHON_TOOLS] + [f"pgr {name}" for name in PGR_COMMANDS])
+        names = [item["name"] for item in MODELS["tiers"].values()] + ([str(MODELS["codex"]["model_name"])] if MODELS["codex"] else [])
+        text = "\n".join(f"<code>{esc(line)}</code>" for line in allowed) + (
+            "\n<p>" + " ".join(f"{name} at low effort." for name in names) + " The engine is written in Rust. The repository is a Python project. "
+            "Trailer, 30 seconds, with captions. " + models_line() + " " + str((footprint_of() or {}).get("language", "")) + "</p>"
+            f'\n<p>{harness_line()} Measured under Claude Code and under the Codex CLI. A Model Context Protocol server.</p>'
+            f'\n<a href="{base["release_page"]}">release</a> <a href="{base["repository"]}">repository</a>')
         planted = target / "plant.html"
-        planted.write_text(f'<a class="btn" href="{contact}">Request access</a>', encoding="utf-8")
+        planted.write_text(text, encoding="utf-8")
         try:
-            guard_public(arms, {"status": "private-preview", "contact": contact}, target, only={"plant.html"}, checks=checks)
-            print("  ok       the approved contact link passes")
+            guard_public(arms, base, target, only={"plant.html"}, checks=checks)
+            print("  ok       the approved commands, links and names pass")
         except SystemExit as err:
-            print("  MISSED   the approved contact link was refused:", err)
+            print("  MISSED   the approved text was refused:", str(err).splitlines()[1] if len(str(err).splitlines()) > 1 else err)
             missed += 1
-    print(f"guard self-test: {len(plants) + 2 - missed} of {len(plants) + 2} checks as expected")
+        finally:
+            planted.unlink()
+    # Every team arm that is not a held-out twin and is not left out on purpose has a public name, or its results could not be shown.
+    unnamed = [arm["id"] for arm in arms["arms"] if arm.get("group") == "team" and not arm.get("base")
+               and arm["id"] not in TEAM_UNPUBLISHED and not public_arm(arm)]
+    if unnamed:
+        print(f"  MISSED   team arms without a public name: {unnamed}")
+        missed += 1
+    else:
+        print("  ok       every team arm has a public name or is left out on purpose")
+    # The films' captions are held to the page's headline: a caption file from an older headline is reported, a current one is not.
+    shown = {"configs": [{"best": True, "family": "ours", "slug": "x", "points": [{"class": "light", "set": "original", "tokens": 70325.0}]},
+                         {"best": False, "family": "control", "slug": "c", "points": [{"class": "light", "set": "original", "tokens": 293560.0}]}],
+             "versus": {"cells": [{"saving": 0.72}, {"saving": 0.80}], "low": 0.72, "high": 0.80}}
+    stale = film_problems(shown, {"pgr-trailer.en.vtt": "134k tokens.\n54% fewer", "pgr-explainer.en.vtt": "28% to 54% fewer"})
+    current = film_problems(shown, {"pgr-trailer.en.vtt": "70k tokens.\n76% fewer", "pgr-explainer.en.vtt": "72% to 80% fewer"})
+    if len(stale) == 3 and not current:
+        print("  ok       a caption file from an older headline is reported, a current one is not")
+    else:
+        print(f"  MISSED   the film check: stale gave {stale}, current gave {current}")
+        missed += 1
+    print(f"guard self-test: {len(plants) + 4 - missed} of {len(plants) + 4} checks as expected")
     return missed
 
 
@@ -3450,13 +5145,17 @@ def main() -> int:
         return 1 if guard_selftest(load("harness/arms.json"), install_of()) else 0
     if len(sys.argv) == 3 and sys.argv[1] == "--guard":
         scanned = guard_public(load("harness/arms.json"), install_of(), pathlib.Path(sys.argv[2]))
-        print(f"guard passed: {scanned} files in {sys.argv[2]} hold nothing that must stay private")
+        print(f"guard passed: {scanned} files in {sys.argv[2]} hold nothing that must stay off the site")
         return 0
     results, index, arms = load("data/results.json"), load("data/index.json"), load("harness/arms.json")
     cells, agents = results["cells"], results["agents"]
     points = points_of(cells)
     used = {p["arm"] for p in points}
     known = {arm["id"] for arm in arms["arms"]}
+    unnamed = sorted(arm["id"] for arm in arms["arms"] if arm.get("group") == "team" and arm["id"] in used and not arm.get("base")
+                     and not public_arm(arm) and arm["id"] not in TEAM_UNPUBLISHED)
+    if unnamed:
+        raise SystemExit(f"team arms with results and no public name in TEAM_PUBLIC: {unnamed}")
     if used - known:
         raise SystemExit(f"measured but not described in arms.json: {sorted(used - known)}")
     start = statistics.fmean(a["start"] for a in agents if a["role"] in ("all", "q1", "q2", "q3"))
@@ -3491,13 +5190,14 @@ def main() -> int:
         if arm["id"] in used:
             described.append({**arm, "commands": [arms["commands"][key] for key in arm["uses"]],
                               "reads": arm.get("reads", "Grep, Glob, Read" if arm["id"] == "A0" else "Read tool, on a range a command returned")})
+    text = modelize_all(text)   # the lines are chosen; from here they say the model where they said a class
     data = {
         "generated": datetime.date.today().isoformat(),
         "totals": {"agents": len(agents), "cells": len(cells), "start": start,
                    "tokens": sum(a["input"] + a["output"] + a["cache_read"] + a["cache_write"] for a in agents)},
         "groups": arms["groups"],
         "arms": described,
-        "tiers": arms["tiers"],
+        "tiers": [{**tier, "name": model_label(tier["id"]), "model": model_at(tier["id"])} for tier in arms["tiers"]],
         "setups": [s for s in arms["setups"] if any(p["setup"] == s["id"] for p in points)],
         "questions": arms["questions"],
         "sections": site_sections(),
@@ -3506,7 +5206,7 @@ def main() -> int:
                                              TIER_ORDER.index(c["tier"]), c["rep"])),
         "index": index,
         "context": {"parts": context_parts(start)},
-        "cache": [{"tier": f"{t['name']}: {t['model']}", "tokens": start, "cold": start * PRICE[t["id"]][3] / 1e6,
+        "cache": [{"tier": model_at(t["id"]), "tokens": start, "cold": start * PRICE[t["id"]][3] / 1e6,
                    "warm": start * PRICE[t["id"]][2] / 1e6,
                    "measured": measured_plan(agents) if t["id"] == "A" else ""} for t in arms["tiers"]],
         "price": {tier: dict(zip(("input", "output", "cache_read", "cache_write"), rate)) for tier, rate in PRICE.items()},
@@ -3523,11 +5223,11 @@ def main() -> int:
         print(f"asset links restamped in {stamped} pages")
     target = REPORT / "data" / "benchmark.js"
     public = public_of(points, cells, agents, index, orchestration, hooks, arms)
-    (BENCH / "RESULTS.md").write_text(
+    (BENCH / "RESULTS.md").write_text(modelize(
         markdown(points, index, arms, text) + more_tables(orchestration, hooks, arms, text)
-        + "\n".join(round_five(points, cells, agents, arms) + saving_section(public) + known_weaknesses(public)) + "\n",
+        + "\n".join(round_five(points, cells, agents, arms) + saving_section(public) + round_six(public) + known_weaknesses(public)) + "\n"),
         encoding="utf-8")
-    in_readme = write_readme(readme_block(original, arms, text))
+    in_readme = write_readme(modelize(readme_block(original, arms, text)))
     print("site data: " + ", ".join(f"{name} {size:,} bytes" for name, size in written))
     print(f"wrote {target.relative_to(REPO)} ({target.stat().st_size:,} bytes), benchmark/RESULTS.md"
           f"{' and the README results block' if in_readme else ' (README has no results markers)'}: "
@@ -3542,12 +5242,18 @@ def main() -> int:
         print(f"best chosen by the {'four-cell' if public['best_rule'] == 'cells' else 'light-class'} rule; " + "; ".join(
             f"{cid} {sid}: {pt['tokens']:,.0f} tokens, {pt['turns']:.1f} turns, {pt['perfect_runs']} of {pt['runs']} fully correct"
             for cid, sid in BEST_CELLS for pt in [cell_of(chosen, cid, sid)] if pt))
-    # The last step of every build, so nothing private can be published by accident.
+    # The last step of every build, so nothing that must stay off the site can be published by accident.
     scanned = guard_public(arms, public["install"])
-    print(f"guard passed: {scanned} files under docs/ hold nothing that must stay private")
+    print(f"guard passed: {scanned} files under docs/ hold nothing that must stay off the site")
     # The guard is only worth having while it still catches what it was written to catch.
     if guard_selftest(arms, public["install"]):
         raise SystemExit("GUARD SELF-TEST FAILED: a planted violation was not caught.")
+    # The films are made by another builder. Until their captions carry the figures of the page, they show an older result.
+    stale = film_problems(public, {path.name: path.read_text(encoding="utf-8") for path in sorted((DOCS / "media").glob("*.vtt"))})
+    for line in stale:
+        print("warning: " + line)
+    if stale:
+        print("warning: THE FILMS ARE OUT OF DATE against the Overview. Do not publish before the films and their captions carry the figures above.")
     return 0
 
 

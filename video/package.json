@@ -2,13 +2,20 @@
   "name": "pgr-video",
   "private": true,
   "type": "module",
-  "description": "The two films on the PeterGanuRusty site, drawn from the site's data and rendered locally.",
+  "description": "The two films on the PeterGanuRusty site, drawn from the site's data and rendered locally at 3840 x 2160 and 120 frames a second.",
   "scripts": {
     "facts": "node tools/facts.mjs",
+    "trailer": "node tools/build.mjs trailer",
     "explainer": "node tools/build.mjs explainer",
-    "ad": "node tools/build.mjs ad",
-    "explainer:2160": "node tools/build.mjs explainer --scale 2",
-    "ad:2160": "node tools/build.mjs ad --scale 2",
-    "shot": "node tools/shot.mjs"
+    "trailer:stretch": "node tools/build.mjs trailer --stretch",
+    "explainer:stretch": "node tools/build.mjs explainer --stretch",
+    "trailer:finals": "node tools/build.mjs trailer --finals",
+    "explainer:finals": "node tools/build.mjs explainer --finals",
+    "shot": "node tools/shot.mjs",
+    "check": "node tools/check-nograin.mjs && node tools/check-fps.mjs trailer && node tools/check-fps.mjs explainer && node tools/check-numbers.mjs trailer && node tools/check-numbers.mjs explainer && node tools/check-fresh.mjs && node tools/check-finals.mjs trailer && node tools/check-finals.mjs explainer",
+    "trailer:derive": "node tools/build.mjs trailer --derive",
+    "explainer:derive": "node tools/build.mjs explainer --derive",
+    "check:rate": "node tools/check-rate.mjs trailer && node tools/check-rate.mjs explainer",
+    "check:selftest": "node tools/check-numbers.mjs selftest"
   }
 }

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>How it was measured: Local index token benchmark</title>
-<meta name="description" content="Model tiers, prices, the start-up context every agent carries, and the limits of this benchmark.">
+<meta name="description" content="Models, prices, the start-up context every agent carries, and the limits of this benchmark.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
 <script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -45,7 +45,7 @@
   <h2 id="terms">Terms used on this site</h2>
   <dl class="terms">
     <dt id="term-method">Method</dt><dd>The set of search commands an agent was allowed to use. Everything else stayed the same.</dd>
-    <dt id="term-tier">Model tier</dt><dd>A class of model, not a version: C is the lightest, B the fast coding class, A the strongest.</dd>
+    <dt id="term-tier">Model</dt><dd>A class of model, not a version: C is the lightest, B the fast coding class, A the strongest.</dd>
     <dt id="term-run">Run</dt><dd>One attempt at the three questions, by one agent or by a group of them, graded by a script.</dd>
     <dt id="term-turn">Turn</dt><dd>One request to the model. Every turn re-reads everything before it, which is why turns decide the cost.</dd>
     <dt id="term-start-up">Start-up context</dt><dd>What an agent's first request holds before it has done anything: the system prompt, tool definitions, skills and rules.</dd>
@@ -59,7 +59,7 @@
   <h2 id="setups">The agent setups</h2>
   <div class="card"><div id="setups-table"></div></div>
 
-  <h2 id="tiers" data-toc="Tiers and prices">The model tiers and their prices</h2>
+  <h2 id="tiers" data-toc="Tiers and prices">The models and their prices</h2>
   <p>No model version is named. A tier is a class of model, resolved by alias when a run starts. Prices are dollars per million tokens.</p>
   <div class="card"><div id="tiers-table"></div></div>
 
@@ -83,7 +83,7 @@
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=39c86ca3"></script>
+<script src="data/benchmark.js?v=04fcceb4"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/charts.js?v=1299e283"></script>
 <script src="assets/how.js?v=71dec473"></script>

@@ -5,7 +5,7 @@ this setup can answer one: no index, each engine alone, the `lx` command in
 each of its builds, and combinations of them.
 
 - [RESULTS.md](RESULTS.md) has every table.
-- The charts are in the full report (the `report/` folder: private, not published). The public site (the `docs/` folder, served by GitHub Pages) shows measured outcomes only.
+- The charts are in the full report (the `report/` folder: in this repository, not served by the site). The public site (the `docs/` folder, served by GitHub Pages) shows measured outcomes only.
 
 ## What is measured
 
@@ -54,7 +54,7 @@ benchmark/
     arms.json                     what each method is and the commands it was given
     truth.py                      ground truth for the questions, from the syntax tree
     bench_parse.py                transcripts to results.json: tokens, cost, tools, grades
-    build_site.py                 results.json to the full report (report/), the public site (docs/) and RESULTS.md, then a scan that stops the build if docs/ holds anything private
+    build_site.py                 results.json to the full report (report/), the public site (docs/) and RESULTS.md, then a scan that stops the build if docs/ holds anything that must stay off the site
     combo_bench.py                build time, lookup time and answer size per engine
     emb_bench.py                  the same with the Rust index's embeddings on, and search quality
     lean_bench.py                 the combined index with and without the graph
@@ -154,7 +154,7 @@ holds what they printed.
 
 ## The public site
 
-`docs/` is published and `report/` is not. `build_site.py` writes both, and `docs/` carries
+`docs/` is served by GitHub Pages and `report/` is not (it is in the repository). `build_site.py` writes both, and `docs/` carries
 only what `arms.json` marks with a `public` object (a slug, a generic name, a family and an
 order), the measured numbers for those methods, and findings in plain sentences. A held-out arm
 (`group` `heldout`) has no `public` object: its points join the public configuration of the public
@@ -164,17 +164,18 @@ leaderboard compares runs made on the same day. The highlighted configuration, c
 reliable" on the site, is the one with the highest share of fully correct runs among those run at
 least three times in each of the four cells (both question sets, light and mid class), a tie going
 to the lower mean tokens over the four cells; when no configuration has all four cells the rule
-falls back to the light class on the original questions. The rule was written after the results
-were known, and the site says so. Under each leaderboard view the build says in a line which
-other configurations used fewer tokens.
-Two optional
-files add to it: `benchmark/data/engine.json` (a `public` list of rows with `name`,
-`build_seconds`, `query_ms` and `index_mb`, shown as an engine speed table) and
-`benchmark/data/install.json` (a `public` object with `status`, once the package is public
-`command`, and an optional `contact`, an email address or an https link). Without them the site
-shows a private-preview install page and no engine table. With a `contact` the install page
-shows a "Request access" control that uses it; without one it shows no control and no
-placeholder, because the contact is the owner's to give.
+falls back to the light class on the original questions. The rule was written after the fifth
+round's results were known, and the site says so; it was then applied unchanged to round six, which
+ran after it was written, and in round six it picks the brief pack with no lookup command. Round six
+(arm group `team`, steps in `harness/ROUND6.md`) is eligible like any other round. Under each
+leaderboard view the build says in a line which other configurations used fewer tokens.
+Two data files add to it:
+`benchmark/data/engine.json` (optional: a `public` list of rows with `name`, `build_seconds`,
+`query_ms` and `index_mb`, shown as an engine speed table; without it the site has no table) and
+`benchmark/data/install.json` (a `public` object with `status` `public`, the release links, the two
+installers, the program files and wheels with their sizes, the first commands, the rule for an
+agent and what was tested). The package is public, so the Install page and every install
+command on the site are built from that file; a new release is one edit of it.
 
 The last step of every build scans every file in `docs/`, its file names and its caption and data
 files included, for tool names, vendor and model names, commands, flags, paths of the setup,

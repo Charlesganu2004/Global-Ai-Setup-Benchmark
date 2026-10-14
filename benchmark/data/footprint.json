@@ -38,5 +38,25 @@
     },
     "index_without_vectors_mb": 2.55
   },
-  "language": "The engine, pgr, is written in Rust, all of it. Python is around it, not inside it: the repository the benchmark asks questions about is a Python project, the first generation's tools, the benchmark harness and this site's generator are Python programs, and uv, pipx and pip are optional ways to deliver the same Rust program."
+  "language": "The engine, pgr, is written in Rust, all of it. Python is around it, not inside it: the repository the benchmark asks questions about is a Python project, the first generation's tools, the benchmark harness and this site's generator are Python programs, and uv, pipx and pip are optional ways to deliver the same Rust program.",
+  "pgr_0_2": {
+    "version": "0.2.0 with the packed index (index format 3)",
+    "measured": "2026-10-14",
+    "how": "The same test repository indexed by the release build, every index file written with a lossless codec (deflate, read back byte for byte). The 88 commands recorded from the benchmark and 53 pack and loadout outputs print exactly what they printed before; query times stay inside their targets.",
+    "index_of_test_repository_bytes": 5913121,
+    "index_before_bytes": 8458291,
+    "index_change_percent": -30.1,
+    "shared_tokenizer_cache_bytes": 527062,
+    "shared_tokenizer_cache_before_bytes": 1241729,
+    "index_without_vectors_bytes": 956032,
+    "parts_bytes": {
+      "vectors": 4957089,
+      "word_index": 354596,
+      "facts": 264970,
+      "graph": 208796,
+      "chunks": 125611,
+      "manifest": 2040
+    },
+    "model_in_program": "left uncompressed: the best lossless codec saved 14.7%, under the 15% bar, and would need a 32 MB copy beside the program"
+  }
 }

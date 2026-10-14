@@ -1,38 +1,48 @@
 WEBVTT
 
 1
-00:00:00.300 --> 00:00:02.280
-Your agent reads the whole conversation.
+00:00:00.300 --> 00:00:03.353
+Your agent reads the whole
+conversation. Again. And again.
 
 2
-00:00:02.529 --> 00:00:03.649
-Again. And again.
-
-3
-00:00:03.849 --> 00:00:06.990
+00:00:03.463 --> 00:00:06.256
 294k tokens. For three lookups.
 
+3
+00:00:06.656 --> 00:00:08.683
+PeterGanuRusty, PGR for short.
+
 4
-00:00:07.761 --> 00:00:09.657
-One question. One answer.
+00:00:08.843 --> 00:00:12.654
+A command-line program for the desktop
+that AI agents call to look up code.
 
 5
-00:00:10.357 --> 00:00:12.410
-134k tokens.
+00:00:12.694 --> 00:00:13.667
+Local, no account.
 
 6
-00:00:13.039 --> 00:00:15.350
-54% fewer, against no index.
+00:00:14.217 --> 00:00:15.869
+One question. One answer.
 
 7
-00:00:15.570 --> 00:00:18.306
-One comparison: light class,
-first question set.
+00:00:16.339 --> 00:00:18.137
+134k tokens.
 
 8
-00:00:19.056 --> 00:00:20.138
-PeterGanuRusty.
+00:00:18.537 --> 00:00:20.672
+54% fewer, against no index.
 
 9
-00:00:20.388 --> 00:00:21.697
-Find code in one step.
+00:00:20.872 --> 00:00:23.704
+One comparison:
+Claude Haiku 5.5, low effort,
+
+10
+00:00:23.704 --> 00:00:24.935
+first question set.
+
+11
+00:00:25.485 --> 00:00:26.695
+One command installs it.

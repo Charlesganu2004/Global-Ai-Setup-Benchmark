@@ -1,6 +1,6 @@
 {
   "read": "2026-10-13",
-  "how": "The model each benchmark agent's requests resolved to, read from the run transcripts of rounds one to five (1,166 agent transcripts) and from the header the Codex CLI printed. The runs asked for a class of model by alias; these are the models those aliases meant on the days of the runs (2026-10-07 to 2026-10-13).",
+  "how": "The model each benchmark agent's requests resolved to, read from the run transcripts of rounds one to five (1,166 agent transcripts) and from the header the Codex CLI printed. The runs asked for a class of model by alias; these are the models those aliases meant on the days of the runs (2026-10-07 to 2026-10-14).",
   "tiers": [
     {
       "tier": "C",
@@ -8,7 +8,8 @@
       "name": "Claude Haiku 5.5",
       "id": "claude-haiku-5-5",
       "effort": "low",
-      "transcripts": 602
+      "transcripts": 602,
+      "round_six_transcripts": 237
     },
     {
       "tier": "B",
@@ -16,7 +17,8 @@
       "name": "Claude Sonnet 5.5",
       "id": "claude-sonnet-5-5",
       "effort": "medium",
-      "transcripts": 285
+      "transcripts": 285,
+      "round_six_transcripts": 30
     },
     {
       "tier": "A",
@@ -24,7 +26,8 @@
       "name": "Claude Opus 5.5",
       "id": "claude-opus-5-5",
       "effort": "maximum",
-      "transcripts": 279
+      "transcripts": 279,
+      "round_six_transcripts": 84
     }
   ],
   "harnesses": [
@@ -39,5 +42,15 @@
       "model_id": "gpt-6-astra",
       "effort": "medium"
     }
-  ]
+  ],
+  "round_six": {
+    "read": "2026-10-14",
+    "transcripts": 351,
+    "by_model": {
+      "claude-haiku-5-5": 237,
+      "claude-sonnet-5-5": 30,
+      "claude-opus-5-5": 84
+    },
+    "how": "The same reading of the run transcripts for the 351 agents of round six (four workflow runs on 2026-10-14)."
+  }
 }

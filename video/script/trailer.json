@@ -1,15 +1,15 @@
 {
-  "film": "ad",
-  "title": "PeterGanuRusty: 20 second ad",
-  "fps": 60,
+  "film": "trailer",
+  "title": "PeterGanuRusty: the trailer",
+  "fps": 120,
   "lead": 0.3,
-  "tail": 0.4,
-  "speed": 1.18,
+  "tail": 3.4,
+  "speed": 1.33,
   "scenes": [
     {
       "id": "hook",
       "hold": 0.1,
-      "gap": 0.25,
+      "gap": 0.22,
       "pre": 0.0,
       "cues": [
         {
@@ -23,8 +23,8 @@
     },
     {
       "id": "mass",
-      "hold": 0.4,
-      "gap": 0.18,
+      "hold": 0.25,
+      "gap": 0.15,
       "pre": 0.1,
       "cues": [
         {
@@ -37,10 +37,28 @@
       "bundle": true
     },
     {
+      "id": "name",
+      "hold": 0.3,
+      "gap": 0.16,
+      "pre": 0.15,
+      "cues": [
+        {
+          "text": "PeterGanuRusty, PGR for short.",
+          "say": "PeterGanuRusty, P G R for short."
+        },
+        {
+          "text": "A command-line program for the desktop that AI agents call to look up code."
+        },
+        {
+          "text": "Local, no account."
+        }
+      ]
+    },
+    {
       "id": "collapse",
-      "hold": 0.55,
-      "gap": 0.3,
-      "pre": 0.3,
+      "hold": 0.35,
+      "gap": 0.25,
+      "pre": 0.25,
       "cues": [
         {
           "text": "One question."
@@ -53,9 +71,9 @@
     },
     {
       "id": "number",
-      "hold": 0.5,
+      "hold": 0.3,
       "gap": 0.2,
-      "pre": 0.15,
+      "pre": 0.12,
       "cues": [
         {
           "text": "{tok_best} tokens."
@@ -64,15 +82,15 @@
     },
     {
       "id": "claim",
-      "hold": 0.45,
-      "gap": 0.22,
+      "hold": 0.35,
+      "gap": 0.2,
       "pre": 0.1,
       "cues": [
         {
           "text": "{pct} fewer, against no index."
         },
         {
-          "text": "One comparison: light class, first question set."
+          "text": "One comparison: {model_light}, first question set."
         }
       ],
       "bundle": true
@@ -81,23 +99,19 @@
       "id": "close",
       "hold": 0.1,
       "gap": 0.25,
-      "pre": 0.3,
+      "pre": 0.2,
       "cues": [
         {
-          "text": "PeterGanuRusty."
-        },
-        {
-          "text": "Find code in one step."
+          "text": "One command installs it."
         }
-      ],
-      "bundle": true
+      ]
     }
   ],
   "voice_speed": {
-    "am_michael": 1.3
+    "am_michael": 1.46
   },
   "poster": {
     "cue": "claim.2",
-    "offset": 2.8
+    "offset": 0.9
   }
 }

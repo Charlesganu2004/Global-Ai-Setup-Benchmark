@@ -1,8 +1,8 @@
-/* The Benchmarks page: the model class control, the question set control, the leaderboard, the chart of tokens
+/* The Benchmarks page: the model control, the question set control, the leaderboard, the chart of tokens
    and mean score, the engine race and the turn runners. The tables are already in the page for every
    class and every question set. This script shows one class and one set at a time: the leaderboard keeps one row
    for each configuration measured on the set and moves it to its rank, with its bar, ring and numbers following
-   the measured values, and a row opens to show its model classes on that set; a configuration not measured on
+   the measured values, and a row opens to show its models on that set; a configuration not measured on
    the set is not in the view. The turn runners follow both controls. The chart is drawn from window.SHOWCASE as one
    row for each configuration, the fewest tokens first: a bar and a dot for the mean tokens on one scale, the line from
    the lowest to the highest run, a ring for the mean score, the best configuration and the control marked, the names
@@ -26,7 +26,7 @@
   (data.sets || []).forEach(function (s) { setName[s.id] = s.name; });
   function setLabel(sid) { return (setName[sid] || sid).toLowerCase(); }
   function valueOf(button) { return button.getAttribute('data-value') || button.getAttribute('data-class'); }
-  // The view the two controls choose: a model class and a question set.
+  // The view the two controls choose: a model and a question set.
   var view = { cid: valueOf(seg.querySelector('[aria-checked="true"]') || seg.querySelector('[role="radio"]')),
     sid: setSeg ? valueOf(setSeg.querySelector('[aria-checked="true"]') || setSeg.querySelector('[role="radio"]')) : 'original' };
 
@@ -80,7 +80,7 @@
     card.setAttribute('role', 'table');
     head.setAttribute('role', 'row');
     list.setAttribute('role', 'rowgroup');
-    ['Rank', 'Configuration', 'Tokens per task', 'Turns', 'Mean score', 'Fully correct runs', 'By model class'].forEach(function (label, i) {
+    ['Rank', 'Configuration', 'Tokens per task', 'Turns', 'Mean score', 'Fully correct runs', 'By model'].forEach(function (label, i) {
       var h = cell('columnheader');
       if (i === 0) h.appendChild(el('span', null, '#')).setAttribute('aria-hidden', 'true');
       if (i === 0 || i === 6) h.appendChild(el('span', 'sr-only', label));
@@ -117,6 +117,7 @@
         link.href = labels.control_link || 'study.html#control';
       }
       if (c.session === 'earlier' && labels.earlier) note(labels.earlier);
+      if (c.session === 'team' && labels.team) note(labels.team);
       var tok = r.node.appendChild(cell('cell', 'lb-tok')), bar = tok.appendChild(el('span', 'lb-bar')), num = tok.appendChild(el('span', 'lb-num'));
       r.bar = bar.appendChild(document.createElement('i'));
       r.tok = num.appendChild(el('b'));
@@ -140,7 +141,7 @@
       r.node.appendChild(f.s);
       r.full = f.b;
       r.runs = f.v.appendChild(el('small'));
-      // The row opens to show the same configuration on each of the three model classes, on the same scale.
+      // The row opens to show the same configuration on each of the three models, on the same scale.
       var open = r.node.appendChild(cell('cell', 'lb-open')), more = open.appendChild(el('button', 'lb-more'));
       var sub = r.node.appendChild(cell('cell', 'lb-sub')), inner = sub.appendChild(el('div', 'lb-sub-in')), classes = inner.appendChild(el('ul', 'lb-classes'));
       var arrow = more.appendChild(svg('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }));
@@ -149,15 +150,15 @@
       more.type = 'button';
       more.setAttribute('aria-expanded', 'false');
       more.setAttribute('aria-controls', inner.id);
-      more.setAttribute('aria-label', c.name + ': show each model class');
+      more.setAttribute('aria-label', c.name + ': show each model');
       r.subs = {};
       r.shown = null;
-      // The model classes of this configuration on one question set, written into the open row.
+      // The models of this configuration on one question set, written into the open row.
       r.fill = function (sid) {
         if (r.shown === sid) return;
         r.shown = sid;
         classes.replaceChildren();
-        classes.setAttribute('aria-label', c.name + ' on each model class, ' + setLabel(sid) + ' questions');
+        classes.setAttribute('aria-label', c.name + ' on each model, ' + setLabel(sid) + ' questions');
         r.subs = {};
         data.classes.forEach(function (cls) {
           var p = c.points.filter(function (pt) { return pt.class === cls.id && (pt.set || 'original') === sid; })[0], li = classes.appendChild(el('li', 'lb-class'));
@@ -185,23 +186,51 @@
     first.parentNode.insertBefore(wrap, first);
     App.reveal(card);
 
-    var revealed = false, spring = App.spring;
-    // Counts a number from where it was to where it is, after a delay.
-    function tween(node, from, to, fmt, ms, delay) {
-      var final = fmt(to);
-      if (App.reduced || !(delay > 0)) { App.count(node, from, to, fmt, ms, final); return; }
-      node.textContent = fmt(from);
-      setTimeout(function () { App.count(node, from, to, fmt, ms, final); }, delay);
+    var revealed = false, spring = App.spring, LIVE_ROWS = 6;   // rows that draw in and count up when the board is first seen
+    // The three numbers of a row count from where they were to where they are, after a delay, in one run: one callback for a row.
+    function countRow(r, to, delay) {
+      var from = r.prev, nodes = [r.tok, r.turns, r.share];
+      var texts = function (v) { return [App.tokens(v.tokens), App.turns(v.turns), App.share(v.correct)]; };
+      var end = texts(to);
+      if (r.stop) r.stop();
+      clearTimeout(r.timer);
+      function go() {
+        var written = -1e9;
+        r.stop = App.run(800, function (q) {
+          // A number steps about 25 times a second, whatever the rate of the screen: more writes than that cannot be read.
+          if (q < 1 && q * 800 - written < 40) return;
+          written = q * 800;
+          var e = App.ease(q);
+          var now = q >= 1 ? end : texts({ tokens: from.tokens + (to.tokens - from.tokens) * e, turns: from.turns + (to.turns - from.turns) * e, correct: from.correct + (to.correct - from.correct) * e });
+          // A number is written only when its text has changed: a write of the same text still sends the page back to layout.
+          for (var i = 0; i < 3; i += 1) if (nodes[i].textContent !== now[i]) nodes[i].textContent = now[i];
+        });
+      }
+      if (App.reduced || !(delay > 0)) { go(); return; }
+      var start = texts(from);
+      nodes.forEach(function (n, i) { n.textContent = start[i]; });
+      r.timer = setTimeout(go, delay);
     }
-    function paint(r, p, delay) {
+    // A row on the screen draws in and counts up; a row that is not is written where it stands, with nothing running on it, because an
+    // animation under the fold costs the frames of the reader scrolling past it.
+    function paint(r, p, delay, live) {
+      r.node.classList.toggle('lb-still', !live);
       r.bar.style.setProperty('--d', delay + 'ms');
       r.ringP.style.setProperty('--d', delay + 'ms');
       r.bar.style.setProperty('--v', (p.tokens / scaleMax).toFixed(4));
       r.ringP.style.strokeDashoffset = String(1 - p.correct);
-      tween(r.tok, r.prev.tokens, p.tokens, App.tokens, 800, delay);
-      tween(r.turns, r.prev.turns, p.turns, App.turns, 800, delay);
-      tween(r.share, r.prev.correct, p.correct, App.share, 800, delay);
+      if (live) countRow(r, p, delay);
+      else {
+        if (r.stop) r.stop();
+        clearTimeout(r.timer);
+        r.tok.textContent = App.tokens(p.tokens); r.turns.textContent = App.turns(p.turns); r.share.textContent = App.share(p.correct);
+      }
       r.prev = { tokens: p.tokens, turns: p.turns, correct: p.correct };
+    }
+    // Whether a row is on the screen, or just outside it. One read per row, made before any write of the pass.
+    function onScreen(r) {
+      var box = r.node.getBoundingClientRect(), vh = window.innerHeight || document.documentElement.clientHeight;
+      return box.bottom > -60 && box.top < vh + 60;
     }
     // What does not move with a number: the rank, the tag, the range and the counts of runs.
     function meta(r, it, i) {
@@ -239,7 +268,7 @@
         list.appendChild(r.node);
       });
       rows.forEach(function (r) { if (!keep[r.slug]) r.node.hidden = true; });
-      card.setAttribute('aria-label', (className[cid] || cid) + ' class leaderboard, ' + setLabel(sid) + ' questions');
+      card.setAttribute('aria-label', (className[cid] || cid) + ' leaderboard, ' + setLabel(sid) + ' questions');
       empty.style.display = items.length ? 'none' : '';
       viewNote.textContent = items.length ? (viewNotes[cid + '|' + sid] || '') : '';
       viewNote.hidden = !viewNote.textContent;
@@ -252,7 +281,7 @@
         r.fill(sid);
         Object.keys(r.subs).forEach(function (id) { r.subs[id].classList.toggle('is-best', id === cid && !!it.c.best); r.subs[id].classList.toggle('now', id === cid); });
         if (!revealed) return;
-        paint(r, it.p, 0);
+        paint(r, it.p, 0, onScreen(r));
         if (!App.reduced && r.node.animate && current !== null) flip(r, was[r.slug], r.node.getBoundingClientRect().top, i);
       });
       current = { cid: cid, sid: sid };
@@ -261,7 +290,12 @@
     App.once(card, function () {
       revealed = true;
       var slugs = itemsFor(current.cid, current.sid).map(function (it) { return it.c.slug; });
-      rows.forEach(function (r) { var n = slugs.indexOf(r.slug); if (n >= 0) paint(r, r.it.p, n * 70); });
+      var order = 0, near = rows.map(function (r) { return slugs.indexOf(r.slug) >= 0 && onScreen(r); });
+      rows.forEach(function (r, k) {
+        var n = slugs.indexOf(r.slug);
+        if (n < 0) return;
+        if (near[k] && order < LIVE_ROWS) { paint(r, r.it.p, order * 70, true); order += 1; } else paint(r, r.it.p, 0, false);
+      });
     }, 0.2);
     return { update: update };
   })();
@@ -330,7 +364,7 @@
         App.of(p.perfect_runs, p.runs) + ' runs fully correct'));
       list.appendChild(li);
     });
-    list.setAttribute('aria-label', (className[cid] || cid) + ' class, ' + setLabel(sid) + ' questions: tokens and mean score for each configuration');
+    list.setAttribute('aria-label', (className[cid] || cid) + ', ' + setLabel(sid) + ' questions: tokens and mean score for each configuration');
     chart.appendChild(head);
     chart.appendChild(list);
     host.replaceChildren(chart);
@@ -359,8 +393,8 @@
     if (runners) runners.change();
     if (status && spoken) status.textContent = 'Showing the ' + spoken.toLowerCase() + '.';
   }
-  var classCtl = App.segmented(seg, function (value, label) { view.cid = value; show(label + ' class, ' + setLabel(view.sid) + ' questions'); });
-  var setCtl = setSeg ? App.segmented(setSeg, function (value, label) { view.sid = value; show((className[view.cid] || view.cid) + ' class, ' + label + ' questions'); }) : null;
+  var classCtl = App.segmented(seg, function (value, label) { view.cid = value; show(label + ', ' + setLabel(view.sid) + ' questions'); });
+  var setCtl = setSeg ? App.segmented(setSeg, function (value, label) { view.sid = value; show((className[view.cid] || view.cid) + ', ' + label + ' questions'); }) : null;
   // Where the chosen pair has no measurements, one line says so and a button moves to the nearest pair that has some.
   function nearest() {
     var sets = (data.sets || []).map(function (st) { return st.id; });
@@ -370,9 +404,9 @@
   }
   App.offer = function (host) {
     var go = nearest();
-    host.replaceChildren(document.createTextNode('No configuration was measured on the ' + (className[view.cid] || view.cid).toLowerCase() + ' class with the ' + setLabel(view.sid) + ' questions.'));
+    host.replaceChildren(document.createTextNode('No configuration was measured on ' + (className[view.cid] || view.cid) + ' with the ' + setLabel(view.sid) + ' questions.'));
     if (!go || !setCtl) return;
-    var button = node('button', 'btn quiet', 'Show the ' + (className[go.cid] || go.cid).toLowerCase() + ' class, ' + setLabel(go.sid) + ' questions');
+    var button = node('button', 'btn quiet', 'Show ' + (className[go.cid] || go.cid) + ', ' + setLabel(go.sid) + ' questions');
     button.type = 'button';
     button.addEventListener('click', function () {
       var ci = data.classes.map(function (c) { return c.id; }).indexOf(go.cid), si = (data.sets || []).map(function (st) { return st.id; }).indexOf(go.sid);
@@ -425,19 +459,37 @@
     var rows = Array.prototype.slice.call(fig.querySelectorAll('.race-row')), note = fig.querySelector('.race-status'), again = fig.querySelector('.replay');
     var most = Math.max.apply(null, rows.map(function (row) { return parseFloat(row.getAttribute('data-ms')) || 0; })), stops = [], LONGEST = 2600;
     if (App.reduced || !(most > 0)) { if (note && App.reduced) note.hidden = false; return; }
+    // A bar is one Web Animation on its transform, run by the browser from the clock on the compositor: it costs the page no frame and is the
+    // same at any rate of the screen. The numbers beside the bars step about 25 times a second from one run, read off the same clock.
     function play() {
       stops.forEach(function (stop) { stop(); });
-      stops = rows.map(function (row) {
+      var lanes = rows.map(function (row) {
         var ms = parseFloat(row.getAttribute('data-ms')) || 0, bar = row.querySelector('.race-track i'), value = row.querySelector('.race-val b');
         var final = value.getAttribute('data-final') || value.textContent, places = (final.split('.')[1] || '').length;
+        var span = LONGEST * ms / most, end = 'scaleX(' + (ms / most).toFixed(4) + ')', lane = { ms: ms, bar: bar, value: value, final: final, places: places, span: span, run: null };
         value.setAttribute('data-final', final);
         row.classList.remove('done');
         // No easing: here a bar is a clock.
-        return App.run(LONGEST * ms / most, function (p) {
-          bar.style.transform = 'scaleX(' + (ms / most * p).toFixed(4) + ')';
-          value.textContent = p >= 1 ? final : (ms * p).toFixed(places);
-        }, function () { row.classList.add('done'); });
+        if (bar.animate && span > 0) {
+          lane.run = bar.animate([{ transform: 'scaleX(0)' }, { transform: end }], { duration: span, easing: 'linear', fill: 'both' });
+          lane.run.onfinish = function () { bar.style.transform = end; lane.run.cancel(); lane.run = null; row.classList.add('done'); };
+        }
+        return lane;
       });
+      var written = -1e9;
+      var stop = App.run(LONGEST, function (q) {
+        var t = q * LONGEST;
+        if (q < 1 && t - written < 40) return;
+        written = t;
+        lanes.forEach(function (lane) {
+          var p = lane.span > 0 ? Math.min(1, t / lane.span) : 1;
+          if (!lane.run && p < 1) lane.bar.style.transform = 'scaleX(' + (lane.ms / most * p).toFixed(4) + ')';
+          var text = p >= 1 ? lane.final : (lane.ms * p).toFixed(lane.places);
+          if (lane.value.textContent !== text) lane.value.textContent = text;
+          if (p >= 1 && !lane.run) lane.bar.closest('.race-row').classList.add('done');
+        });
+      });
+      stops = [function () { stop(); lanes.forEach(function (lane) { if (lane.run) lane.run.cancel(); }); }];
     }
     fig.classList.add('armed');
     App.once(fig, play, 0.6);

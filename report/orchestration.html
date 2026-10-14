@@ -44,9 +44,9 @@
   <section class="verdict" aria-labelledby="verdict">
     <h2 id="verdict">In short</h2>
     <ul id="o-verdict">
-      <li>Across 70 orchestrated runs with the standard reviewer, the subagents handed back 3 wrong answers out of 210. The reviewer corrected 3 of them, left 0 wrong, and changed 0 right answers into wrong ones. 70 of the 70 runs ended fully correct.</li>
-      <li>With Tier C, scout subagents (48 runs over 36 methods), the orchestrator's planning and review were 33% of the tokens and 97% of the cost of a run, cache warm. The three subagents together averaged 569k tokens and the review 210k. Against one agent of that tier answering all three questions with the same method, the orchestrated run used 4.5 times the tokens (from 2.9 to 6.1) and 95 times the money.</li>
-      <li>Three subagents with nobody reviewing them, Tier C: 38 of 43 runs were fully correct. The same 36 methods on that tier with the standard review: 48 of 48.</li>
+      <li>Across 106 orchestrated runs with the standard reviewer, the subagents handed back 4 wrong answers out of 318. The reviewer corrected 4 of them, left 0 wrong, and changed 0 right answers into wrong ones. 106 of the 106 runs ended fully correct.</li>
+      <li>With Claude Haiku 5.5 at low effort subagents (84 runs over 48 methods), the orchestrator's planning and review were 33% of the tokens and 97% of the cost of a run, cache warm. The three subagents together averaged 586k tokens and the review 216k. Against one agent of that model answering all three questions with the same method, the orchestrated run used 4.6 times the tokens (from 2.9 to 6.3) and 107 times the money.</li>
+      <li>Three subagents with nobody reviewing them, Claude Haiku 5.5 at low effort: 50 of 55 runs were fully correct. The same 40 methods on that model with the standard review: 60 of 60.</li>
     </ul>
   </section>
   <details class="more"><summary>The same findings for each subagent tier and each reviewer</summary><ul class="plain" id="o-findings"></ul></details>
@@ -91,7 +91,7 @@
   </div>
 
   <h2 id="reviewers" data-toc="Who reviews">Who reviews, and with what</h2>
-  <p>The standard reviewer is the strongest model with the method's own tools. Three variants were run on the cheapest subagents: the same model with no tools, so it can only read the three answers, and the mid-tier and the cheapest model with tools. These tables ignore the tier and group filters.</p>
+  <p>The standard reviewer is the strongest model with the method's own tools. Three variants were run on the cheapest subagents: the same model with no tools, so it can only read the three answers, and the middle model and the cheapest model with tools. These tables ignore the tier and group filters.</p>
   <div class="card">
     <h3>Added up by reviewer</h3>
     <div id="tally-table"></div>
@@ -110,9 +110,9 @@
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=39c86ca3"></script>
-<script src="data/bench-runs.js?v=1041c041"></script>
-<script src="data/bench-orchestration.js?v=fb64a425"></script>
+<script src="data/benchmark.js?v=04fcceb4"></script>
+<script src="data/bench-runs.js?v=03146673"></script>
+<script src="data/bench-orchestration.js?v=085e60cb"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/charts.js?v=1299e283"></script>
 <script src="assets/orchestration.js?v=d9c5925d"></script>

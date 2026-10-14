@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Results: Local index token benchmark</title>
-<meta name="description" content="Cost, tokens and accuracy for every method, by model tier and agent setup, with a table of every run.">
+<meta name="description" content="Cost, tokens and accuracy for every method, by model and agent setup, with a table of every run.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%232a78d6'/%3E%3Crect x='3' y='4' width='10' height='2' fill='%23fff'/%3E%3Crect x='3' y='7' width='7' height='2' fill='%23fff'/%3E%3Crect x='3' y='10' width='4' height='2' fill='%23fff'/%3E%3C/svg%3E">
 <script>document.documentElement.className='js';try{var t=localStorage.getItem('bench-theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>
@@ -40,13 +40,13 @@
   <p class="eyebrow">Findings, page 2 of 7</p>
   <h1>Results</h1>
   <p class="lede">Every method answered the same lookup questions on the same repository. A script graded the answers, and token counts are what the API reported for each request. The one exception is a planning call that several runs shared, which is charged at the mean of the measured planning calls.</p>
-  <p>The two filters below scope every chart and table on this page. A <a href="how.html">model tier</a> is a class of model, from the lightest (C) to the strongest (A). With a keyboard, Tab reaches each chart and the arrow keys move between its marks.</p>
+  <p>The two filters below scope every chart and table on this page. A <a href="how.html">model</a> is a class of model, from the lightest (C) to the strongest (A). With a keyboard, Tab reaches each chart and the arrow keys move between its marks.</p>
   <section class="verdict" aria-labelledby="summary">
     <h2 id="summary">In short</h2>
     <ul id="r-short">
-      <li>Cheapest tier, one agent, methods run at least three times, fewest tokens first: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; C12 lx about + hybrid: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L3 lx + hybrid search: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.</li>
-      <li>Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 17 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, S1r Shipped: lx ask, default index, run again with round five, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, C7 token-goat + semble, RM pgr, memory only, RGSO pgr, all three, memory from an exploring session, RGSM pgr, all three, memory from the same questions.</li>
-      <li>The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.</li>
+      <li>Claude Haiku 5.5 at low effort, one agent, methods run at least three times, fewest tokens first: TPX The pack only, no lookup command: 71k tokens, 1.0 turns, 3 of 3 runs fully correct; TP pgr, graph and search, with a pack in the prompt: 119k tokens, 1.7 turns, 3 of 3 runs fully correct; S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.</li>
+      <li>Two turns is the floor for this task: one to ask and one to answer. On Claude Haiku 5.5 at low effort, 19 methods took exactly two turns and answered everything correctly in each of their 3 runs: TPX The pack only, no lookup command, TP pgr, graph and search, with a pack in the prompt, S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, S1r Shipped: lx ask, default index, run again with round five, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, C7 token-goat + semble, RM pgr, memory only, RGSO pgr, all three, memory from an exploring session, RGSM pgr, all three, memory from the same questions.</li>
+      <li>The model moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Claude Haiku 5.5 at low effort (98% correct), $0.103 on Claude Sonnet 5.5 at medium effort (100%) and $0.343 on Claude Opus 5.5 at maximum effort (100%). Send lookups to Claude Haiku 5.5 at low effort.</li>
     </ul>
   </section>
   <div class="filters sticky" role="group" aria-label="Filters for this page">
@@ -57,8 +57,8 @@
 
   <h2 id="charts">Charts</h2>
   <section class="card" aria-labelledby="bubble-title">
-    <h3 id="bubble-title" data-toc="Cost and accuracy map">Cost, efficiency, accuracy and model tier in one view</h3>
-    <p class="sub">Each bubble is one method on one model tier. Further left costs less per run, higher answers more per million tokens, bigger answered more correctly, and colour is the model tier. A method code is printed only where there is room for it. Point at a bubble for the rest, pick a method group above, or open the table view.</p>
+    <h3 id="bubble-title" data-toc="Cost and accuracy map">Cost, efficiency, accuracy and model in one view</h3>
+    <p class="sub">Each bubble is one method on one model. Further left costs less per run, higher answers more per million tokens, bigger answered more correctly, and colour is the model. A method code is printed only where there is room for it. Point at a bubble for the rest, pick a method group above, or open the table view.</p>
     <div class="legend" id="bubble-legend"></div>
     <div class="chart" id="bubble"></div>
     <details><summary>Table view</summary><div id="bubble-table"></div></details>
@@ -66,14 +66,14 @@
 
   <section class="card" aria-labelledby="tokens-title">
     <h3 id="tokens-title" data-toc="Tokens by method">Tokens per run, by method</h3>
-    <p class="sub">One bar per method, one panel per model tier, all on one scale. Start-up context is the prompt an agent begins with. Every later turn re-reads everything before it, which is where the re-read tokens come from. Added is new context on later turns: tool results and the earlier output of the agent. The number at the end of a bar is the total.</p>
+    <p class="sub">One bar per method, one panel per model, all on one scale. Start-up context is the prompt an agent begins with. Every later turn re-reads everything before it, which is where the re-read tokens come from. Added is new context on later turns: tool results and the earlier output of the agent. The number at the end of a bar is the total.</p>
     <div class="legend" id="tokens-legend"></div>
     <div class="chart" id="tokens"></div>
     <details><summary>Table view</summary><div id="tokens-table"></div></details>
   </section>
 
   <section class="card" aria-labelledby="cost-title">
-    <h3 id="cost-title" data-toc="Cost by tier">Cost per run, by method and model tier</h3>
+    <h3 id="cost-title" data-toc="Cost by tier">Cost per run, by method and model</h3>
     <p class="sub">Dollars at list prices with the start-up context already cached. One row per method and one dot per tier, cheapest first on the lowest tier shown. Log scale: each gridline is ten times the one before. In the table view, cache cold prices the start-up context as written to the cache, as run is what the runs were billed, and the orchestrator column, shown where there is one, is its share of the warm cost.</p>
     <div class="legend" id="cost-legend"></div>
     <div class="chart" id="cost"></div>
@@ -92,8 +92,8 @@
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=39c86ca3"></script>
-<script src="data/bench-runs.js?v=1041c041"></script>
+<script src="data/benchmark.js?v=04fcceb4"></script>
+<script src="data/bench-runs.js?v=03146673"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/charts.js?v=1299e283"></script>
 <script src="assets/results.js?v=bb914d28"></script>

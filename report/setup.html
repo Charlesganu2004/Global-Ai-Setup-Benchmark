@@ -74,7 +74,7 @@ lx ask callers:SOME_FUNCTION "find:entry point"   # two questions, one call</cod
       </tbody>
     </table>
   </div></div>
-  <p>No agent file names a model version. Work is routed by tier: Tier A is the strongest model on offer at its highest reasoning setting, Tier B the fast coding class, Tier C the lightest. Claude Code reaches them through its <code>inherit</code>, <code>sonnet</code> and <code>haiku</code> aliases, which follow new releases. Codex and Copilot agents set no model and inherit the model of the session.</p>
+  <p>No agent file names a model version. Work is routed by capability: the strongest model on offer at its highest reasoning setting, a fast coding model, and the lightest model. Claude Code reaches them through its <code>inherit</code>, <code>sonnet</code> and <code>haiku</code> aliases, which follow new releases. Codex and Copilot agents set no model and inherit the model of the session.</p>
   <p><code>tools.py</code> is the part that downloads: semble 0.6.1 and ast-grep 0.45.3 as pinned wheels, graphify 0.9.72 only when no graphify is found, codanna 0.16.0 as one release file whose SHA-256 must match the pinned value, and the semble embedding model once. Only the Windows build of codanna is pinned. On other systems it is skipped, <code>lx</code> answers from the graphify graph, <code>--rust</code> and <code>codanna_embeddings</code> do nothing, and <code>--hybrid</code> searches with semble alone. It accepts no PyPI package uploaded after 2026-09-30. With <code>--no-tools</code> nothing is downloaded and <code>lx</code> is still created.</p>
 
   <h2 id="token-goat">Optional: token-goat hooks</h2>
@@ -215,7 +215,7 @@ python setup/tests/check_token_goat_step.py setup/tools.py</code></pre>
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=39c86ca3"></script>
+<script src="data/benchmark.js?v=04fcceb4"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/charts.js?v=1299e283"></script>
 <script src="assets/setup.js?v=6f6896c6"></script>

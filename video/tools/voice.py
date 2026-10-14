@@ -109,6 +109,16 @@ def split_caption(text: str, max_line=42, max_lines=2):
                 if best is None or score < best[0]:
                     best = (score, [a, b])
         return best[1] if best else wrap(ws)
+    def fits(ws):
+        return len(wrap(ws)) <= max_lines and all(len(x) <= max_line for x in wrap(ws))
+    # a last piece of under 18 characters takes words from the piece before it while both still fit and it stays the shorter one:
+    # a caption of two words that flashes by is worse than two even ones
+    size = lambda ws: len(" ".join(ws))
+    while len(pieces) > 1 and size(pieces[-1]) < 18 and len(pieces[-2]) > 2:
+        a, b = pieces[-2][:-1], [pieces[-2][-1]] + pieces[-1]
+        if not (fits(a) and fits(b)) or size(b) > size(a):
+            break
+        pieces[-2], pieces[-1] = a, b
     out = []
     for p in pieces:
         out.append((balanced(p), sum(len(w) for w in p) + len(p)))
@@ -259,8 +269,8 @@ def build_timeline(script, per_voice, shared_scene_len=None):
         starts[s["id"]] = cursor
         cursor += scenes_len[s["id"]]
     duration = cursor + script["tail"]
-    # whole frames, so a render has an exact length
-    duration = round(duration * fps) / fps
+    # whole frames at 30, 60 and 120 fps, so a render has an exact length at every rate: a multiple of 1/30 s
+    duration = round(duration * 30) / 30
     out = {}
     for v in per_voice:
         scenes = []
@@ -302,7 +312,7 @@ def vtt_time(t: float) -> str:
     return f"{int(h):02d}:{int(m):02d}:{s:06.3f}"
 
 
-def caption_cues(scene, min_len=1.0, max_chars=84):
+def caption_cues(scene, min_len=1.1, max_chars=84):
     """The caption cues of one scene. A cue under min_len seconds is joined to its neighbour in the scene, so a
     caption never flashes by; the picture still cuts on every spoken cue."""
     cues = [dict(c) for c in scene["cues"]]
@@ -318,21 +328,55 @@ def caption_cues(scene, min_len=1.0, max_chars=84):
                 i = max(0, lo - 1)
                 continue
         i += 1
+    # a caption that would be read faster than 19 characters a second stays up a little longer, as far as the next
+    # caption (or 0.35 s past the end of the scene's last one) allows: the audio and the picture are not touched
+    scene_end = scene["start"] + scene["dur"] - 0.01
+    for k, c in enumerate(cues):
+        need = len(c["text"]) / 19.0
+        if c["end"] - c["start"] < need:
+            limit = min(cues[k + 1]["start"] - 0.04 if k + 1 < len(cues) else c["end"] + 0.35, scene_end)
+            c["end"] = max(c["end"], min(c["start"] + need, limit))
+        if len(c["text"]) / max(c["end"] - c["start"], 0.01) > 20.5:
+            floor = (cues[k - 1]["end"] + 0.04) if k else scene["start"]
+            c["start"] = max(floor, c["start"] - min(0.12, len(c["text"]) / 20.5 - (c["end"] - c["start"]) + 0.01))
     return cues
+
+
+KEEP = "\ue000"      # stands for a space inside a name that a caption must not break over two lines
+
+
+def unbreakable(text: str, names: list) -> str:
+    """A model name (and its effort) is one unit: the site's guard refuses 'Claude' or 'Haiku' alone, so the wrap never splits it."""
+    for name in sorted(names, key=len, reverse=True):
+        text = text.replace(name, name.replace(" ", KEEP))
+    return text
+
+
+def model_names() -> list:
+    """Every spelling of a model the captions may hold, from build/facts.json: 'Claude Haiku 5.5, low effort', 'Claude Haiku 5.5', 'low effort'."""
+    try:
+        facts = json.loads((VIDEO / "build" / "facts.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for m in (facts.get("models") or {}).values():
+        out += [m["label"], m["name"]]
+    return out
 
 
 def write_vtt(tl, path: Path):
     lines = ["WEBVTT", ""]
     n = 1
+    names = model_names()
     for scene in tl["scenes"]:
         for cue in caption_cues(scene):
-            pieces = split_caption(cue["text"])
+            pieces = split_caption(unbreakable(cue["text"], names))
             total_w = sum(w for _, w in pieces)
             a = cue["start"]
             span = cue["end"] - cue["start"]
             for lines_, w in pieces:
                 b = a + span * w / total_w
-                lines += [str(n), f"{vtt_time(a)} --> {vtt_time(b)}", *lines_, ""]
+                lines += [str(n), f"{vtt_time(a)} --> {vtt_time(b)}", *[x.replace(KEEP, " ") for x in lines_], ""]
                 n += 1
                 a = b
     path.write_text("\n".join(lines), encoding="utf-8")
@@ -417,7 +461,7 @@ def main():
         write_wav(stem, narr, OUT_SR)
         mix = np.stack([narr, narr], axis=1)
         music_info = None
-        if args.film == "ad" and not args.no_music:
+        if args.film == "trailer" and not args.no_music:
             import music
             bed = music.make_bed(tl, OUT_SR, narr)
             bed_path = outdir / f"{args.film}.{v}.bed.wav"

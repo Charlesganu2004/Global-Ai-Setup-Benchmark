@@ -3,7 +3,7 @@
 //   build/facts.js    for the scenes (window.FACTS, on-screen strings and raw values)
 // The headline pair is chosen exactly as the site does in docs/assets/app.js (App.headline): the configuration
 // flagged best and the first control, both on the light class and the first question set. It also works out the
-// four comparisons the site states as a range (two model classes by two question sets), and checks the sentence the
+// four comparisons the site states as a range (two models by two question sets), and checks the sentence the
 // films say about the highlighted configuration (fully correct in every run). Nothing here is typed in by hand.
 import fs from 'node:fs';
 import path from 'node:path';
@@ -13,6 +13,20 @@ import { fileURLToPath } from 'node:url';
 const VIDEO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SHOWCASE_JS = path.resolve(VIDEO, '..', 'docs', 'data', 'showcase.js');
 const BUILD = path.join(VIDEO, 'build');
+const INSTALL_JSON = path.resolve(VIDEO, '..', 'benchmark', 'data', 'install.json');
+const MODELS_JSON = path.resolve(VIDEO, '..', 'benchmark', 'data', 'models.json');
+const FALLBACK_INSTALL = 'irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex';
+
+// The install commands the closing card shows: the two of benchmark/data/install.json, or the Windows line when
+// that file is not there yet (source says which).
+function readInstallers() {
+  try {
+    const j = JSON.parse(fs.readFileSync(INSTALL_JSON, 'utf8'));
+    const items = ((j.public || j).installers || []).filter((i) => i && i.command).map((i) => ({ id: i.id, system: i.system, shell: i.shell, command: i.command }));
+    if (items.length) return { source: 'benchmark/data/install.json', items };
+  } catch { /* not written yet, or not valid yet */ }
+  return { source: 'fallback', items: [{ id: 'windows', system: 'Windows', shell: 'PowerShell', command: FALLBACK_INSTALL }] };
+}
 
 // The same formats as App.tokens, App.share and App.turns on the site.
 const showTokens = (v) => (!(v > 0) ? '0' : v >= 1e6 ? (v / 1e6).toFixed(2) + 'M' : Math.round(v / 1e3) + 'k');
@@ -52,13 +66,42 @@ export function load() {
   return data;
 }
 
-// The headline comparison: light class, first question set (the site's own headline cell).
+// The films name the models the runs used, as benchmark/data/models.json does (the site does the same): the light class is
+// tier C, the mid class tier B, the top class tier A. A class is never shown or spoken by that word. The label is
+// "Claude Haiku 5.5, low effort"; it must equal the class name the site data carries (docs/data/showcase.js).
+const TIER_OF = { light: 'C', mid: 'B', top: 'A' };
+export function readModels() {
+  const j = JSON.parse(fs.readFileSync(MODELS_JSON, 'utf8'));
+  const byTier = {};
+  for (const t of j.tiers || []) byTier[t.tier] = t;
+  const out = {};
+  for (const [id, tier] of Object.entries(TIER_OF)) {
+    const t = byTier[tier];
+    if (!t || !t.name || !t.effort) throw new Error(`benchmark/data/models.json has no name and effort for tier ${tier}`);
+    out[id] = { id, tier, name: t.name, effort: t.effort, label: `${t.name}, ${t.effort} effort`, at: `${t.name} at ${t.effort} effort` };
+  }
+  const dates = String(j.how || '').match(/(\d{4}-\d{2}-\d{2}) to (\d{4}-\d{2}-\d{2})/);
+  return { models: out, from: dates && dates[1], to: dates && dates[2] };
+}
+// The spoken form of a model name: the version read as words ("Claude Haiku five point five").
+const sayName = (name) => name.replace(/(\d+)\.(\d+)/g, (m, a, b) => `${words(Number(a))} point ${b.split('').map((d) => ONES[Number(d)]).join(' ')}`);
+// spoken without the comma of the caption form, so the voice does not stop in the middle of a name: "Claude Haiku five point five at low effort"
+const sayAt = (m) => `${sayName(m.name)} at ${m.effort} effort`;
+const classLabel = (models, c) => {
+  const m = models[c && c.id];
+  if (!m) throw new Error(`models.json has no model for the class "${c && c.id}"`);
+  if (c.name && c.name !== m.label) throw new Error(`the site names the class "${c.id}" "${c.name}" but benchmark/data/models.json says "${m.label}"`);
+  return m.label;
+};
+
+// The headline comparison: the light class (the smallest model), first question set (the site's own headline cell).
 const lightPoint = (c, firstSet) => (c
   ? (firstSet && c.points.find((p) => p.class === 'light' && p.set === firstSet && p.setup === 'single'))
     || c.points.find((p) => p.class === 'light' && p.setup === 'single') || c.points.find((p) => p.class === 'light') || null
   : null);
 
 export function compute(data) {
+  const { models, from: modelsFrom, to: modelsTo } = readModels();
   let best = null; let control = null;
   for (const c of data.configs || []) {
     if (c.best) best = c;
@@ -88,7 +131,7 @@ export function compute(data) {
       const pb = pick(best); const pc = pick(control);
       if (!pb || !pc || !(pc.tokens > 0)) continue;
       cells.push({
-        class: cls.id, className: cls.name, set: set.id, setName: set.name,
+        class: cls.id, className: classLabel(models, cls), set: set.id, setName: set.name,
         bestTokens: pb.tokens, controlTokens: pc.tokens, pct: Math.round((1 - pb.tokens / pc.tokens) * 100),
         bestTurns: pb.turns, controlTurns: pc.turns, perfect: pb.perfect_runs, runs: pb.runs, headline: pb === b,
       });
@@ -120,15 +163,16 @@ export function compute(data) {
   const perCell = study.runs_per_cell || { min: 1, max: 1 };
   const num = (n) => String(n);
   const facts = {
-    built: data.built,
+    models, modelsNote: modelsFrom ? `The runs asked for a class of model by alias. These are the models those aliases meant from ${modelsFrom} to ${modelsTo}.` : '',
     best: point(best, b), control: point(control, c), pct, fewerText: showTokens(c.tokens - b.tokens),
     rows, cells, range, reliable, bestLabel,
-    labels: { classLabel: `${((data.classes || [])[0] || { name: 'Light' }).name} class`, firstSet: 'first question set' },
+    labels: { classLabel: classLabel(models, (data.classes || [])[0]), firstSet: 'first question set', secondSet: 'held-out question set' },
     study: {
       agents: study.agents, files: study.repository.files, language: study.repository.language, runs: study.runs,
-      configsPublished: rows.length, questions: study.questions, classes: data.classes, runsMin: perCell.min, runsMax: perCell.max,
+      configsPublished: rows.length, questions: study.questions, classes: (data.classes || []).map((c) => ({ id: c.id, name: classLabel(models, c), model: models[c.id].name, effort: models[c.id].effort })), runsMin: perCell.min, runsMax: perCell.max,
     },
     install: data.install && data.install.status,
+    installers: readInstallers(),
     // Spoken forms (words) and caption forms (digits) of every number the narration may use.
     say: {
       tok_ref: tokensWords(c.tokens), tok_best: tokensWords(b.tokens),
@@ -139,6 +183,8 @@ export function compute(data) {
       questions: words((study.questions || []).length), classes: words((data.classes || []).length),
       range_min: words(range.min) + ' percent', range_max: words(range.max) + ' percent', cells: words(range.n),
       perfect_all: words(reliable.perfect), runs_all: words(reliable.runs),
+      model_light: sayAt(models.light), model_mid: sayAt(models.mid), model_top: sayAt(models.top),
+      name_light: sayName(models.light.name), name_mid: sayName(models.mid.name), name_top: sayName(models.top.name),
     },
     cap: {
       tok_ref: showTokens(c.tokens), tok_best: showTokens(b.tokens),
@@ -149,6 +195,8 @@ export function compute(data) {
       questions: num((study.questions || []).length), classes: num((data.classes || []).length),
       range_min: range.min + '%', range_max: range.max + '%', cells: num(range.n),
       perfect_all: num(reliable.perfect), runs_all: num(reliable.runs),
+      model_light: models.light.label, model_mid: models.mid.label, model_top: models.top.label,
+      name_light: models.light.name, name_mid: models.mid.name, name_top: models.top.name,
     },
   };
   return facts;
@@ -165,5 +213,5 @@ export function writeFacts() {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const f = writeFacts();
   console.log(`facts: best ${f.best.tokText} tokens ${f.best.turnsText} turns (${f.best.name}); no index ${f.control.tokText} ${f.control.turnsText}; ${f.pct}% fewer; ${f.rows.length} rows`);
-  console.log(`facts: ${f.range.n} comparisons, ${f.range.min}% to ${f.range.max}% fewer (${f.cells.map((q) => `${q.className} ${q.setName} ${q.pct}%`).join(', ')}); ${f.reliable.perfect} of ${f.reliable.runs} runs fully correct; label "${f.bestLabel}"`);
+  console.log(`facts: ${f.range.n} comparisons, ${f.range.min}% to ${f.range.max}% fewer (${f.cells.map((q) => `${q.className}, ${q.setName} ${q.pct}%`).join('; ')}); ${f.reliable.perfect} of ${f.reliable.runs} runs fully correct; label "${f.bestLabel}"`);
 }

@@ -7,6 +7,15 @@ node_modules/
 .shot-*/
 .render-*/
 .numbers-*/
+.grab-*/
+.grain-*/
+.fps-*/
+.play-*/
+.ctl-*/
+.det-*/
+.cs-*/
+.gpuprobe-*/
+.capprobe-*/
 bin/
 models/
 build/

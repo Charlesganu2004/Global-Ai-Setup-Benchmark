@@ -2,88 +2,80 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0a0c">
-<title>PeterGanuRusty (PGR): a local engine that lets AI coding agents find code in one step</title>
-<meta name="description" content="PeterGanuRusty (PGR) is a command-line program on the developer's own machine that an AI coding agent calls to look up code. Measured results: tokens, turns and mean score on one Python repository.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#08090b">
+<title>PeterGanuRusty (pgr): code lookup for AI coding agents</title>
+<meta name="description" content="PeterGanuRusty (pgr) is a desktop command-line tool for AI coding agents, written in Rust. Any agent that can run a command can use it to find where something is defined and what calls it. Local only. Measured under Claude Code. A smaller check under the Codex CLI showed no consistent saving (see Benchmarks).">
+<meta property="og:title" content="PeterGanuRusty (pgr): code lookup for AI coding agents">
+<meta property="og:description" content="A desktop command-line tool, written in Rust, that AI coding agents call to look things up in the repository they work in. Measured tokens and turns, one install command.">
+<meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
-<script>document.documentElement.className += " js" + (window.WebGL2RenderingContext ? " gl-on" : "");</script>
-<link rel="stylesheet" href="assets/app.css?v=2e9ba78a">
+<script>(function () { var r = document.documentElement; r.className += " js"; try { var t = localStorage.getItem("pgr-theme"); if (t === "light" || t === "dark") r.setAttribute("data-theme", t); } catch (e) { /* no storage: follow the system */ } })();</script>
+<style>@view-transition { navigation: auto; } @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }</style>
+<link rel="stylesheet" href="assets/app.css?v=69c66cda">
+<link rel="stylesheet" href="assets/blocks.css?v=86d5eed5">
+<link rel="stylesheet" href="assets/home.css?v=99e4b834">
 </head>
 <body class="home">
 <a class="skip" href="#main">Skip to content</a>
-<div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></div>
-<!--slot:sidebar--><header class="sidebar">
-    <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
-    <nav aria-label="Pages">
-    <div class="side-wrap">
-      <span class="side-ind" aria-hidden="true" style="--i:0"></span>
-      <ul class="side-pages">
-        <li><a href="index.html" aria-current="page">Overview</a>
-        <ul class="side-sections" aria-label="On this page">
-          <li><a href="#readkey">How to read the numbers</a></li>
-          <li><a href="#problem">Every turn re-reads everything</a></li>
-          <li><a href="#result">Headline result</a></li>
-          <li><a href="#most-reliable">Most reliable configuration</a></li>
-          <li><a href="#benefits">What it does for an agent</a></li>
-          <li><a href="#films">Films</a></li>
-          <li><a href="#next">Next</a></li>
-        </ul></li>
-        <li><a href="benchmarks.html">Benchmarks</a></li>
-        <li><a href="study.html">Study</a></li>
-        <li><a href="install.html">Install</a></li>
-      </ul>
-    </div>
-  </nav>
-  </header><!--/slot:sidebar-->
-<main id="main" class="page">
-  <section class="hero pin" id="hero" aria-labelledby="title">
-    <div class="pin-stage hero-stage">
-      <div class="hero-copy large-title">
-        <p class="brandline"><svg class="logo draw" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path pathLength="1" d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>PeterGanuRusty</p>
-        <h1 id="title" aria-label="A local engine that lets AI coding agents find code in one step"><span class="w" aria-hidden="true" style="--i:0"><span>A</span></span> <span class="w" aria-hidden="true" style="--i:1"><span>local</span></span> <span class="w" aria-hidden="true" style="--i:2"><span>engine</span></span> <span class="w" aria-hidden="true" style="--i:3"><span>that</span></span> <span class="w" aria-hidden="true" style="--i:4"><span>lets</span></span> <span class="w" aria-hidden="true" style="--i:5"><span>AI</span></span> <span class="w" aria-hidden="true" style="--i:6"><span>coding</span></span> <span class="w" aria-hidden="true" style="--i:7"><span>agents</span></span> <span class="w" aria-hidden="true" style="--i:8"><span>find</span></span> <span class="w" aria-hidden="true" style="--i:9"><span>code</span></span> <span class="w" aria-hidden="true" style="--i:10"><span>in</span></span> <span class="w" aria-hidden="true" style="--i:11"><span>one</span></span> <span class="w" aria-hidden="true" style="--i:12"><span>step</span></span></h1>
-        <p class="lede"><!--slot:lede-->PeterGanuRusty (PGR) is a command-line program that runs on the developer&#x27;s own machine. An AI coding agent calls it to look things up in the code it is working on, such as where a function is defined and what calls it, and nothing leaves the machine.<!--/slot:lede--></p>
-        <p class="hero-links"><!--slot:watch--><a class="btn" href="#films">Watch the 22 second film</a><!--/slot:watch--><a class="btn quiet" href="study.html">Read the study</a></p>
+<!--slot:nav--><header class="nav" id="nav" data-cmd-windows="irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex" data-cmd-unix="curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh">
+    <div class="nav-in">
+      <a class="brand" href="index.html" aria-label="PeterGanuRusty, overview"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></a>
+      <nav class="nav-links" id="nav-links" aria-label="Pages"><span class="nav-ind" aria-hidden="true"></span>
+      <a href="index.html" aria-current="page">Overview</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="study.html">Study</a>
+      <a href="install.html">Install</a>
+      </nav>
+      <div class="nav-tools">
+        <button type="button" class="kbd-btn" data-palette aria-haspopup="dialog" aria-label="Open the command palette"><span>Search</span><kbd data-mod>Ctrl</kbd><kbd>K</kbd></button>
+        <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch the theme"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="sun" cx="12" cy="12" r="4.2"/><path class="rays" d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><path class="moon" d="M19.6 14.4A8 8 0 0 1 9.6 4.4a8 8 0 1 0 10 10z"/></svg></button>
+        <a class="icon-btn" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" aria-label="The repository on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
       </div>
-      <!--slot:stage--><div class="hero-read">
-    <p class="sr-only">No index: 294k tokens and 4.0 turns. PGR: graph and search: 134k tokens and 2.0 turns. That is 160k fewer tokens, 54%, on the light class with the original questions. Across four cells: 28% to 54%.</p>
-    <div class="hero-vis" aria-hidden="true">
-      <p class="body-tag tag-ref"><span class="bt-name">No index</span><span class="bt-val"><b>294k</b> tokens, <b>4.0</b> turns</span></p>
-      <p class="body-tag tag-best"><span class="bt-name">PGR: graph and search</span><span class="bt-val"><b>134k</b> tokens, <b>2.0</b> turns</span></p>
-      <div class="hero-count">
-        <p class="hero-count-label">Tokens per task</p>
-        <p class="hero-num" data-from="293653" data-to="134013">294k</p>
-        <p class="hero-state"><span class="st-ref">No index</span><span class="st-best">PGR: graph and search</span></p>
-        <p class="hero-delta">160k fewer tokens, 54%, on the light class with the original questions. Across four cells: 28% to 54%</p>
+    </div>
+  </header><!--/slot:nav-->
+<div class="progress" id="progress" aria-hidden="true"></div>
+<div class="ambient" aria-hidden="true"><i class="amb-glow"></i></div>
+<main id="main">
+  <section class="scene" id="top" aria-labelledby="title">
+    <div class="scene-bg" aria-hidden="true"><span class="glow"></span><span class="grid"></span></div>
+    <div class="scene-in">
+      <div class="hero-copy">
+        <h1 id="title" class="display" aria-label="Find code in one step"><span class="w" aria-hidden="true" style="--i:0"><span>Find</span></span> <span class="w" aria-hidden="true" style="--i:1"><span>code</span></span> <span class="w" aria-hidden="true" style="--i:2"><span>in</span></span> <span class="w" aria-hidden="true" style="--i:3"><span>one</span></span> <span class="w" aria-hidden="true" style="--i:4"><span>step.</span></span></h1>
+        <div class="hero-row">
+          <div class="hero-text"><p class="lede"><!--slot:lede-->PeterGanuRusty (pgr) is a desktop command-line tool for AI coding agents, written in Rust. The agent asks it where a function is defined and what calls it, and gets the answer in one step. It works with any agent that can run a command.<!--/slot:lede--></p><p class="lede-note"><!--slot:ledenote-->It runs only on your own machine, with no account, no server and no network use. Measured under Claude Code. A smaller check under the Codex CLI showed no consistent saving (see Benchmarks).<!--/slot:ledenote--></p></div>
+          <p class="hero-links"><a class="btn primary magnet" href="install.html">Install pgr</a><a class="btn ghost" href="benchmarks.html">See the measurements</a><!--slot:watch--><a class="btn ghost" href="#films">Watch the trailer, 30 seconds</a><!--/slot:watch--></p>
+        </div>
+        <div class="hero-cmd"><!--slot:cmdbox--><div class="cmdbox" data-cmdbox><div class="cmd-tabs" role="radiogroup" aria-label="System"><button type="button" role="radio" aria-checked="true" tabindex="0" data-sys="windows">Windows</button><button type="button" role="radio" aria-checked="false" tabindex="-1" data-sys="unix">macOS and Linux</button></div><div class="cmd-line" data-sys="windows"><code>irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex</code><button type="button" class="copy" data-copy="irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex" aria-label="Copy the install command for Windows"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-sys="unix"><code>curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh</code><button type="button" class="copy" data-copy="curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh" aria-label="Copy the install command for macOS and Linux"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><p class="cmd-note" data-sys="windows">Run it in PowerShell. No administrator rights.</p><p class="cmd-note" data-sys="unix">Run it in a terminal. No root.</p></div><!--/slot:cmdbox--></div>
       </div>
-      <p class="hero-key">One particle is <b data-per>10</b> tokens. The thickness of a stream is its tokens per task.</p>
+      <!--slot:scene--><div class="duel" id="duel" role="group" aria-label="Three lookups, replayed with and without an index">
+    <p class="sr-only">With no index, an agent read 294k tokens over 4.0 turns to answer three lookups. With a pack made by the program and no command to call: 71k tokens over 1.0 turns.</p>
+    <figure class="term term-ref" data-turns="4" data-tokens="293653">
+      <figcaption class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term-title">Agent, no index</span><span class="term-state" data-done="answered in 4 turns">answered in 4 turns</span></figcaption>
+      <div class="term-body"><p class="term-task"><span>task</span>Three lookups: who calls load, where parse_config is defined, and which function loads the settings.</p>
+      <ol class="turns">
+        <li class="turn" style="--i:0;--w:25.000%"><span class="turn-n">1</span><span class="turn-cmd is-cmd">search &quot;parse_config&quot;</span><span class="turn-plus">+73k</span><span class="turn-out"><span class="ol">matches in several files</span></span></li>
+        <li class="turn" style="--i:1;--w:25.000%"><span class="turn-n">2</span><span class="turn-cmd">read file</span><span class="turn-plus">+73k</span><span class="turn-out"><span class="ol">the conversation is read again</span></span></li>
+        <li class="turn" style="--i:2;--w:25.000%"><span class="turn-n">3</span><span class="turn-cmd">read file</span><span class="turn-plus">+73k</span><span class="turn-out"><span class="ol">the conversation is read again</span></span></li>
+        <li class="turn" style="--i:3;--w:25.000%"><span class="turn-n">4</span><span class="turn-cmd">answer</span><span class="turn-plus">+73k</span><span class="turn-out"><span class="ol">answers the three lookups</span></span></li>
+      </ol></div>
+      <div class="meter"><div class="meter-track" aria-hidden="true"><i class="blk" style="--i:0;--w:25.000%"></i><i class="blk" style="--i:1;--w:25.000%"></i><i class="blk" style="--i:2;--w:25.000%"></i><i class="blk" style="--i:3;--w:25.000%"></i></div><p class="meter-read"><span class="meter-label">Context read</span><b class="tok" data-to="293653">294k</b><span class="meter-unit">tokens</span><span class="meter-turns">4 turns</span></p></div>
+    </figure>
+    <figure class="term term-best" data-turns="1" data-tokens="70631">
+      <figcaption class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term-title">Agent, with pgr</span><span class="term-state" data-done="answered in 1 turn">answered in 1 turn</span></figcaption>
+      <div class="term-body"><p class="term-task"><span>task</span>Three lookups: who calls load, where parse_config is defined, and which function loads the settings.</p>
+      <p class="term-task term-pack"><span>pack</span>Made by the program before the agent started: the definitions, callers and matching code for the three lookups.</p>
+      <ol class="turns">
+        <li class="turn" style="--i:0;--w:24.053%"><span class="turn-n">1</span><span class="turn-cmd">answer</span><span class="turn-plus">+71k</span><span class="turn-out"><span class="ol">the pack is already in the prompt</span><span class="ol">answers the three lookups</span></span></li>
+      </ol></div>
+      <div class="meter"><div class="meter-track" aria-hidden="true"><i class="blk" style="--i:0;--w:24.053%"></i></div><p class="meter-read"><span class="meter-label">Context read</span><b class="tok" data-to="70631">71k</b><span class="meter-unit">tokens</span><span class="meter-turns">1 turn</span><span class="bt-name">A brief pack alone, without a lookup command</span></p></div>
+    </figure>
+    <div class="duel-foot"><p class="duel-delta"><b>223k fewer tokens</b><span class="pct">76%</span><span class="why">in this one cell, Claude Haiku 5.5 at low effort with the original questions. Across four cells: 72% to 80%.</span></p><div class="duel-ctl" hidden></div></div>
+    <p class="pick-line"><b>Read before relying on it.</b> A pack made before the agent started; the agent had no command to call. The builders wrote the questions, and the held-out set is not held out for it. Open-ended work was not tested. The no-index figure is from round five. <a href="#pick">What it means</a></p>
+    <p class="duel-key">An illustrative session. The turns and the tokens are the measured means for one agent answering three lookups; the file names are made up.</p>
+  </div><!--/slot:scene-->
     </div>
-  </div><!--/slot:stage-->
-      <button type="button" class="motion-btn" hidden>Pause motion</button>
-    </div>
-  </section>
-
-  <!--slot:hero--><figure class="card stream" id="stream" aria-labelledby="stream-title">
-  <p class="stream-title" id="stream-title">Tokens per task, light model class, original questions, one agent answering three lookups</p>
-  <div class="lanes">
-    <div class="lane lane-ref" style="--w:100%"><p class="lane-label"><span class="lane-name">No index</span><span class="lane-val"><b data-tok>294k</b> tokens, <b data-turns>4.0</b> turns</span></p><div class="lane-track"></div></div>
-    <div class="lane lane-best" style="--w:45.64%"><p class="lane-label"><span class="lane-name">PGR: graph and search</span><span class="lane-val"><b data-tok>134k</b> tokens, <b data-turns>2.0</b> turns</span></p><div class="lane-track"></div><div class="gap"><span>160k fewer tokens, 54%</span></div></div>
-  </div>
-  <div class="scale" aria-hidden="true"><span style="--t:0.00" data-v="0">0</span><span style="--t:34.05" data-v="100000">100k</span><span style="--t:68.11" data-v="200000">200k</span><span style="--t:100.00" data-v="293653">294k</span></div>
-  <p class="stream-key">One particle is 1k tokens. Lane length is tokens per task. Stream speed is turns per task. This is one cell, the light class with the original questions. Across the four cells where both were measured the saving was 28% to 54%.</p>
-  <p class="sr-only">No index: 294k tokens and 4.0 turns. PGR: graph and search: 134k tokens and 2.0 turns. That is 160k fewer tokens, 54%, in this one cell.</p>
-</figure><!--/slot:hero-->
-
-  <section class="section readkey" aria-labelledby="readkey">
-    <h2 id="readkey" class="section-title">How to read the numbers</h2>
-    <!--slot:key--><dl class="key" aria-label="How to read these results">
-    <div><dt>Evidence</dt><dd>The results on this site come from one Python repository: 112 runs of a single agent in 42 cells, three runs in most of them.</dd></div>
-    <div><dt>Tokens and turns</dt><dd>A token count is all the text the model read or wrote over a task, including the conversation it reads again on every turn, and a turn is one round trip to the model.</dd></div>
-    <div><dt>Model classes</dt><dd>Model classes are named by size, the light class being the smallest.</dd></div>
-    <div><dt>Questions</dt><dd>The original questions are the three lookups used in every round; the held-out questions are a second set of three.</dd></div>
-    <div><dt>Status</dt><dd>The package is in private preview.</dd></div>
-  </dl><!--/slot:key-->
   </section>
 
   <!--slot:problem--><section class="chapter ch-problem pin" aria-labelledby="problem">
@@ -91,122 +83,241 @@
     <div class="ch-copy">
       <h2 id="problem" class="kin" aria-label="Every turn re-reads everything"><span class="kl" aria-hidden="true"><span>Every turn</span></span> <span class="kl" aria-hidden="true"><span>re-reads</span></span> <span class="kl" aria-hidden="true"><span>everything</span></span></h2>
       <p class="ch-lede">An agent works in turns, and on each turn it reads its whole conversation again. Every extra turn pays for the same context one more time.</p>
-      <p class="ch-lede">Two turns is the floor for a lookup: one to ask and one to answer. PGR: graph and search took 2.0 turns per task on the light class and the original questions. No index took 4.0. On the held-out questions it took 2.7 turns, and no index 4.7.</p>
+      <p class="ch-lede">Two turns is the floor for a lookup that needs a command: one to ask and one to answer. A pack in the prompt, with no command to call, takes the asking turn away; given the commands as well, agents still ran a lookup in 11 of 12 runs. A brief pack alone, without a lookup command took 1.0 turns per task on Claude Haiku 5.5 at low effort and the original questions. No index took 4.0. On the held-out questions it took 1.0 turns, and no index 4.7.</p>
     </div>
     <figure class="stacks" aria-labelledby="stacks-cap">
-      <div class="stack ref" style="--n:4"><p class="stack-total"><b>4.0</b> turns</p><div class="stack-col"><i class="slab" style="--h:25.000%;--i:0"><span>1</span></i><i class="slab" style="--h:25.000%;--i:1"><span>2</span></i><i class="slab" style="--h:25.000%;--i:2"><span>3</span></i><i class="slab" style="--h:25.000%;--i:3"><span>4</span></i></div><p class="stack-name">No index<span>about 73k a turn</span></p></div>
-      <div class="stack best" style="--n:2"><p class="stack-total"><b>2.0</b> turns</p><div class="stack-col"><i class="slab" style="--h:22.818%;--i:0"><span>1</span></i><i class="slab" style="--h:22.818%;--i:1"><span>2</span></i></div><p class="stack-name">PGR: graph and search<span>about 67k a turn</span></p></div>
-      <figcaption id="stacks-cap">One block is one turn, at the average tokens a turn. Both stacks are drawn to one scale. Light model class, original questions, one agent answering three lookups.</figcaption>
+      <div class="stack ref" style="--n:4"><div class="stack-col"><i class="slab" style="--h:25.000%;--i:0"><b class="ec"></b><span>1</span></i><i class="slab" style="--h:25.000%;--i:1"><b class="ec"></b><span>2</span></i><i class="slab" style="--h:25.000%;--i:2"><b class="ec"></b><span>3</span></i><i class="slab" style="--h:25.000%;--i:3"><b class="ec"></b><span>4</span></i></div><p class="stack-total"><b>4.0</b> turns</p><p class="stack-name">No index<span>about 73k a turn, <b class="stack-tok">294k</b> in all</span></p></div>
+      <div class="stack best" style="--n:1"><div class="stack-col"><i class="slab" style="--h:24.053%;--i:0"><b class="ec"></b><span>1</span></i></div><p class="stack-total"><b>1.0</b> turns</p><p class="stack-name">A brief pack alone, without a lookup command<span>about 71k a turn, <b class="stack-tok">71k</b> in all</span></p></div>
+      <figcaption id="stacks-cap">One block is one turn, at the average tokens a turn, and each turn reads the blocks below it again. Both stacks are drawn to one scale. Claude Haiku 5.5 at low effort, original questions, one agent answering three lookups.</figcaption>
     </figure>
   </div>
 </section><!--/slot:problem-->
 
-  <section class="section result" aria-labelledby="result">
-    <h2 id="result" class="section-title">Headline result</h2>
-    <!--slot:figures--><p class="group-title">Most reliable configuration, light model class, original questions, one agent answering three lookups. Tokens and turns are set against no index, fully correct runs and mean score against the first generation</p>
+  <section class="chapter ch-saving pin" aria-labelledby="result">
+    <div class="pin-stage">
+      <h2 id="result" class="kin" aria-label="What it saves"><span class="kl" aria-hidden="true"><span>What it saves</span></span></h2>
+      <div class="saving-body">
+        <!--slot:figures--><p class="group-title">Most reliable configuration, Claude Haiku 5.5 at low effort, original questions, one agent answering three lookups. Tokens and turns are set against no index, fully correct runs and mean score against the first generation</p>
+    <div class="saving-grid">
+    <div class="saving-lead"><p class="lead-kicker">Fewer tokens than no index</p><div class="ring"><svg viewBox="0 0 100 100" aria-hidden="true" focusable="false"><circle class="ring-track" cx="50" cy="50" r="44"/><circle class="ring-fill" cx="50" cy="50" r="44" pathLength="1" style="--v:0.7595"/></svg><p class="lead-num"><b>76%</b></p></div><p class="lead-cap">In this one cell: Claude Haiku 5.5 at low effort, the original questions.</p><p class="lead-range">Across the four cells measured: 72% to 80%.</p><div class="gauge" aria-hidden="true"><span class="g-track"><i class="g-fill" style="--v:0.2405"></i></span><span class="g-labels"><span>71k with pgr</span><span>294k no index</span></span></div></div>
     <dl class="rl">
-      <div class="rl-row"><dt class="rl-label">Tokens per task</dt><dd class="rl-value" data-count="tokens" data-from="293653" data-to="134013">134k</dd><dd class="rl-note">No index: 294k, 54% fewer in this cell</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">No index</span><span class="rl-num">294k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">PGR: graph and search</span><span class="rl-num">134k</span><span class="rl-bar"><i style="--v:0.4564"></i></span></span></dd></div>
-      <div class="rl-row"><dt class="rl-label">Turns per task</dt><dd class="rl-value" data-count="turns" data-from="4.0000" data-to="2.0000">2.0</dd><dd class="rl-note">No index: 4.0. Held-out questions: 2.7, no index 4.7</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">No index</span><span class="rl-num">4.0</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">PGR: graph and search</span><span class="rl-num">2.0</span><span class="rl-bar"><i style="--v:0.5000"></i></span></span></dd></div>
-      <div class="rl-row"><dt class="rl-label">Fully correct runs</dt><dd class="rl-value">3 of 3</dd><dd class="rl-note">Our engine, first generation, with embeddings: 3 of 3</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">Our engine, first generation, with embeddings</span><span class="rl-num">3 of 3</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">PGR: graph and search</span><span class="rl-num">3 of 3</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></dd></div>
-      <div class="rl-row"><dt class="rl-label">Mean score</dt><dd class="rl-value">100%</dd><dd class="rl-note">Our engine, first generation, with embeddings: 100%</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">Our engine, first generation, with embeddings</span><span class="rl-num">100%</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">PGR: graph and search</span><span class="rl-num">100%</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></dd></div>
+      <div class="rl-row"><dt class="rl-label">Tokens per task</dt><dd class="rl-value">71k</dd><dd class="rl-note">No index: 294k, 76% fewer in this cell</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">No index</span><span class="rl-num">294k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">A brief pack alone, without a lookup command</span><span class="rl-num">71k</span><span class="rl-bar"><i style="--v:0.2405"></i></span></span></dd></div>
+      <div class="rl-row"><dt class="rl-label">Turns per task</dt><dd class="rl-value">1.0</dd><dd class="rl-note">No index: 4.0. Held-out questions: 1.0, no index 4.7</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">No index</span><span class="rl-num">4.0</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">A brief pack alone, without a lookup command</span><span class="rl-num">1.0</span><span class="rl-bar"><i style="--v:0.2500"></i></span></span></dd></div>
+      <div class="rl-row"><dt class="rl-label">Fully correct runs</dt><dd class="rl-value">3 of 3</dd><dd class="rl-note">Our engine, first generation, with embeddings: 3 of 3</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">Our engine, first generation, with embeddings</span><span class="rl-num">3 of 3</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">A brief pack alone, without a lookup command</span><span class="rl-num">3 of 3</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></dd></div>
+      <div class="rl-row"><dt class="rl-label">Mean score</dt><dd class="rl-value">100%</dd><dd class="rl-note">Our engine, first generation, with embeddings: 100%</dd><dd class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">Our engine, first generation, with embeddings</span><span class="rl-num">100%</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">A brief pack alone, without a lookup command</span><span class="rl-num">100%</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></dd></div>
     </dl>
-    <div class="fine">
-    <p class="footnote">This is one cell. Across the four cells where "PGR: graph and search" and no index were both measured, the saving in tokens was 28% to 54% (light class, original questions, 54%; mid class, original questions, 49%; light class, held-out questions, 50%; mid class, held-out questions, 28%).</p>
-    <p class="footnote">Fully correct runs and mean score are not set against no index: another tool on the test machine altered some of its reads, which lowered its correctness. <a href="study.html#control">Why this matters</a>.</p>
     </div><!--/slot:figures-->
+      </div>
+    </div>
+  </section>
+  <section class="chapter ch-notes" aria-label="What the figures above are and are not">
+    <!--slot:notes--><div class="fine">
+      <p class="footnote">This is one cell. Across the four cells where "A brief pack alone, without a lookup command" and no index were both measured, the saving in tokens was 72% to 80% (Claude Haiku 5.5 at low effort, original questions, 76%; Claude Sonnet 5.5 at medium effort, original questions, 73%; Claude Haiku 5.5 at low effort, held-out questions, 80%; Claude Sonnet 5.5 at medium effort, held-out questions, 72%).</p>
+      <p class="footnote">Fully correct runs and mean score are not set against no index: another tool on the test machine altered some of its reads, which lowered its correctness. <a href="study.html#control">Why this matters</a>.</p>
+    </div><!--/slot:notes-->
   </section>
 
-  <section class="section reliable" aria-labelledby="most-reliable">
+  <section class="chapter ch-does pin" id="does" aria-labelledby="benefits">
+    <div class="pin-stage">
+      <div class="does-head">
+        <h2 id="benefits" class="kin" aria-label="What it does for an agent"><span class="kl" aria-hidden="true"><span>What it does</span></span> <span class="kl" aria-hidden="true"><span>for an agent</span></span></h2>
+        <p class="ch-lede">One call answers the question an agent asks most. The first capability is the one this site measures; the others are shown so you know what else the command does.</p>
+      </div>
+      <div class="caps">
+        <article class="cap cap-main">
+          <svg class="fig" viewBox="0 0 160 100" aria-hidden="true" focusable="false">
+            <path class="wire" pathLength="1" d="M22 50H72"/>
+            <g class="fan"><path pathLength="1" d="M94 50 138 15"/><path pathLength="1" d="M94 50 144 32"/><path pathLength="1" d="M94 50h52"/><path pathLength="1" d="M94 50 144 68"/><path pathLength="1" d="M94 50 138 85"/></g>
+            <circle class="node" cx="16" cy="50" r="5"/>
+            <rect class="hit" x="72" y="39" width="22" height="22" rx="4"/>
+            <g class="lit"><circle cx="138" cy="15" r="4"/><circle cx="144" cy="32" r="4"/><circle cx="146" cy="50" r="4"/><circle cx="144" cy="68" r="4"/><circle cx="138" cy="85" r="4"/></g>
+            <circle class="tok" cx="22" cy="50" r="3"/>
+          </svg>
+          <h3 class="cap-title">Finds definitions and callers in one call</h3>
+          <p class="cap-text">An agent asks once and gets where a function is defined, its parameters and every function that calls it.</p>
+          <p class="cap-cmd"><code>pgr about SomeFunction</code></p>
+          <span class="tag">Measured</span>
+        </article>
+        <article class="cap">
+          <svg class="fig" viewBox="0 0 160 100" aria-hidden="true" focusable="false"><path class="wire" pathLength="1" d="M18 30h124M18 50h96M18 70h110"/><circle class="node" cx="136" cy="50" r="6"/></svg>
+          <h3 class="cap-title">Searches code by meaning</h3>
+          <p class="cap-text">An agent describes a job in words and gets the function that does it.</p>
+          <p class="cap-cmd"><code>pgr find "where tokens expire"</code></p>
+          <span class="tag quiet">Not measured</span>
+        </article>
+        <article class="cap">
+          <svg class="fig" viewBox="0 0 160 100" aria-hidden="true" focusable="false"><path class="wire" pathLength="1" d="M80 18v22M80 40 40 70M80 40l40 30"/><circle class="node" cx="80" cy="14" r="6"/><circle class="node" cx="40" cy="74" r="5"/><circle class="node" cx="120" cy="74" r="5"/></svg>
+          <h3 class="cap-title">Shows what a change touches</h3>
+          <p class="cap-text">Before editing, an agent sees what depends on the code it is about to change.</p>
+          <p class="cap-cmd"><code>pgr affected SomeFunction</code></p>
+          <span class="tag quiet">Not measured</span>
+        </article>
+        <article class="cap">
+          <svg class="fig" viewBox="0 0 160 100" aria-hidden="true" focusable="false"><path class="wire" pathLength="1" d="M30 70c0-30 30-40 50-40s50 10 50 40"/><circle class="node" cx="30" cy="70" r="5"/><circle class="node" cx="80" cy="30" r="5"/><circle class="node" cx="130" cy="70" r="5"/></svg>
+          <h3 class="cap-title">Remembers findings across sessions</h3>
+          <p class="cap-text">What an agent has already worked out does not have to be found again next time. A finding is stored with pgr retain and read back with pgr recall.</p>
+          <p class="cap-cmd"><code>pgr recall "how does login work"</code></p>
+          <span class="tag quiet">Not measured</span>
+        </article>
+      </div>
+      <p class="footnote">The study measures the first capability. One of its questions describes a job in words, but the runs do not show whether searching by meaning helps (see <a href="study.html#limits">Limits</a> on the Study page). The other capabilities are not covered by the measurements on this site.</p>
+    </div>
+  </section>
+
+  <section class="chapter ch-trust" aria-labelledby="most-reliable">
     <h2 id="most-reliable" class="section-title">Most reliable configuration</h2>
-    <!--slot:best--><p class="rl-who"><span class="rl-who-name">PGR: graph and search</span><span class="tag">Most reliable</span></p>
+    <div class="trust-grid">
+      <div class="best-card tilt">
+        <!--slot:best--><p class="rl-who"><span class="rl-who-name">A brief pack alone, without a lookup command</span><span class="tag">Most reliable</span></p>
+    <div class="rp" role="img" aria-label="Fewer tokens than no index in each of four cells: 72% to 80%"><div class="rp-axis" aria-hidden="true"><span style="--v:0.0000">0%</span><span style="--v:0.2000">20%</span><span style="--v:0.4000">40%</span><span style="--v:0.6000">60%</span><span style="--v:0.8000">80%</span><span style="--v:1.0000">100%</span></div><div class="rp-track" aria-hidden="true"><span class="rp-span" style="--a:0.7211;--b:0.8035"></span><i class="rp-dot" style="--v:0.7595"></i><i class="rp-dot" style="--v:0.7323"></i><i class="rp-dot" style="--v:0.8035"></i><i class="rp-dot" style="--v:0.7211"></i></div></div><ul class="rp-legend"><li><b>80%</b><span>Claude Haiku 5.5 at low effort, held-out questions</span></li><li><b>76%</b><span>Claude Haiku 5.5 at low effort, original questions</span></li><li><b>73%</b><span>Claude Sonnet 5.5 at medium effort, original questions</span></li><li><b>72%</b><span>Claude Sonnet 5.5 at medium effort, held-out questions</span></li></ul>
     <dl class="ledger">
-      <div><dt>Shown for</dt><dd>Light class, original questions</dd></div>
+      <div><dt>Shown for</dt><dd>Claude Haiku 5.5 at low effort, original questions</dd></div>
       <div><dt>Runs</dt><dd>3</dd></div>
       <div><dt>Fully correct, all four cells</dt><dd>12 of 12</dd></div>
-      <div><dt>Fewer tokens than no index, this cell</dt><dd>54%</dd></div>
-      <div><dt>Fewer tokens than no index, across the cells measured</dt><dd><span class="range-dots" aria-hidden="true"><i style="--v:0.5436"></i><i style="--v:0.4894"></i><i style="--v:0.4981"></i><i style="--v:0.2808"></i></span>28% to 54%</dd></div>
+      <div><dt>Fewer tokens than no index, this cell</dt><dd>76%</dd></div>
+      <div><dt>Fewer tokens than no index, across the cells measured</dt><dd>72% to 80%</dd></div>
+      <div><dt>When no index ran</dt><dd>Round five, a day before round six (2026-10-14)</dd></div>
     </dl>
     <p class="group-title spaced">Fully correct runs over both question sets</p>
-    <p class="proof-text">Across both question sets and both model classes, in these runs, one agent using &quot;PGR: graph and search&quot; was fully correct in 12 of 12 runs, against 10 of 11 with &quot;Our engine, first generation, with embeddings&quot;. On the held-out questions alone, 6 of 6 against 4 of 5.</p>
-    <div class="fine"><p class="footnote">Counted over four cells: the light and mid classes, on the original and the held-out questions. The held-out questions are a second set of three questions of the same three shapes, written later by the same team. The people and agents who built the engine did not see them while building it.</p>
-      <p class="footnote">&quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
+    <p class="proof-text">Across both question sets and both models, in these runs, one agent using &quot;A brief pack alone, without a lookup command&quot; was fully correct in 12 of 12 runs, against 10 of 11 with &quot;Our engine, first generation, with embeddings&quot;. On the held-out questions alone, 6 of 6 against 4 of 5, though the held-out set is not held out for a round-six configuration.</p>
+    <div class="fine"><p class="footnote">Counted over four cells: Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions. The held-out questions are a second set of three questions of the same three shapes, written later by the same team. The people and agents who built the engine through round five did not see them while building it. The pack of round six was written after these questions had been run, so for round six they are a second set of questions, not an untouched one. Round six ran on 2026-10-14, a day after round five. Its rows are set against their own baseline in the Round six chapter, except the highlighted one when it is a round-six row: its no-index figure is from round five.</p>
+      <p class="footnote">&quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
+    </div>
+    <div class="pick" id="pick">
+      <h3 class="pick-title">What the rule picked, and what that means</h3>
+      <p class="pick-text">The rule is the highest share of fully correct runs over four cells, then the fewest tokens. Six configurations were eligible and four of them were fully correct in every run of the four cells. A pack alone used the fewest tokens of those, so it is the one marked. The rule was written after round five and before round six ran. After it, in the rule's order, and averaged over the same four cells:</p>
+      <ul class="pick-after"><li><b>PGR, graph and search, with a brief pack</b><span>12 of 12 fully correct, 155k tokens, 2.2 turns</span></li><li><b>PGR: graph and search</b><span>12 of 12 fully correct, 157k tokens, 2.3 turns</span></li><li><b>PGR: code graph</b><span>12 of 12 fully correct, 198k tokens, 2.9 turns</span></li></ul>
+      <ul class="pick-caveats">
+        <li><b>What a pack alone means for your own agents.</b> The harness that starts the agent runs <code>pgr pack</code> on the task and puts the output in the agent's brief. The agent answers from it and calls no command and no tool. Making a pack used no language model: the program&#x27;s own search found the matches, with its small neural table switched on. The agent made one call, with the pack in its prompt.</li>
+        <li><b>The questions suit it.</b> The builders wrote them, and two of the three in each set name the function in backticks. A pack is built from the words of the question, so it finds such a function at once.</li>
+        <li><b>The held-out questions are not held out for it.</b> The part of the pack that finds the functions a question names was written after the held-out questions had been run in round five. For this pick they are a second set of questions, not an untouched one.</li>
+        <li><b>It has not been tested on open-ended work.</b> Nothing here asked an agent to find a bug, change code or explore a repository it was not pointed at. Where the pack misses what is needed, an agent with no command cannot look further.</li>
+        <li><b>The saving against no index crosses rounds.</b> No index was last run in round five, a day earlier than round six. The same configuration run in both rounds started with a context 296 tokens larger in round six, 0.5% of that context.</li>
+      </ul>
     </div><!--/slot:best-->
+      </div>
+      <aside class="readkey" aria-labelledby="readkey">
+        <h3 id="readkey" class="aside-title">How to read the numbers</h3>
+        <!--slot:key--><dl class="key" aria-label="How to read these results">
+    <div><dt>Evidence</dt><dd>The results on this site come from one repository, a Python project: 172 runs of a single agent in 62 cells, three runs in most of them. The engine itself is written in Rust.</dd></div>
+    <div><dt>Tokens and turns</dt><dd>A token count is all the text the model read or wrote over a task, including the conversation it reads again on every turn, and a turn is one round trip to the model.</dd></div>
+    <div><dt>Models</dt><dd>The runs asked for a class of model: the smallest, a middle one and the largest. These are the models those classes meant on the days of rounds one to five, 2026-10-07 to 2026-10-14: Claude Haiku 5.5 at low effort, Claude Sonnet 5.5 at medium effort, Claude Opus 5.5 at maximum effort. Round six, on 2026-10-14, asked for the same classes; its records name only the model family, so its versions are taken to be the same.</dd></div>
+    <div><dt>Questions</dt><dd>The original questions are the three lookups used in every round; the held-out questions are a second set of three.</dd></div>
+  </dl><!--/slot:key-->
+      </aside>
+    </div>
   </section>
 
-  <section class="section does" aria-labelledby="benefits">
-    <h2 id="benefits" class="section-title">What it does for an agent</h2>
-    <div class="flag">
-      <svg class="fig fig-one" viewBox="0 0 160 100" aria-hidden="true" focusable="false">
-        <path class="wire" pathLength="1" d="M22 50H72"/>
-        <g class="fan"><path pathLength="1" d="M94 50 138 15"/><path pathLength="1" d="M94 50 144 32"/><path pathLength="1" d="M94 50h52"/><path pathLength="1" d="M94 50 144 68"/><path pathLength="1" d="M94 50 138 85"/></g>
-        <circle class="node" cx="16" cy="50" r="5"/>
-        <rect class="hit" x="72" y="39" width="22" height="22" rx="4"/>
-        <g class="lit"><circle cx="138" cy="15" r="4"/><circle cx="144" cy="32" r="4"/><circle cx="146" cy="50" r="4"/><circle cx="144" cy="68" r="4"/><circle cx="138" cy="85" r="4"/></g>
-        <circle class="tok" cx="22" cy="50" r="3"/>
-      </svg>
-      <div class="flag-text"><h3 class="flag-title">Finds definitions and callers in one call</h3><p class="flag-detail">An agent asks once and gets where a function is defined, its parameters and every function that calls it.</p></div>
+  <!--slot:team--><section class="chapter ch-team" aria-labelledby="teams">
+    <h2 id="teams" class="section-title">Teams of agents</h2>
+    <p class="group-title">Round six, run on 2026-10-14, put the engine in the setups a team of agents uses: 351 agents in 135 runs over 45 cells, three runs a cell. Each finding below sets two setups of this round against each other, on the same repository and the same question sets. The one comparison that crosses rounds is the highlighted configuration against no index, because the no-index agent was last run in round five, a day earlier; it is marked where it appears. The builders of the engine wrote the questions.</p>
+    <ul class="stats team-stats"><li><b><span class="fig-n">70k to 71k</span></b><small>tokens in one turn with a pack and no tool at all; fully correct in 12 of 12 runs</small></li><li><b><span class="fig-n">27% to 32%</span><i class="fig-dir">fewer tokens</i></b><small>with a pack in the brief of each of three subagents; 12 of 12 runs fully correct</small></li><li><b><span class="fig-n">14% to 34%</span><i class="fig-dir">more tokens</i></b><small>with the team hub on lookup work, and no accuracy gained</small></li><li><b><span class="fig-n">15 of 15</span></b><small>note fields right with the notes in the brief, against 0 of 15 with none; a demonstration set</small></li><li><b><span class="fig-n">18 of 18</span></b><small>runs fully correct with the tools in an Ubuntu virtual machine; on Windows 18 of 18</small></li><li><b><span class="fig-n">4 of 6</span></b><small>runs fully correct without the neural network, against 6 of 6 with it; both of the misses had a read altered by another tool, so the network is not shown to be the cause</small></li><li><b><span class="fig-n">−15% to +3%</span><i class="fig-dir">change in tokens</i></b><small>with three models in their roles, against Claude Opus 5.5 reviewing as well: fewer in three of four pairs, 3% more in the other; the runs of the two sides overlap in three of them; 24 of 24 runs fully correct</small></li></ul>
+    <div class="fine">
+      <p class="footnote">Three runs a cell cannot support a claim of significance. A difference of one turn between two setups is noise, and so is a difference of one fully correct run.</p>
+      <p class="footnote">Another tool on the test machine, the one the Study page describes under the no-index control, was installed in round six as well. It altered a read in 11 of the round&#x27;s 135 runs, and in 5 of the 11 runs that were not fully correct. A finding that rests on a pair with such a run says so, and gives the change without it. Running the round again with that tool off would settle it; that was not done.</p>
+      <p class="footnote">The questions were written by the builders of the engine, and two of the three in each set name the function in backticks. That suits a pack, which is built from the words of the question. The third describes a job in words; the pack alone answered it too.</p>
     </div>
-    <ul class="also">
-      <li><h3 class="also-title">Searches code by meaning</h3><p class="also-detail">An agent describes a job in words and gets the function that does it.</p></li>
-      <li><h3 class="also-title">Shows what a change touches</h3><p class="also-detail">Before editing, an agent sees what depends on the code it is about to change.</p></li>
-      <li><h3 class="also-title">Remembers findings across sessions</h3><p class="also-detail">What an agent has already worked out does not have to be found again next time.</p></li>
-    </ul>
-    <p class="footnote">The study measures the first capability. One of its questions describes a job in words, but the runs do not show whether searching by meaning helps (see <a href="study.html#limits">Limits</a> on the Study page). The other two capabilities are not covered by the measurements on this site.</p>
+    <p class="close-actions"><a class="btn quiet" href="benchmarks.html#team">The whole round</a><a class="btn quiet" href="install.html#team">Use it in a team of agents</a></p>
+  </section><!--/slot:team-->
+
+  <section class="chapter ch-size" aria-labelledby="size">
+    <!--slot:size--><h2 id="size" class="section-title">Size on disk</h2>
+    <p class="group-title">Sizes of the files on disk, summed per folder. The first generation is the set of separate tools the Rust engine replaces, as installed and used on the test machine; the Python interpreter itself is not counted. Its model, cache and index folders hold data for more than one repository, so they are listed apart from the programs. The index sizes are for the test repository (86 files, 68,316 lines). Sizes are in megabytes of a million bytes, the unit of the Install page. Measured 2026-10-13 on one Windows 11 laptop; the packed index of pgr 0.2.0 on 2026-10-14.</p>
+    <div class="size-grid draw">
+      <div class="card size-card"><h3>Programs and runtimes</h3><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">First generation: separate tools and their runtimes</span><span class="rl-num">505.1 MB</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr, one file, with its model</span><span class="rl-num">43.1 MB</span><span class="rl-bar"><i style="--v:0.0853"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr, one file, without its model</span><span class="rl-num">8.3 MB</span><span class="rl-bar"><i style="--v:0.0164"></i></span></span></div><p class="footnote">The first generation is graph tool: its runtime environment, 183.0 MB; search tool: its runtime environment, 242.3 MB; symbol index tool: program, 79.8 MB.</p></div>
+      <div class="card size-card"><h3>Index of the test repository</h3><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">First generation</span><span class="rl-num">15.2 MB</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr 0.1.0</span><span class="rl-num">8.5 MB</span><span class="rl-bar"><i style="--v:0.5552"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr 0.2.0, packed</span><span class="rl-num">5.9 MB</span><span class="rl-bar"><i style="--v:0.3881"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr 0.2.0, packed, without the vectors</span><span class="rl-num">1.0 MB</span><span class="rl-bar"><i style="--v:0.0627"></i></span></span></div><p class="footnote">The index is what the engine builds once for a repository and reads on every lookup. The packed index of pgr 0.2.0 is 30% smaller than the one before, 8.5 MB to 5.9 MB, and lossless. The same test repository was indexed by pgr 0.2.0, with every index file written with a lossless codec (deflate, read back byte for byte). The 88 commands recorded from the benchmark and 53 pack and loadout outputs print exactly what they printed before; query times stay inside their targets.</p></div>
+    </div>
+    <p class="footnote">Listed apart from the programs: the first generation&#x27;s models, caches and index folders hold 619.9 MB, for a total of 1125.0 MB. The new program is 1 file. The model inside the program file was left uncompressed: the best lossless codec saved 14.7%, under the 15% bar, and would need a 32 MB copy beside the program.</p>
+    <p class="lang-line">The engine, pgr, is written in Rust, all of it. Python is around it, not inside it: the repository the benchmark asks questions about is a Python project, the first generation&#x27;s tools, the benchmark harness and this site&#x27;s generator are Python programs, and uv, pipx and pip are optional ways to deliver the same Rust program.</p><!--/slot:size-->
   </section>
 
   <!--slot:video--><section class="section cinema" aria-labelledby="films">
   <h2 id="films" class="section-title">Films</h2>
   <div class="seg reel-pick" role="radiogroup" aria-label="Film" data-seg="film" style="--count:2" hidden><span class="seg-thumb" aria-hidden="true"></span>
-      <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="ad">Ad, 22 seconds</button>
-      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="explainer">Explainer, 85 seconds</button>
+      <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="trailer">Trailer, 30 seconds</button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="explainer">Explainer, 96 seconds</button>
   </div>
   <div class="cine-grid">
-    <figure class="cine" data-kind="ad">
+    <figure class="cine" data-kind="trailer">
       <div class="cine-frame" style="aspect-ratio:1920/1080">
-        <video controls playsinline preload="none" width="1920" height="1080" poster="media/pgr-ad-poster.jpg" aria-label="PeterGanuRusty in twenty seconds">
-          <source src="media/pgr-ad-1080p.mp4" type="video/mp4">
-          <track kind="captions" src="media/pgr-ad.en.vtt" srclang="en" label="English" default>
+        <video controls playsinline preload="none" width="1920" height="1080" poster="media/pgr-trailer-poster.jpg" data-poster-large="media/pgr-trailer-poster-2160.jpg" data-sources='[{"src":"https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-trailer-2160p120.mp4","w":3840,"h":2160,"fps":120.0,"type":"video/mp4; codecs=\"hvc1.1.6.H156.90\"","mb":315.8,"label":"2160p120"},{"src":"https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-trailer-2160p60.mp4","w":3840,"h":2160,"fps":60.0,"type":"video/mp4; codecs=\"avc1.640034\"","mb":88.4,"label":"2160p60"},{"src":"media/pgr-trailer-1080p60.mp4","w":1920,"h":1080,"fps":60.0,"type":"video/mp4; codecs=\"avc1.64002a\"","mb":39.1,"label":"1080p60"}]' data-seconds="30.1" aria-label="PeterGanuRusty in thirty seconds, with the fifth round&#x27;s results">
+          <source src="media/pgr-trailer-1080p60.mp4" type="video/mp4">
+          <track kind="captions" src="media/pgr-trailer.en.vtt" srclang="en" label="English" default>
           <p>This browser cannot play the video.</p>
         </video>
       </div>
-      <figcaption class="cine-cap"><span class="cine-title">PeterGanuRusty in twenty seconds</span><span class="cine-meta">Ad, 22.2 seconds, with captions</span></figcaption>
+      <figcaption class="cine-cap"><span class="cine-title">PeterGanuRusty in thirty seconds, with the fifth round&#x27;s results</span><span class="cine-meta">Trailer, 30 seconds, with captions</span></figcaption>
     </figure>
     <figure class="cine" data-kind="explainer">
       <div class="cine-frame" style="aspect-ratio:1920/1080">
-        <video controls playsinline preload="none" width="1920" height="1080" poster="media/pgr-explainer-poster.jpg" aria-label="PeterGanuRusty explained">
-          <source src="media/pgr-explainer-1080p.mp4" type="video/mp4">
+        <video controls playsinline preload="none" width="1920" height="1080" poster="media/pgr-explainer-poster.jpg" data-poster-large="media/pgr-explainer-poster-2160.jpg" data-sources='[{"src":"https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-explainer-2160p120.mp4","w":3840,"h":2160,"fps":120.0,"type":"video/mp4; codecs=\"hvc1.1.6.H156.90\"","mb":871.1,"label":"2160p120"},{"src":"https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-explainer-2160p60.mp4","w":3840,"h":2160,"fps":60.0,"type":"video/mp4; codecs=\"avc1.640034\"","mb":236.0,"label":"2160p60"},{"src":"media/pgr-explainer-1080p60.mp4","w":1920,"h":1080,"fps":60.0,"type":"video/mp4; codecs=\"avc1.64002a\"","mb":74.1,"label":"1080p60"}]' data-seconds="96.2" aria-label="PeterGanuRusty explained, with the fifth round&#x27;s results">
+          <source src="media/pgr-explainer-1080p60.mp4" type="video/mp4">
           <track kind="captions" src="media/pgr-explainer.en.vtt" srclang="en" label="English" default>
           <p>This browser cannot play the video.</p>
         </video>
       </div>
-      <figcaption class="cine-cap"><span class="cine-title">PeterGanuRusty explained</span><span class="cine-meta">Explainer, 85.3 seconds, with captions</span></figcaption>
+      <figcaption class="cine-cap"><span class="cine-title">PeterGanuRusty explained, with the fifth round&#x27;s results</span><span class="cine-meta">Explainer, 96 seconds, with captions</span></figcaption>
     </figure>
   </div>
 </section>
 <!--/slot:video-->
 
-  <section class="section closing" aria-labelledby="next">
-    <svg class="logo close-mark" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path pathLength="1" d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg>
-    <h2 id="next" class="section-title">Next</h2>
-    <p class="close-text">Every published configuration is on <a href="benchmarks.html">Benchmarks</a>, by model class and question set. How the runs were made and what they cannot show are on <a href="study.html">Study</a>. Availability and what installing will look like are on <a href="install.html">Install</a>.</p>
-    <p class="close-actions"><a class="btn magnet" href="benchmarks.html">Open the benchmarks</a></p>
+  <section class="chapter ch-close" aria-labelledby="next">
+    <div class="close-copy">
+      <h2 id="next" class="section-title">Install it in one paste</h2>
+      <p class="close-text">One program file for Windows, macOS or Linux, checked against a published checksum before it is installed.</p>
+      <div class="close-cmd"><!--slot:cmdbox--><div class="cmdbox" data-cmdbox><div class="cmd-tabs" role="radiogroup" aria-label="System"><button type="button" role="radio" aria-checked="true" tabindex="0" data-sys="windows">Windows</button><button type="button" role="radio" aria-checked="false" tabindex="-1" data-sys="unix">macOS and Linux</button></div><div class="cmd-line" data-sys="windows"><code>irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex</code><button type="button" class="copy" data-copy="irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex" aria-label="Copy the install command for Windows"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-sys="unix"><code>curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh</code><button type="button" class="copy" data-copy="curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh" aria-label="Copy the install command for macOS and Linux"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><p class="cmd-note" data-sys="windows">Run it in PowerShell. No administrator rights.</p><p class="cmd-note" data-sys="unix">Run it in a terminal. No root.</p></div><!--/slot:cmdbox--></div>
+      <p class="close-actions"><a class="btn primary magnet" href="install.html">Everything about installing</a><a class="btn ghost" href="benchmarks.html">Open the benchmarks</a><a class="btn ghost" href="study.html">Read the study</a></p>
+      <p class="platform-line"><!--slot:platforms-->Tested on Windows 11 and on Ubuntu 24.04 on WSL 2, and the engine&#x27;s tests also run on Linux, macOS, Windows build machines. Same answers on Windows and Linux: 56 of 56 commands gave byte-identical output.<!--/slot:platforms--></p>
+    </div>
+    <div class="close-term"><!--slot:term--><figure class="term term-install" data-install-term aria-label="What the installer prints">
+          <figcaption class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term-title">Terminal</span><span class="term-state">done</span></figcaption>
+          <div class="term-body">
+        <div class="log" data-sys="windows">
+          <p class="lg lg-in"><span class="lg-cmd">irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex</span></p>
+          <p class="lg">pgr: downloading from https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download</p>
+          <p class="lg">pgr: installed pgr 0.2.0 to C:\Users\...\AppData\Local\Programs\pgr\pgr.exe</p>
+          <p class="lg">pgr: added C:\Users\...\AppData\Local\Programs\pgr to your user PATH. Open a new terminal to use the pgr command.</p>
+          <p class="lg lg-gap">Next, inside a git repository:</p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr refresh</span><span class="lg-note">build the index</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr ask about:SomeFunction</span><span class="lg-note">definition, callers and what it calls</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr find &quot;where tokens expire&quot;</span><span class="lg-note">search by meaning</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr help</span><span class="lg-note">every command</span></p>
+        </div>
+        <div class="log" data-sys="unix">
+          <p class="lg lg-in"><span class="lg-cmd">curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh</span></p>
+          <p class="lg">pgr: downloading from https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download</p>
+          <p class="lg">pgr: installed pgr 0.2.0 to ~/.local/bin/pgr</p>
+          <p class="lg lg-gap">Next, inside a git repository:</p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr refresh</span><span class="lg-note">build the index</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr ask about:SomeFunction</span><span class="lg-note">definition, callers and what it calls</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr find &quot;where tokens expire&quot;</span><span class="lg-note">search by meaning</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr help</span><span class="lg-note">every command</span></p>
+        </div>
+          </div>
+        </figure><!--/slot:term--></div>
   </section>
 </main>
-<footer class="foot">
-  <p>Implementation details are not published. This site reports measured outcomes only.</p>
-  <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
-</footer>
-<!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
-    <span class="tab-ind" aria-hidden="true" style="--n:4;--i:0"></span>
-    <a href="index.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
-    <a href="benchmarks.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg><span>Benchmarks</span></a>
-    <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
-    <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
-  </nav><!--/slot:tabbar-->
-<script src="data/showcase.js?v=8fe6540f"></script>
-<script src="assets/app.js?v=fe9ca4e1"></script>
-<script src="assets/hero.js?v=a398e983"></script>
-<script src="assets/home.js?v=1b643da6"></script>
-<script src="assets/cinema.js?v=f96fb681"></script>
+<!--slot:foot--><footer class="foot" id="foot">
+    <div class="foot-in">
+      <div class="foot-brand"><p class="foot-name"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+        <p>A desktop command-line tool for AI coding agents.</p>
+        <p class="foot-built">Results built 2026-10-14.</p></div>
+      <nav class="sitemap" aria-label="Site map">
+      <div class="sm-col"><a class="sm-page" href="index.html">Overview</a><ul><li><a href="index.html#problem">Every turn re-reads everything</a></li><li><a href="index.html#result">What it saves</a></li><li><a href="index.html#benefits">What it does for an agent</a></li><li><a href="index.html#most-reliable">Most reliable configuration</a></li><li><a href="index.html#teams">Teams of agents</a></li><li><a href="index.html#size">Size on disk</a></li><li><a href="index.html#films">Films</a></li><li><a href="index.html#next">Install it in one paste</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="benchmarks.html">Benchmarks</a><ul><li><a href="benchmarks.html#leaderboard">Leaderboard</a></li><li><a href="benchmarks.html#chart">Which configurations are cheap and correct?</a></li><li><a href="benchmarks.html#turns">Turns per task</a></li><li><a href="benchmarks.html#team">Round six: teams of agents</a></li><li><a href="benchmarks.html#engine">Engine speed</a></li><li><a href="benchmarks.html#size">Size on disk</a></li><li><a href="benchmarks.html#findings">Findings</a></li><li><a href="benchmarks.html#second-harness">Under the Codex CLI</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="study.html">Study</a><ul><li><a href="study.html#asked">What was asked</a></li><li><a href="study.html#sets">Question sets</a></li><li><a href="study.html#graded">How answers were graded</a></li><li><a href="study.html#told">What each agent was told</a></li><li><a href="study.html#scale">How much was run</a></li><li><a href="study.html#tokens">What a token count is</a></li><li><a href="study.html#classes">Models</a></li><li><a href="study.html#sessions">Sessions and memory</a></li><li><a href="study.html#team">Round six: teams of agents</a></li><li><a href="study.html#control">The control</a></li><li><a href="study.html#limits">Limits</a></li><li><a href="study.html#lab">Search without a neural network</a></li><li><a href="study.html#second">A second agent program</a></li><li><a href="study.html#unpublished">What is not on this site</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="install.html">Install</a><ul><li><a href="install.html#get">Install with one command</a></li><li><a href="install.html#python">Install with pip, pipx and uv</a></li><li><a href="install.html#files">Release files</a></li><li><a href="install.html#how">What the installer does</a></li><li><a href="install.html#first">Your first three commands</a></li><li><a href="install.html#agent">Tell your agent to use it</a></li><li><a href="install.html#team">Use it in a team of agents</a></li><li><a href="install.html#tested">What was tested, and what was not</a></li><li><a href="install.html#licence">Licence</a></li></ul></div>
+      </nav>
+    </div>
+    <div class="foot-line"><p>The benchmark pages report measured outcomes: counts of tokens, turns and answers. What is not measured is marked.</p>
+      <p class="foot-links"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest">Latest release</a><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark">Repository</a></p></div>
+  </footer><!--/slot:foot-->
+<script src="data/showcase.js?v=f63c1a19"></script>
+<script src="assets/app.js?v=9a43b6ea"></script>
+<script src="assets/palette.js?v=e4d3de54"></script>
+<script src="assets/home.js?v=bddb1ff3"></script>
+<script src="assets/film.js?v=ecb0f151"></script>
+<script src="assets/cinema.js?v=9dbe3997"></script>
 </body>
 </html>

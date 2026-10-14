@@ -1,24 +1,106 @@
 {
-  "public": [
+ "public": [
+  {
+   "kind": "trailer",
+   "title": "PeterGanuRusty in thirty seconds, with the fifth round's results",
+   "seconds": 30.1,
+   "src": "media/pgr-trailer-1080p60.mp4",
+   "poster": "media/pgr-trailer-poster.jpg",
+   "captions": "media/pgr-trailer.en.vtt",
+   "width": 1920,
+   "height": 1080,
+   "posters": [
     {
-      "kind": "ad",
-      "src": "media/pgr-ad-1080p.mp4",
-      "poster": "media/pgr-ad-poster.jpg",
-      "captions": "media/pgr-ad.en.vtt",
-      "width": 1920,
-      "height": 1080,
-      "seconds": 22.2,
-      "title": "PeterGanuRusty in twenty seconds"
+     "src": "media/pgr-trailer-poster-2160.jpg",
+     "width": 3840,
+     "height": 2160
     },
     {
-      "kind": "explainer",
-      "src": "media/pgr-explainer-1080p.mp4",
-      "poster": "media/pgr-explainer-poster.jpg",
-      "captions": "media/pgr-explainer.en.vtt",
-      "width": 1920,
-      "height": 1080,
-      "seconds": 85.3,
-      "title": "PeterGanuRusty explained"
+     "src": "media/pgr-trailer-poster.jpg",
+     "width": 1920,
+     "height": 1080
     }
-  ]
+   ],
+   "sources": [
+    {
+     "src": "release:pgr-trailer-2160p120.mp4",
+     "width": 3840,
+     "height": 2160,
+     "fps": 120,
+     "type": "video/mp4; codecs=\"hvc1.1.6.H156.90\"",
+     "megabytes": 315.8,
+     "mbps": 83.93
+    },
+    {
+     "src": "release:pgr-trailer-2160p60.mp4",
+     "width": 3840,
+     "height": 2160,
+     "fps": 60,
+     "type": "video/mp4; codecs=\"avc1.640034\"",
+     "megabytes": 88.39,
+     "mbps": 23.49
+    },
+    {
+     "src": "media/pgr-trailer-1080p60.mp4",
+     "width": 1920,
+     "height": 1080,
+     "fps": 60,
+     "type": "video/mp4; codecs=\"avc1.64002a\"",
+     "megabytes": 39.07,
+     "mbps": 10.38
+    }
+   ]
+  },
+  {
+   "kind": "explainer",
+   "title": "PeterGanuRusty explained, with the fifth round's results",
+   "seconds": 96.2,
+   "src": "media/pgr-explainer-1080p60.mp4",
+   "poster": "media/pgr-explainer-poster.jpg",
+   "captions": "media/pgr-explainer.en.vtt",
+   "width": 1920,
+   "height": 1080,
+   "posters": [
+    {
+     "src": "media/pgr-explainer-poster-2160.jpg",
+     "width": 3840,
+     "height": 2160
+    },
+    {
+     "src": "media/pgr-explainer-poster.jpg",
+     "width": 1920,
+     "height": 1080
+    }
+   ],
+   "sources": [
+    {
+     "src": "release:pgr-explainer-2160p120.mp4",
+     "width": 3840,
+     "height": 2160,
+     "fps": 120,
+     "type": "video/mp4; codecs=\"hvc1.1.6.H156.90\"",
+     "megabytes": 871.06,
+     "mbps": 72.46
+    },
+    {
+     "src": "release:pgr-explainer-2160p60.mp4",
+     "width": 3840,
+     "height": 2160,
+     "fps": 60,
+     "type": "video/mp4; codecs=\"avc1.640034\"",
+     "megabytes": 236,
+     "mbps": 19.63
+    },
+    {
+     "src": "media/pgr-explainer-1080p60.mp4",
+     "width": 1920,
+     "height": 1080,
+     "fps": 60,
+     "type": "video/mp4; codecs=\"avc1.64002a\"",
+     "megabytes": 74.14,
+     "mbps": 6.17
+    }
+   ]
+  }
+ ]
 }

@@ -1,4 +1,4 @@
-"""A small original music bed for the ad, made from nothing but numpy.
+"""A small original music bed for the trailer, made from nothing but numpy.
 
 It is not a song. It is a low drone, a thump on every hard cut, a riser into the collapse, a bright ping when the
 filament lights and when the mark lands, and a soft chord under the name. Every hit is placed from the cue times
@@ -95,16 +95,16 @@ def make_bed(tl, sr, voice):
     again = hook2["start"] + (hook2["end"] - hook2["start"]) * len("Again. ") / len(hook2["spoken"])
 
     # drone: A1 with its fifth and octave, a slow swell that opens at the collapse and settles for the close
-    sw = np.interp(t, [0, cue("hook", 1), cue("mass", 1), cue("collapse", 1), cue("number", 1), cue("close", 1), dur],
-                   [0.15, 0.45, 0.6, 0.35, 0.8, 0.55, 0.3])
+    sw = np.interp(t, [0, cue("hook", 1), cue("mass", 1), cue("name", 1), cue("collapse", 1), cue("number", 1), cue("close", 1), dur],
+                   [0.15, 0.45, 0.6, 0.4, 0.35, 0.8, 0.55, 0.3])
     drone = (np.sin(2 * np.pi * 55.0 * t) + 0.55 * np.sin(2 * np.pi * 82.41 * t + 0.4 * np.sin(2 * np.pi * 0.11 * t)) + 0.35 * np.sin(2 * np.pi * 110.3 * t)) * sw
     bed[:, 0] += drone * 0.5
     bed[:, 1] += drone * 0.5
 
     # a thump on every hard cut: the picture cuts on the same instants
-    cuts = [cue("hook", 1), cue("hook", 2), again, cue("mass", 1), cue("mass", 2), cue("collapse", 1), cue("collapse", 2),
-            cue("number", 1), cue("claim", 1), cue("close", 1)]
-    strength = [0.7, 0.85, 1.0, 0.9, 0.55, 1.0, 0.9, 1.0, 1.0, 0.8]
+    cuts = [cue("hook", 1), cue("hook", 2), again, cue("mass", 1), cue("mass", 2), cue("name", 1), cue("name", 2), cue("collapse", 1),
+            cue("collapse", 2), cue("number", 1), cue("claim", 1), cue("close", 1)]
+    strength = [0.7, 0.85, 1.0, 0.9, 0.55, 0.8, 0.45, 1.0, 0.9, 1.0, 1.0, 0.8]
     th = _thump(sr)
     for c, g in zip(cuts, strength):
         _place(bed, th, c, sr, 1.0 * g)
@@ -127,7 +127,8 @@ def make_bed(tl, sr, voice):
 
     # the filament lights, and the mark lands
     _place(bed, _ping(sr, 1318.5), cue("number", 1), sr, 0.45, pan=-0.2)
-    _place(bed, _ping(sr, 880.0, 2.2, 0.55), cue("close", 1) + 0.35, sr, 0.5, pan=0.2)
+    _place(bed, _ping(sr, 880.0, 2.2, 0.55), cue("name", 1) + 0.35, sr, 0.5, pan=0.2)
+    _place(bed, _ping(sr, 1174.7, 2.2, 0.55), cue("close", 1) + 0.35, sr, 0.45, pan=-0.1)
 
     # a soft chord under the name
     c0 = cue("close", 1)

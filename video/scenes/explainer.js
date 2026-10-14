@@ -1,606 +1,528 @@
-/* The explainer. Every frame is drawn from the time t alone: window.PGR.seek(t). The picture follows the voice,
-   so every reveal is keyed to a cue of build/explainer.timeline.js, and every number is read from window.FACTS
-   (built from docs/data/showcase.js by tools/facts.mjs). Anything that qualifies a claim is set in the .q size
-   (60 px or more on the 1920 x 1080 stage) and kept in the upper two thirds of the frame, clear of the captions. */
+/* The explainer. Every frame is drawn from the time t alone: window.PGR.seek(t). The picture follows the voice, so
+   every reveal is keyed to a cue of build/explainer.timeline.js, and every number is read from window.FACTS (built from
+   docs/data/showcase.js by tools/facts.mjs). Anything that qualifies a claim is 60 px or more on the 1920 x 1080 stage
+   and sits in the upper two thirds of the frame, clear of the captions and the player's controls. One dot is 100 tokens.
+   The models are named as the runs used them (FACTS.models), never by a class.
+
+   The film is one continuous camera move. The cold open and the race are drawn at the origin; from the end of the claim the
+   camera travels along a row of stations in the same world (what it is, the four things it gives, the study, the limits, the
+   install card): each station is a 1920 x 1080 frame at its own place, the camera dollies from one to the next with a dip in
+   zoom, and nothing cuts or fades to black between them. */
 (function () {
   'use strict';
-  var L = window.PGRLIB, G = window.PGRGFX, F = window.FACTS, TL = window.TIMELINE;
-  var W = L.W, H = L.H, clamp = L.clamp, mix = L.mix, seg = L.seg, ease = L.ease, rgba = L.rgba;
-  var ACC = L.ACCENT, HOT = L.HOT, INK = L.INK, INK2 = L.INK2, CONTROL = L.CONTROL;
-  var ui = document.getElementById('ui'), world = L.makeCanvas('world'), ctx = world.ctx;
-  var grainEl = document.getElementById('grain'), curtain = document.getElementById('curtain');
-  var FPS = TL.fps, SANS = '600 34px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
-  var SANS36 = '500 36px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
-  var SANS36B = '650 36px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif';
+  var L = window.PGRLIB, K = window.PGRKIT, G = window.PGRGFX, F = window.FACTS, TL = window.TIMELINE;
+  var clamp = L.clamp, mix = L.mix, seg = L.seg, ease = L.ease, rgba = L.rgba;
+  var ACC = L.ACCENT, HOT = L.HOT, INK = L.INK, INK2 = L.INK2, INK3 = L.INK3, CONTROL = L.CONTROL;
+  var DUR = TL.duration, HALO = 0.9;
 
-  // ---------- the timeline
   function sc(id) { return TL.scenes.filter(function (s) { return s.id === id; })[0]; }
-  function cue(id, n) { return sc(id).cues[n - 1]; }
-  // When a phrase of a cue is spoken, estimated from its place in the spoken text.
+  function cues(id) { return sc(id).cues; }
   function cueAt(c, phrase) {
     var i = c.spoken.toLowerCase().indexOf(phrase.toLowerCase());
     return c.start + (c.end - c.start) * (i < 0 ? 0 : i / c.spoken.length);
   }
-  var C1 = cue('cold', 1), C2 = cue('cold', 2), C3 = cue('cold', 3), C4 = cue('cold', 4);
-  var H1 = cue('change', 1), H2 = cue('change', 2), H3 = cue('change', 3), H4 = cue('change', 4), H5 = cue('change', 5), H6 = cue('change', 6);
-  var GV = sc('gives'), SD = sc('study'), CL = sc('close');
-  var DUR = TL.duration;
-
-  // ---------- DOM
-  function T(cls, html, x, y, size) {
-    var e = L.el('div', 't ' + cls, html, ui);
-    e._x = x; e._y = y; e.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
-    if (size) e.style.fontSize = size + 'px';
-    return e;
+  function win(t, a, b, c, d) { return seg(t, a, b) * (1 - seg(t, c, d)); }
+  var C = cues('cold'), H = cues('change'), WH = cues('what'), GV = cues('gives'), ST = cues('study'), CL = cues('close');
+  var MODEL = F.labels.classLabel;                                // Claude Haiku 5.5, low effort
+  var D = { size: 60, weight: 560, font: 'd', ls: -0.01, color: INK2 };     // the qualifier type
+  function o(size, weight, extra) { return Object.assign({ size: size, weight: weight || 700, font: 'd', ls: size > 100 ? -0.045 : -0.02, color: INK }, extra || {}); }
+  // text cut to a width with an ellipsis (used for the configuration names only, which are short enough to fit)
+  function fit(ctx, s, maxW, opt) {
+    if (L.measure(ctx, s, opt) <= maxW) return s;
+    while (s.length > 4 && L.measure(ctx, s + '…', opt) > maxW) s = s.slice(0, -1);
+    return s.replace(/\s+$/, '') + '…';
   }
-  function ML(text, cls, x, y, size) {
-    var l = L.maskLine(ui, text, 't ' + cls);
-    l.root._x = x; l.root._y = y; l.root.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
-    if (size) l.root.style.fontSize = size + 'px';
-    return l;
+  // a text broken into lines of at most maxW, never cut
+  function wrap(ctx, s, maxW, opt) {
+    var words = s.split(' '), line = '', lines = [];
+    words.forEach(function (w) { var tt = line ? line + ' ' + w : w; if (line && L.measure(ctx, tt, opt) > maxW) { lines.push(line); line = w; } else line = tt; });
+    lines.push(line);
+    return lines;
   }
-  function setText(e, s) { if (e._s !== s) { e._s = s; e.textContent = s; } }
-  function at(e, o) { L.put(e, { x: e._x + (o.x || 0), y: e._y + (o.y || 0), s: o.s, o: o.o }); }
-  function pop(line, p) { L.rise(line, p); }
+  function pct(x) { return Math.round(x) + '%'; }
 
-  // ---------- the token mass: one particle for each 1k tokens of the no index lane
-  var N = Math.round(F.control.tokens / 1000), M = Math.round(F.best.tokens / 1000);
-  var TURNS = Math.max(1, Math.round(F.control.turns)), BT = Math.max(1, Math.round(F.best.turns));
-  var SX = 150, SW = 1620, LANE_Y = 640, LANE_H = 150;
-  var BAND_Y0 = 472, BAND_PITCH = 102, BAND_H = 84;
-  var sumK = TURNS * (TURNS + 1) / 2, cum = [], bandOf = [], k, i;
-  for (k = 0; k < TURNS; k++) cum.push(Math.round(N * (k + 1) * (k + 2) / 2 / sumK));
-  cum[TURNS - 1] = N;
-  var P = [], R = L.rng(7);
-  for (i = 0, k = 0; i < N; i++) {
-    while (i >= cum[k]) k++;
-    var lo = k ? cum[k - 1] : 0, cnt = cum[k] - lo, j = i - lo, r1 = R(), r2 = R(), r3 = R();
-    var w = SW * (k + 1) / TURNS;
-    P.push({
-      band: k, r1: r1, r2: r2, z: r3 < 0.2 ? 1 : r3 < 0.55 ? 0.62 : 0.3,
-      su: (j + 0.5) / cnt, sw: w, sx: SX + (j + 0.5) / cnt * w + (r1 - 0.5) * 7, sy: BAND_Y0 + k * BAND_PITCH + 12 + r2 * (BAND_H - 24),
-      lx: SX + (i + 0.5) / N * SW + (r1 - 0.5) * 7, ly: LANE_Y + (((i * 5) % 6) + 0.5) / 6 * LANE_H + (r2 - 0.5) * 7,
-      x: 0, y: 0, a: 0, ca: 0, boost: 0
-    });
+  // ================================================================ world: the cold open and the change
+  var N = Math.round(F.control.tokens / 100), M = Math.round(F.best.tokens / 100);
+  var TX = -50, TY = 335, TW = 940, TH = 610, Y0 = TY + 66, Y1 = TY + TH - 26;
+  // one read head sweep for each turn of the agent: turn 4 begins as "Four turns." ends
+  var BEAMS = [0, 1, 2, 3].map(function (i) { return { a: C[1].start - 0.1 + i * 0.4, b: C[1].start - 0.1 + i * 0.4 + 0.4 }; });
+  function headY(tb) {
+    var i = 0;
+    for (; i < BEAMS.length; i++) if (tb <= BEAMS[i].b) break;
+    var b = BEAMS[Math.min(i, BEAMS.length - 1)];
+    return Y0 + (Y1 - Y0) * ease.ioQ(seg(tb, b.a, b.b));
   }
-  var LANE_BEST_END = SX + SW * M / N;
-
-  // ---------- flow: the cold open and the change
-  // What the first figure is a figure of: one comparison, the light class on the first question set.
-  var CLS = F.labels.classLabel, SETL = F.labels.firstSet, CMP = CLS + ', ' + SETL + '.';
-  var f_h1 = ML('Three simple', 'display h1', 150, 250), f_h2 = ML('code lookups.', 'display h1', 150, 400);
-  var f_hs = ML('One agent, no index. ' + CMP, 'q', 150, 590);
-  var f_num = T('num', '0', 150, 96, 300), f_numl = ML('turns', 'sub ink2', 700, 290);
-  var f_numl2 = ML('tokens per task', 'sub ink2', 860, 290);
-  var f_subA = ML('No index. ' + CMP, 'q', 150, 388);
-  var f_subB = ML(CMP, 'q', 150, 388);
-  var f_each = [ML('Each turn, it reads', 'display', 1150, 466, 62), ML('its whole conversation', 'display', 1150, 534, 62), ML('again.', 'display', 1150, 602, 62)];
-  var f_lane0 = ML('No index', 'sub ink2', 150, 556, 56);
-  var f_mark = L.markSvg(ui, 62, 't'); f_mark.root._x = 150; f_mark.root._y = 550; f_mark.root.style.transform = 'translate3d(150px,550px,0)';
-  var f_lane1 = ML('PeterGanuRusty', 'sub', 232, 556, 56);
-  f_lane1.root.style.color = 'var(--ink)';
-  var f_pct = T('num', F.pct + '%', 1080, 96, 300), f_pctl = ML('fewer tokens', 'q big', 1080, 380);
-  var f_pctl2 = ML('than no index', 'q big', 1080, 452);
-  var f_gap = ML(F.fewerText + ' fewer tokens', 'sub ink2', 0, 0, 52);
-  var f_ask = ML('ask', 'sub s ink2', 0, 0, 48), f_ans = ML('answer', 'sub s ink2', 0, 0, 48);
-  // the stream's time, in seconds: the numeral counts and the particles shorten while the voice says "134k tokens"
-  var CNT = Math.max(1.2, C3.end - C3.start - 0.45);
-  var COUNT0 = H4.start + 0.3, COUNT1 = Math.max(COUNT0 + 1.2, H4.end - 0.4), SHR = Math.max(1, (COUNT1 - COUNT0) / 1.6);
-
-  function drawFlow(t) {
-    var inStack = t < H1.start + 0.05;
-    // ---- headline
-    pop(f_h1, ease.outQ(seg(t, C1.start, C1.start + 0.6)) * (1 - ease.inC(seg(t, C2.start - 0.04, C2.start + 0.22))));
-    pop(f_h2, ease.outQ(seg(t, C1.start + 0.09, C1.start + 0.69)) * (1 - ease.inC(seg(t, C2.start - 0.04, C2.start + 0.22))));
-    pop(f_hs, ease.outQ(seg(t, C1.start + 0.5, C1.start + 1.0)) * (1 - ease.inC(seg(t, C2.start - 0.04, C2.start + 0.2))));
-
-    // ---- bands: one for each turn, hard-cut cadence
-    var bandT = [], b;
-    for (b = 0; b < TURNS; b++) bandT.push(C2.start + b * 0.16);
-    var bandsOut = 1 - ease.ioC(seg(t, H1.start + 0.05, H1.start + 0.7));
-
-    // ---- hero numeral
-    var turnsShown = 0;
-    for (b = 0; b < TURNS; b++) if (t >= bandT[b]) turnsShown = b + 1;
-    var filled = 0, tf = (t - C3.start) / CNT;
-    if (t >= C3.start) filled = clamp(Math.round(Math.pow(clamp(tf), 1.0) * N), 0, N);
-    var numText = '', numCol = 'var(--ink)';
-    if (t >= C2.start && t < C3.start) numText = turnsShown >= TURNS ? F.control.turnsText : String(turnsShown);
-    else if (t >= C3.start && t < COUNT0) numText = filled >= N ? F.control.tokText : (filled < 1 ? '0' : filled + 'k');
-    var count = ease.outQ(seg(t, COUNT0, COUNT1));
-    if (t >= COUNT0) {
-      var v = mix(F.control.tokens, F.best.tokens, count);
-      numText = count >= 1 ? F.best.tokText : L.fmtTokens(v);
-      numCol = 'var(--accent)';
-    }
-    if (numText) {
-      setText(f_num, numText);
-      f_num.style.color = numCol;
-      at(f_num, { o: 1 });
-    } else L.vis(f_num, false);
-    pop(f_numl, ease.outQ(seg(t, C2.start + 0.1, C2.start + 0.5)) * (1 - ease.inC(seg(t, C3.start - 0.02, C3.start + 0.18))));
-    pop(f_numl2, ease.outQ(seg(t, C3.start + 0.1, C3.start + 0.5)) * (1 - ease.inC(seg(t, H5.start - 0.3, H5.start - 0.05))));
-    pop(f_subA, ease.outQ(seg(t, C2.start + 0.15, C2.start + 0.55)) * (1 - ease.inC(seg(t, H4.start - 0.1, H4.start + 0.2))));
-    pop(f_subB, ease.outQ(seg(t, H4.start + 0.3, H4.start + 0.7)));
-
-    // ---- the explanation in the staircase's empty corner
-    var eachIn = C4.start + 0.05, eachOut = 1 - ease.inC(seg(t, H1.start - 0.25, H1.start + 0.1));
-    f_each.forEach(function (l, n) { pop(l, ease.outQ(seg(t, eachIn + n * 0.12, eachIn + n * 0.12 + 0.55)) * eachOut); });
-
-    // ---- the lane's label: a new state when the name is spoken
-    var tName = cueAt(H1, 'Peter');
-    pop(f_lane0, ease.outQ(seg(t, H1.start + 0.5, H1.start + 0.9)) * (1 - ease.inC(seg(t, tName - 0.1, tName + 0.2))));
-    var mk = ease.ioC(seg(t, tName, tName + 0.9));
-    L.markDraw(f_mark, mk);
-    pop(f_lane1, ease.outQ(seg(t, tName + 0.5, tName + 1.0)));
-
-    // ---- the percentage
-    var t64 = H5.start + 0.02;
-    if (t >= t64) { at(f_pct, { y: (1 - ease.outQ(seg(t, t64, t64 + 0.45))) * 40, o: ease.outQ(seg(t, t64, t64 + 0.2)) }); setText(f_pct, F.pct + '%'); } else L.vis(f_pct, false);
-    pop(f_pctl, ease.outQ(seg(t, t64 + 0.25, t64 + 0.7)));
-    pop(f_pctl2, ease.outQ(seg(t, t64 + 0.33, t64 + 0.78)));
-
-    // ---- positions of the particles
-    var tMerge = H1.start + 0.05, tShort = H4.start + 0.3, tAcc = H4.start + 0.3;
-    var cam = 1 + 0.012 * seg(t, 0, H1.start);
-    ctx.save();
-    ctx.translate(W / 2, H / 2); ctx.scale(cam, cam); ctx.translate(-W / 2, -H / 2);
-    // band outlines and turn names
-    for (b = 0; b < TURNS; b++) {
-      var wb = SW * (b + 1) / TURNS, g = ease.outQ(seg(t, bandT[b], bandT[b] + 0.3)) * bandsOut;
-      if (g <= 0) continue;
-      var by = BAND_Y0 + b * BAND_PITCH;
-      L.hair(ctx, 0.22 * g);
-      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(SX - 12, by, wb * g + 24, BAND_H, 14); else ctx.rect(SX - 12, by, wb * g + 24, BAND_H); ctx.stroke();
-      ctx.font = SANS; ctx.textBaseline = 'middle'; ctx.textAlign = 'left'; ctx.fillStyle = rgba(L.CONTROL, 0.9 * g * seg(g, 0.6, 1));
-      ctx.fillText('turn ' + (b + 1), SX + wb + 36, by + BAND_H / 2);
-    }
-    // lane track (appears as the bands melt into it)
-    var laneIn = ease.ioC(seg(t, tMerge + 0.7, tMerge + 1.4));
-    var ghost = ease.outQ(seg(t, tShort + 1.5 * SHR, tShort + 2.0 * SHR));
-    if (laneIn > 0) {
-      L.hair(ctx, 0.16 * laneIn);
-      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(SX - 16, LANE_Y - 14, SW + 32, LANE_H + 28, 18); else ctx.rect(SX - 16, LANE_Y - 14, SW + 32, LANE_H + 28); ctx.stroke();
-    }
-    // ghost of the no index length after the stream has shortened
-    if (ghost > 0) {
-      L.hair(ctx, 0.26 * ghost); ctx.setLineDash([6, 8]);
-      var gx = LANE_BEST_END + 24;
-      ctx.beginPath(); ctx.moveTo(gx, LANE_Y - 14); ctx.lineTo(SX + SW + 16, LANE_Y - 14); ctx.lineTo(SX + SW + 16, LANE_Y + LANE_H + 14); ctx.lineTo(gx, LANE_Y + LANE_H + 14); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-
-    var beams = [], mB;
-    for (mB = 0; mB < TURNS; mB++) {
-      var tb = C4.start + 0.15 + mB * 0.8, q = seg(t, tb, tb + 0.7);
-      if (q > 0 && q < 1) beams.push({ x: SX + (SW * (mB + 1) / TURNS + 30) * q - 10, top: BAND_Y0 - 14, bot: BAND_Y0 + mB * BAND_PITCH + BAND_H + 14, q: q });
-    }
-
-    for (i = 0; i < N; i++) {
-      var p = P[i], age = t - (C3.start + CNT * (i / N));
-      if (age <= 0) { p.a = 0; continue; }
-      var fly = ease.outQ(seg(age, 0, 0.4)), m = ease.ioC(seg(t, tMerge + 0.55 * (i / N), tMerge + 0.55 * (i / N) + 1.15));
-      // the stream moves along its band; near layers faster; it stops where the merge begins
-      var du = ((p.su + (14 + 26 * p.z) * Math.min(age, tMerge - (C3.start + CNT * (i / N))) / p.sw) % 1 + 1) % 1;
-      var sxx = SX + du * p.sw + (p.r1 - 0.5) * 7;
-      var edge = clamp(du * p.sw / 70) * clamp((1 - du) * p.sw / 70);
-      var x = mix(sxx, p.lx, m), y = mix(p.sy, p.ly, m) - Math.sin(m * Math.PI) * (p.r1 - 0.5) * 110;
-      x -= (1 - fly) * 240;
-      x += Math.sin(t * 0.9 + i * 1.3) * 1.5; y += Math.cos(t * 0.7 + i * 1.9) * 1.5;
-      var a = seg(age, 0, 0.1) * (0.55 + 0.45 * p.z) * mix(edge, 1, m), boost = 1.6 * (1 - seg(age, 0, 0.35)), ca = 0, flash = 0;
-      // the stream's pulse runs at the speed of its turns: five for no index, two for the best
-      if (m > 0.4) a *= 0.8 + 0.2 * Math.sin(p.lx * 0.018 - t * 2.3 * mix(TURNS, BT, i < M ? ease.ioC(seg(t, tAcc + 0.9 * SHR * (i / M), tAcc + 0.9 * SHR * (i / M) + 0.5 * SHR)) : 0));
-      if (i < M) ca = ease.ioC(seg(t, tAcc + 0.9 * SHR * (i / M), tAcc + 0.9 * SHR * (i / M) + 0.5 * SHR));
-      else {
-        var d0 = tShort + 1.1 * SHR * ((N - 1 - i) / (N - M)), d = ease.inC(seg(t, d0, d0 + 0.5 * SHR));
-        a *= 1 - d; y += d * 34; flash = Math.sin(d * Math.PI);
-      }
-      if (inStack || m < 1) {
-        // the read head lights what it passes
-        for (var bi = 0; bi < beams.length; bi++) {
-          var bm = beams[bi];
-          if (y >= bm.top && y <= bm.bot) { var dx = (x - bm.x) / 90; boost += Math.exp(-dx * dx) * 1.5; }
-        }
-      }
-      p.x = x; p.y = y; p.a = a; p.ca = ca; p.boost = boost + flash * 1.5;
-    }
-    // beams: a thin line and a soft trail behind it
-    for (mB = 0; mB < beams.length; mB++) {
-      var bm2 = beams[mB], tr = ctx.createLinearGradient(bm2.x - 220, 0, bm2.x, 0);
-      tr.addColorStop(0, 'rgba(244,244,246,0)'); tr.addColorStop(1, 'rgba(244,244,246,0.075)');
-      ctx.fillStyle = tr; ctx.fillRect(bm2.x - 220, bm2.top, 220, bm2.bot - bm2.top);
-      ctx.fillStyle = 'rgba(244,244,246,0.85)'; ctx.fillRect(bm2.x - 0.5, bm2.top, 1.5, bm2.bot - bm2.top);
-    }
-    drawParticles();
-    ctx.restore();
-
-    // ---- the two turns of the best lane, and the gap that was saved
-    if (t >= H2.start) {
-      var nodeY = LANE_Y + LANE_H + 64, n1 = ease.outQ(seg(t, H2.start, H2.start + 0.3)), n2 = ease.outQ(seg(t, H3.start, H3.start + 0.3));
-      var span = ease.ioC(seg(t, H3.start, H3.start + 0.55)), x1 = SX, x2 = LANE_BEST_END;
-      L.hair(ctx, 0.5); ctx.beginPath(); ctx.moveTo(x1, nodeY); ctx.lineTo(mix(x1, x2, span), nodeY); ctx.stroke();
-      ctx.beginPath(); ctx.arc(x1, nodeY, 13 * n1, 0, Math.PI * 2); ctx.fillStyle = rgba(ACC, 1); ctx.fill();
-      L.stamp(ctx, ACC, x1, nodeY, 50 * n1, 0.4 * n1);
-      ctx.beginPath(); ctx.arc(x2, nodeY, 13 * n2, 0, Math.PI * 2); ctx.fillStyle = rgba(ACC, 1); ctx.fill();
-      L.stamp(ctx, ACC, x2, nodeY, 50 * n2, 0.4 * n2);
-      f_ask._x = x1 - 12; f_ask._y = nodeY + 28; f_ans._x = x2 - 90; f_ans._y = nodeY + 28;
-      f_ask.root.style.transform = 'translate3d(' + f_ask._x + 'px,' + f_ask._y + 'px,0)'; f_ans.root.style.transform = 'translate3d(' + f_ans._x + 'px,' + f_ans._y + 'px,0)';
-      pop(f_ask, ease.outQ(seg(t, H2.start + 0.1, H2.start + 0.45)));
-      pop(f_ans, ease.outQ(seg(t, H3.start + 0.1, H3.start + 0.45)));
-    } else { L.vis(f_ask.root, false); L.vis(f_ans.root, false); }
-    f_gap.root._x = LANE_BEST_END + 24 + 40; f_gap.root._y = LANE_Y + LANE_H / 2 - 30;
-    f_gap.root.style.transform = 'translate3d(' + f_gap.root._x + 'px,' + f_gap.root._y + 'px,0)';
-    var tGap = cueAt(H5, 'in two') - 0.1;
-    pop(f_gap, ease.outQ(seg(t, tGap, tGap + 0.5)));
-    // the label of the figure: each half is underlined as the voice says it ("light class," then "first question set")
-    var tLight = cueAt(H6, 'light'), tFirst = cueAt(H6, 'first');
-    var u1 = ease.outQ(seg(t, tLight - 0.1, tLight + 0.5)), u2 = ease.outQ(seg(t, tFirst - 0.1, tFirst + 0.6));
-    if (u1 > 0 || u2 > 0) {
-      var sp = labelSpans();
-      ctx.fillStyle = rgba(ACC, 0.9);
-      ctx.fillRect(150, 462, sp.a * u1, 3); ctx.fillRect(150 + sp.b0, 462, (sp.b1 - sp.b0) * u2, 3);
-    }
-  }
-  // where the two halves of the label lie, measured on the text itself once the fonts are in
-  var spans = null;
-  function labelSpans() {
-    if (spans) return spans;
-    var node = f_subB.inner.firstChild, text = node.nodeValue, rg = document.createRange();
-    var w = function (to) { rg.setStart(node, 0); rg.setEnd(node, to); return rg.getBoundingClientRect().width; };
-    spans = { a: w(text.indexOf(',') + 1), b0: w(text.indexOf('first')), b1: w(text.length) };
-    return spans;
-  }
-
-  function drawParticles() {
-    var i, p, r;
-    ctx.globalCompositeOperation = 'lighter';
-    for (i = 0; i < N; i++) {
-      p = P[i]; if (p.a <= 0.004) continue;
-      r = 3.4 + 1.9 * p.z;
-      var gs = r * (4.2 + p.boost * 1.8), ga = p.a * (0.22 + p.boost * 0.4);
-      if (p.ca < 1) L.stamp(ctx, p.boost > 0.6 ? INK : CONTROL, p.x, p.y, gs, ga * (1 - p.ca));
-      if (p.ca > 0) L.stamp(ctx, ACC, p.x, p.y, gs * 1.2, ga * p.ca * 1.6);
-    }
-    ctx.globalCompositeOperation = 'source-over';
-    for (i = 0; i < N; i++) {
-      p = P[i]; if (p.a <= 0.004) continue;
-      r = 3.4 + 1.9 * p.z;
-      var base = L.lerpC(CONTROL, INK2, p.z), hotC = L.lerpC(base, INK, clamp(p.boost / 1.6));
-      var col = L.lerpC(hotC, p.ca > 0 ? L.lerpC(ACC, HOT, clamp(p.boost / 2) * 0.6) : hotC, p.ca);
-      ctx.fillStyle = rgba(col, clamp(p.a + p.boost * 0.15));
-      ctx.beginPath(); ctx.arc(p.x, p.y, r * (1 + p.boost * 0.12), 0, Math.PI * 2); ctx.fill();
-    }
-  }
-
-  // ---------- gives: four things, drawn as outcomes
-  var STATEMENTS = [
-    ['Definitions and callers.', 'Both, in one lookup.'],
-    ['Search by meaning.', 'Describe the job. Get the function.'],
-    ['What a change reaches.', 'Before anyone edits.'],
-    ['Findings that stay.', 'Remembered between sessions.']
+  var wts = [1, 2, 3, 4], used = 0;
+  var passes = BEAMS.map(function (b, i) { var n = i === 3 ? N - used : Math.round(N * wts[i] / 10); used += n; return { n: n, a: b.a, b: b.b }; });
+  var CX = 1500;
+  var cloud = new K.Cloud({ N: N, M: M, seed: 23, center: [CX, 540], R: 560, squash: 0.62, emit: { x: TX + TW, head: headY }, passes: passes });
+  var born = cloud.d.map(function (e) { return e.born; }).sort(function (a, b) { return a - b; });
+  function bornCount(t) { var lo = 0, hi = born.length; while (lo < hi) { var m = (lo + hi) >> 1; if (born[m] <= t) lo = m + 1; else hi = m; } return lo; }
+  var cam0 = new K.Cam([
+    [0, -250, 20, 1.08, 0], [C[1].start, -245, 14, 1.11, 0, 'lin'], [C[2].start - 0.1, -240, 8, 1.14, 0, 'lin'],
+    [C[2].start + 1.0, -70, -10, 0.8, 0, 'ioE'], [H[0].start - 0.2, -50, -10, 0.82, 0, 'lin'],
+    [H[0].start + 1.2, 540, -15, 1.0, -0.015, 'ioC'], [H[0].end + 0.3, 560, -20, 1.4, 0.02, 'lin'],
+    [H[1].start - 0.45, 300, -10, 1.2, 0.01, 'ioC'], [H[1].start + 0.3, 0, 0, 1.0, 0, 'ioC'], [H[1].start - 0.05 + 4.8 + 0.15, 0, 0, 1.0, 0, 'lin'],
+    [H[4].start - 0.05, 0, -250, 0.78, 0, 'ioC'], [H[5].end + 0.05, 0, -250, 0.78, 0, 'lin']
+  ]);
+  var NAMES = ['read config.py', 'read loader.py', 'search parse_config', 'read settings.py', 'read cli.py', 'read server.py', 'read tests', 'read config.py'];
+  var LOOKS = ['who calls parse_config?', 'where is load_settings defined?', 'which function builds the report?'];
+  var LINES = [
+    { at: C[0].start + 0.0, text: LOOKS[0], kind: 'cmd', cps: 38 }, { at: C[0].start + 0.62, text: LOOKS[1], kind: 'cmd', cps: 38 }, { at: C[0].start + 1.24, text: LOOKS[2], kind: 'cmd', cps: 38 }
   ];
-  // the study measured the first two only; the sample names in the pictures are made up
-  var MEASURED = [true, true, false, false];
-  var GV_NAMES = [['Definitions', 'and callers'], ['Search by', 'meaning'], ['What a change', 'reaches'], ['Findings', 'that stay']];
-  var gv_h = STATEMENTS.map(function (s) { return ML(s[0], 'display h2', 150, 92); });
-  var gv_s = STATEMENTS.map(function (s) { return ML(s[1], 'sub', 150, 232); });
-  var gv_tag = MEASURED.map(function (m) { return T('tag' + (m ? '' : ' off'), m ? 'Measured' : 'Not yet measured', 150, 20, 44); });
-  var gv_ill = T('tag off r', 'Illustration: example names', -150, 20, 44);
-  var gv_lbl = GV_NAMES.map(function (s) { return ML(s[0] + '<br>' + s[1], 'sub s ink2 ctr', 0, 0, 46); });
-  var gv_st = MEASURED.map(function (m) { return ML(m ? 'Measured' : 'Not yet measured', 'sub s ctr ' + (m ? 'acc' : 'ink2'), 0, 0, 48); });
-  var GV_CENTERS = [315, 745, 1175, 1605];
+  (function () { var k = 0, at = C[1].start; while (at < BEAMS[3].b + 0.4) { LINES.push({ at: at, text: NAMES[k % NAMES.length], kind: 'out' }); k++; at += 0.16; } })();
+  // the race of the two agents, from the question to the end of the claim
+  var RACE = { x: 110, y: 310, w: 810, h: 640, gap: 60, size: 30, cs: 118, meterH: 150, task: 'parse_config',
+    tShow: H[1].start - 0.5, tAsk: H[1].start - 0.05, tStart: H[1].start - 0.05, tEnd: H[1].start - 0.05 + 4.8 };
+  RACE.lines = K.raceLines(Object.assign({ ask: LOOKS[0], answer: 'load_settings, start_server, run_cli', reads: NAMES }, RACE));
+  var tDone = K.raceTimes(RACE).tDone;
 
-  function drawGives(t) {
-    var cues = GV.cues, g1 = cues[0], k;
-    // g1: the four, small, with what the study measured; each statement then takes the stage
-    var rowOut = 1 - ease.inC(seg(t, cues[1].start - 0.3, cues[1].start - 0.05));
-    for (k = 0; k < 4; k++) {
-      var st = g1.start + 0.15 + k * 0.28, p = ease.outC(seg(t, st, st + 0.9));
-      if (p > 0 && rowOut > 0) {
-        ctx.globalAlpha = rowOut * (MEASURED[k] ? 1 : 0.6);
-        G.list[k](ctx, p, { cx: GV_CENTERS[k], cy: 480, s: 0.34, labels: false });
-        ctx.globalAlpha = 1;
-      }
-      var lb = gv_lbl[k], sb = gv_st[k];
-      lb.root._x = GV_CENTERS[k] - lb.root.offsetWidth / 2; lb.root._y = 612; lb.root.style.transform = 'translate3d(' + lb.root._x + 'px,612px,0)';
-      sb.root._x = GV_CENTERS[k] - sb.root.offsetWidth / 2; sb.root._y = 332; sb.root.style.transform = 'translate3d(' + sb.root._x + 'px,332px,0)';
-      pop(lb, ease.outQ(seg(t, st + 0.3, st + 0.7)) * rowOut);
-      pop(sb, ease.outQ(seg(t, st + 0.3, st + 0.7)) * rowOut);
-    }
-    var illO = 0;
-    for (k = 0; k < 4; k++) {
-      var c = cues[k + 1], t0 = c.start - 0.02, t1 = (k < 3 ? cues[k + 2].start : GV.start + GV.dur) - 0.02;
-      var build = seg(t, t0 + 0.05, t0 + (c.end - c.start) * 0.9);
-      var inP = ease.outQ(seg(t, t0, t0 + 0.55)), outP = 1 - ease.inC(seg(t, t1 - 0.2, t1));
-      if (k === 3) outP = 1;
-      if (t >= t0 - 0.01 && t < t1 + 0.05) {
-        ctx.globalAlpha = Math.min(1, inP * 2) * (k === 3 ? 1 : outP);
-        G.list[k](ctx, ease.ioC(build), { cx: 1000, cy: 620, s: 1.1, labels: true });
-        ctx.globalAlpha = 1;
-      }
-      pop(gv_h[k], inP * outP); pop(gv_s[k], ease.outQ(seg(t, t0 + 0.14, t0 + 0.69)) * outP);
-      at(gv_tag[k], { o: ease.outQ(seg(t, t0 + 0.1, t0 + 0.45)) * outP });
-      illO = Math.max(illO, ease.outQ(seg(t, t0 + 0.1, t0 + 0.45)) * outP);
-    }
-    at(gv_ill, { o: illO });
-  }
-
-  // ---------- study
-  var Q = F.study.questions || [];
-  var QY0 = 110, QPITCH = 158;
-  var sd_n = T('num', '0', 150, 96, 300), sd_nl = ML('agents', 'sub ink2', 700, 290);
-  var sd_n2 = T('num', String(F.study.files), 1010, 96, 300), sd_n2l = ML(F.study.language + ' files,', 'sub ink2', 1390, 234), sd_n2l2 = ML('one repository', 'sub ink2', 1390, 290);
-  var sd_q = Q.map(function (q, n) { return ML(q.title, 'display', 150, QY0 + n * QPITCH, 78); });
-  var CLASS_NAMES = (window.SHOWCASE && window.SHOWCASE.classes || []).map(function (c) { return c.name; });
-  var sd_c = CLASS_NAMES.map(function (n, ci) { return T('pill', n, 150 + ci * 230, 622, 52); });
-  var sd_cap = ML('Graded against the syntax tree.', 'q', 150, 548);
-  // the leaderboard: one row for each configuration, fewest tokens first. The bar is the row's background, so the
-  // name, the bar and the figures can only be read as one row. Tokens and turns only: no fully-correct counts here.
-  var sd_lbT = ML(CMP, 'q', 150, 36);
-  var sd_lbN = ML('Tokens per task and turns, fewest tokens first. Marked: ' + F.bestLabel.toLowerCase() + '.', 'sub s ink2', 150, 108, 44);
-  var ROWS = F.rows.slice().sort(function (a, b) { return a.tokens - b.tokens || a.turns - b.turns; });
-  var MAXTOK = Math.max.apply(null, ROWS.map(function (r) { return r.tokens; }));
-  var LB_Y0 = 214, LB_PITCH = Math.min(60, 790 / ROWS.length), LB_CELL = LB_PITCH - 8, LB_X0 = 150, LB_BAR_MAX = 1250;
-  var LB_FONT = Math.min(36, Math.floor(LB_CELL * 0.7));
-  var sd_rows = ROWS.map(function (r, n) {
-    var y = LB_Y0 + n * LB_PITCH, cy = y + LB_CELL / 2;
-    var nm = T('lbname', r.name.replace(' (control)', ''), LB_X0 + 18, cy - LB_FONT * 0.56, LB_FONT);
-    nm.style.color = r.best ? 'var(--ink)' : 'var(--ink2)';
-    if (r.best) nm.style.fontWeight = '650';
-    var val = T('lbval r', '', -150, cy - 33 * 0.56, 33);
-    var tag = r.best ? T('tag', F.bestLabel, 0, cy - 18, 34) : null;
-    return { r: r, y: y, nm: nm, val: val, tag: tag };
+  // ================================================================ the stations and the camera between them
+  // Each station is a 1920 x 1080 frame at [ox, oy] in the world. The four windows of "gives" are frames of their own.
+  var SO = { what: [2400, 0], agents: [8800, 0], questions: [11200, 0], models: [13600, 0], board: [16000, 0], range: [18400, 0], reliable: [20800, 0], limits: [23200, 0], close: [25600, 0] };
+  var GFR = [[4800, 0], [6300, 0], [4800, 850], [6300, 850]];                     // frames of the four windows of "gives"
+  var GWIN = { w: 1240, h: 700, dx: 340, dy: 190 };
+  var OVERVIEW = { x: 5550, y: 425, z: 0.52 };
+  var WZ = 1.15;                                                                 // the camera's zoom on one window
+  var stops = [];
+  function go(depart, arrive, x, y, z, roll) { stops.push({ t0: depart, t1: Math.max(arrive, depart + 1.0), x: x, y: y, z: z, roll: roll || 0 }); }
+  go(H[5].end + 0.05, WH[0].start + 0.45, SO.what[0], SO.what[1], 1.0, 0.012);
+  go(WH[2].end - 0.1, GV[0].start + 0.5, OVERVIEW.x, OVERVIEW.y, OVERVIEW.z, -0.01);
+  [0, 1, 2, 3].forEach(function (i) {
+    var prev = i === 0 ? GV[0] : GV[i];
+    go(prev.end - 0.1, GV[i + 1].start + 0.45, GFR[i][0], GFR[i][1], WZ, i % 2 ? -0.008 : 0.01);
   });
-  // the saving in four comparisons: two model classes by two question sets
-  var CELLS = F.cells;
-  var CLASS_IDS = [], SET_IDS = [];
-  CELLS.forEach(function (q) { if (CLASS_IDS.indexOf(q.class) < 0) CLASS_IDS.push(q.class); if (SET_IDS.indexOf(q.set) < 0) SET_IDS.push(q.set); });
-  function setLabel(q) { return q.set === SET_IDS[0] ? SETL : q.setName.toLowerCase() + ' set'; }
-  var rg_t = ML(F.range.min + '% to ' + F.range.max + '%', 'display', 150, 36, 230);
-  var rg_s = ML('fewer tokens than no index, across ' + F.range.n + ' comparisons.', 'q big', 150, 262);
-  var rg_cells = CELLS.map(function (q) {
-    var x = 150 + SET_IDS.indexOf(q.set) * 820, y = 380 + CLASS_IDS.indexOf(q.class) * 165;
-    var num = T('num', q.pct + '%', x, y, 130);
-    num.style.color = q.headline ? 'var(--accent)' : 'var(--ink)';
-    return { q: q, num: num, l1: ML(q.className + ' class,', 'q', x + 340, y + 8), l2: ML(setLabel(q), 'q', x + 340, y + 74) };
-  });
-  // the highlighted configuration: fully correct in every run on both question sets (its own count, nothing set against it)
-  var CLASS_LIST = CLASS_IDS.map(function (id) { return CELLS.filter(function (q) { return q.class === id; })[0].className; });
-  var rl_tag = T('tag', F.bestLabel, 150, 70, 56);
-  var rl_n = T('num', F.reliable.perfect + ' of ' + F.reliable.runs, 150, 190, 300);
-  rl_n.style.color = 'var(--accent)';
-  var rl_l1 = ML('runs fully correct,', 'q big', 150, 480), rl_l2 = ML('on both question sets.', 'q big', 150, 552);
-  var rl_l3 = ML(CLASS_LIST.join(' and ') + (CLASS_LIST.length > 1 ? ' classes.' : ' class.'), 'q', 150, 632);
-
-  function rowColor(r) { return r.best ? ACC : r.family === 'control' ? CONTROL : r.family === 'tool' ? [211, 211, 219] : [176, 100, 70]; }
-
-  function drawStudy(t) {
-    var c1 = SD.cues[0], c2 = SD.cues[1], c3 = SD.cues[2], c4 = SD.cues[3], c5 = SD.cues[4], c6 = SD.cues[5], i;
-    var tRepo = cueAt(c1, 'one Python') - 0.2;
-    var phase1 = 1 - ease.inC(seg(t, c2.start - 0.25, c2.start));
-    // 1. agents and the repository
-    var cnt = ease.outQ(seg(t, c1.start + 0.15, c1.start + 1.9)), n = Math.round(F.study.agents * cnt);
-    if (t >= c1.start && phase1 > 0) {
-      setText(sd_n, String(n)); at(sd_n, { o: phase1, y: (1 - ease.outQ(seg(t, c1.start, c1.start + 0.4))) * 40 }); pop(sd_nl, ease.outQ(seg(t, c1.start + 0.3, c1.start + 0.7)) * phase1);
-      var COLS = 39, ROWSM = Math.ceil(F.study.agents / COLS);
-      for (i = 0; i < F.study.agents; i++) {
-        var lit = i < n, cx = 150 + (i % COLS) * 22 + 11, cy = 500 + Math.floor(i / COLS) * 22 + 11;
-        var near = lit ? clamp(1 - (n - i) / 40) : 0;
-        ctx.fillStyle = lit ? rgba(INK, (0.35 + 0.55 * near) * phase1) : 'rgba(255,255,255,' + (0.07 * phase1).toFixed(3) + ')';
-        ctx.beginPath(); ctx.arc(cx, cy, lit ? 5 : 3.5, 0, Math.PI * 2); ctx.fill();
-        if (lit && n - i < 14) L.stamp(ctx, INK, cx, cy, 16, (1 - (n - i) / 14) * 0.5 * phase1);
-      }
-      if (t >= tRepo) {
-        var rp = ease.outQ(seg(t, tRepo, tRepo + 0.5));
-        setText(sd_n2, String(F.study.files)); at(sd_n2, { o: rp * phase1, y: (1 - rp) * 40 });
-        pop(sd_n2l, ease.outQ(seg(t, tRepo + 0.2, tRepo + 0.6)) * phase1); pop(sd_n2l2, ease.outQ(seg(t, tRepo + 0.28, tRepo + 0.68)) * phase1);
-        var FC = 12, ft = F.study.files, tiles = Math.min(ft, 96);
-        for (i = 0; i < tiles; i++) {
-          var tx = 1100 + (i % FC) * 55, ty = 500 + Math.floor(i / FC) * 58, tp = ease.outC(seg(t, tRepo + 0.15 + i * 0.012, tRepo + 0.45 + i * 0.012)) * phase1;
-          if (tp <= 0) continue;
-          ctx.fillStyle = 'rgba(244,244,246,' + (0.11 * tp).toFixed(3) + ')'; ctx.strokeStyle = 'rgba(244,244,246,' + (0.5 * tp).toFixed(3) + ')'; ctx.lineWidth = 1;
-          ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(tx, ty, 36, 44, 5); else ctx.rect(tx, ty, 36, 44); ctx.fill(); ctx.stroke();
+  var order = [['agents', ST[0], GV[4]], ['questions', ST[1], ST[0]], ['models', ST[2], ST[1]], ['board', ST[3], ST[2]], ['range', ST[4], ST[3]], ['reliable', ST[5], ST[4]], ['limits', CL[0], ST[5]], ['close', CL[2], CL[1]]];
+  order.forEach(function (s, i) { go(s[2].end - 0.1, s[1].start + 0.45, SO[s[0]][0], SO[s[0]][1], 1.0, i % 2 ? -0.01 : 0.012); });
+  // each stop knows when the camera arrives (t1) and when it leaves for the next (leave)
+  stops.forEach(function (s, i) { s.leave = i + 1 < stops.length ? stops[i + 1].t0 : DUR + 1; });
+  // At rest the camera keeps pushing in, 3 percent over the hold, so that no hold is a still picture; the next move starts from where the push got to.
+  var PUSH = 0.03;
+  var cam1 = (function () {
+    var start = cam0.at(stops[0].t0);
+    return {
+      at: function (t) {
+        var from = start, i, s, p, e;
+        for (i = 0; i < stops.length; i++) {
+          s = stops[i];
+          if (t < s.t0) break;
+          if (t < s.t1) {
+            p = seg(t, s.t0, s.t1); e = ease.ioC(p);
+            var dip = 1 - 0.1 * Math.sin(Math.PI * p);
+            return { x: mix(from.x, s.x, e), y: mix(from.y, s.y, e), zoom: Math.exp(mix(Math.log(from.zoom), Math.log(s.z), e)) * dip, rot: s.roll * Math.sin(Math.PI * p) };
+          }
+          from = { x: s.x, y: s.y, zoom: s.z * (1 + PUSH) };
+          if (t < s.leave) return { x: s.x, y: s.y, zoom: s.z * (1 + PUSH * seg(t, s.t1, s.leave)), rot: 0 };
         }
-      } else { L.vis(sd_n2, false); L.vis(sd_n2l.root, false); L.vis(sd_n2l2.root, false); }
-    } else {
-      L.vis(sd_n, false); L.vis(sd_nl.root, false); L.vis(sd_n2, false); L.vis(sd_n2l.root, false); L.vis(sd_n2l2.root, false);
-    }
-    // 2. three questions, graded against the syntax tree, then the three classes one by one (stay until the leaderboard)
-    var qOut = 1 - ease.inC(seg(t, c4.start - 0.3, c4.start - 0.02));
-    var ph2 = ease.outQ(seg(t, c2.start, c2.start + 0.2)) * qOut;
-    var tGraded = cueAt(c2, 'graded');
-    sd_q.forEach(function (l, qn) {
-      var s0 = c2.start + 0.05 + qn * 0.34;
-      pop(l, ease.outQ(seg(t, s0, s0 + 0.55)) * (ph2 > 0 ? 1 : 0) * qOut);
-    });
-    if (ph2 > 0) {
-      // the syntax tree, and a neutral marker beside each question: the key they were graded against
-      var tree = ease.outC(seg(t, tGraded - 0.1, tGraded + 0.9));
-      drawTree(1360, 200, tree, ph2, t, tGraded);
-      Q.forEach(function (q, qn) {
-        var s0 = tGraded + 0.35 + qn * 0.4, mk = ease.outC(seg(t, s0, s0 + 0.3));
-        if (mk <= 0) return;
-        var my = QY0 + qn * QPITCH + 64, mx = 1190;
-        ctx.fillStyle = rgba(INK, 0.7 * ph2); ctx.beginPath(); ctx.arc(mx, my, 13 * mk, 0, Math.PI * 2); ctx.fill();
-        L.stamp(ctx, INK, mx, my, 34, 0.3 * mk * ph2);
-      });
-    }
-    pop(sd_cap, ease.outQ(seg(t, tGraded - 0.1, tGraded + 0.4)) * ph2);
-    sd_c.forEach(function (e, ci) {
-      var s0 = cueAt(c3, CLASS_NAMES[ci].toLowerCase()) - 0.1;
-      at(e, { o: ease.outQ(seg(t, s0, s0 + 0.3)) * qOut, y: (1 - ease.outQ(seg(t, s0, s0 + 0.4))) * 24 });
-    });
-    // 3. the leaderboard forms, fewest tokens first; the most reliable row is marked
-    var lbOut = 1 - ease.inC(seg(t, c5.start - 0.1, c5.start + 0.25));
-    pop(sd_lbT, ease.outQ(seg(t, c4.start, c4.start + 0.5)) * lbOut);
-    pop(sd_lbN, ease.outQ(seg(t, c4.start + 0.3, c4.start + 0.8)) * lbOut);
-    var nrows = sd_rows.length, span = (c4.end - c4.start) * 0.62;
-    sd_rows.forEach(function (row, rn) {
-      var r = row.r, order = nrows - 1 - rn;                   // the last place is drawn first, the first last
-      var s0 = c4.start + 0.1 + order * (span / nrows), p = ease.outQ(seg(t, s0, s0 + 0.5));
-      var o = p * lbOut;
-      at(row.nm, { o: o, x: (1 - p) * -40 });
-      var grow = ease.outQ(seg(t, s0 + 0.05, s0 + 0.7)), len = LB_BAR_MAX * r.tokens / MAXTOK * grow;
-      var col = rowColor(r), flash = r.best ? seg(t, c4.end - 0.1, c4.end + 0.15) : 0;
-      if (o > 0) {
-        ctx.fillStyle = 'rgba(255,255,255,0.05)'; ctx.fillRect(LB_X0, row.y, LB_BAR_MAX, LB_CELL);
-        ctx.fillStyle = rgba(col, (r.best ? 0.55 : 0.36) * o); ctx.fillRect(LB_X0, row.y, len, LB_CELL);
-        ctx.fillStyle = rgba(col, (r.best ? 1 : 0.8) * o); ctx.fillRect(LB_X0 + len - 4, row.y, 4, LB_CELL);
-        if (r.best) { L.stamp(ctx, ACC, LB_X0 + len, row.y + LB_CELL / 2, 54, 0.55 * o * (0.6 + 0.4 * ease.outQ(flash))); }
+        return { x: from.x, y: from.y, zoom: from.zoom, rot: 0 };
       }
-      var shownTok = Math.round(mix(0, r.tokens, grow));
-      var vtxt = (len > 8 ? (seg(t, s0 + 0.7, s0 + 0.75) >= 1 ? r.tokText : L.fmtTokens(shownTok)) : '') + ' tokens, ' + r.turnsText + ' turns';
-      setText(row.val, vtxt); row.val.style.color = r.best ? 'var(--ink)' : 'var(--ink2)';
-      L.put(row.val, { x: row.val._x, y: row.val._y, o: o * seg(len, 6, 60) });
-      if (row.tag) {
-        row.tag._x = LB_X0 + 18 + row.nm.offsetWidth + 26; row.tag._y = row.y + LB_CELL / 2 - 18;
-        at(row.tag, { o: ease.outQ(seg(t, c4.end - 0.5, c4.end - 0.1)) * lbOut });
-      }
-    });
-    // 4. the saving in four comparisons
-    var rgOut = 1 - ease.inC(seg(t, c6.start - 0.1, c6.start + 0.2));
-    var tNum = cueAt(c5, 'twenty-eight') - 0.15, tGrid = tNum + 1.6;
-    pop(rg_t, ease.outQ(seg(t, tNum, tNum + 0.55)) * rgOut);
-    pop(rg_s, ease.outQ(seg(t, tNum + 0.4, tNum + 0.9)) * rgOut);
-    rg_cells.forEach(function (cell, cn) {
-      var s0 = tGrid + cn * 0.55, a = ease.outQ(seg(t, s0, s0 + 0.4)) * rgOut;
-      at(cell.num, { o: a, y: (1 - ease.outQ(seg(t, s0, s0 + 0.5))) * 30 });
-      pop(cell.l1, ease.outQ(seg(t, s0 + 0.1, s0 + 0.5)) * rgOut); pop(cell.l2, ease.outQ(seg(t, s0 + 0.18, s0 + 0.58)) * rgOut);
-    });
-    // 5. the highlighted configuration, fully correct in every run on both question sets
-    var tFull = cueAt(c6, 'fully'), tOn = cueAt(c6, 'on both');
-    at(rl_tag, { o: ease.outQ(seg(t, c6.start + 0.05, c6.start + 0.4)), y: (1 - ease.outQ(seg(t, c6.start + 0.05, c6.start + 0.5))) * 20 });
-    at(rl_n, { o: ease.outQ(seg(t, tFull - 0.1, tFull + 0.35)), y: (1 - ease.outQ(seg(t, tFull - 0.1, tFull + 0.45))) * 40 });
-    pop(rl_l1, ease.outQ(seg(t, tFull + 0.15, tFull + 0.55)));
-    pop(rl_l2, ease.outQ(seg(t, tOn, tOn + 0.4)));
-    pop(rl_l3, ease.outQ(seg(t, tOn + 0.25, tOn + 0.65)));
+    };
+  })();
+  var tMove0 = stops[0].t0, tPanEnd = stops[0].t1;
+  function camAt(t) { return t < tMove0 ? cam0.at(t) : cam1.at(t); }
+  // is a 1920 x 1080 frame at (ox, oy) near enough to the view to be drawn
+  function near(c, ox, oy, pad) {
+    pad = pad || 0;
+    return Math.abs(c.x - ox) < 960 + 960 / c.zoom + pad && Math.abs(c.y - oy) < 540 + 540 / c.zoom + pad;
+  }
+  // how much the camera is at rest at place i: 1 from just before it arrives to when it leaves
+  function atStop(t, i) { var s = stops[i]; return win(t, s.t1 - 0.6, s.t1, s.leave, s.leave + 0.4); }
+
+  // ================================================================ cold open and change (screen space overlays)
+  function drawWorld(ctx, t, tc, c) {
+    var dim = 1 - 0.5 * win(t, H[0].start - 0.15, H[0].start + 0.5, H[1].start - 0.5, H[1].start - 0.1);
+    var cout = 1 - seg(t, H[1].start - 0.5, H[1].start + 0.05);
+    var ta = 1 - seg(t, C[2].start, C[2].start + 0.7);
+    if (ta > 0.003) {
+      L.layer(ctx, c, 1.0);
+      L.terminal(ctx, TX, TY, TW, TH, t, { title: 'agent  -  three lookups', lines: LINES, size: 30, a: ta, glow: ACC, glowK: 0.5 });
+      K.head(ctx, BEAMS, headY, t, TX, TW);
+      ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
+    }
+    if (cout > 0.003) cloud.draw(ctx, t, { cam: c, camAt: camAt, a: dim * cout, heat: 1 });
+    if (t > RACE.tShow) {
+      L.layer(ctx, c, 1.0);
+      K.race(ctx, t, Object.assign({}, RACE, { tc: tc, a: 1 }));
+    }
+    ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
   }
 
-  // a small syntax tree, drawn as hairlines: the key the answers were graded against
-  var TREE = (function () {
-    var nodes = [{ x: 200, y: 0, d: 0, p: -1 }], levels = [1, 3, 6, 9], idx = [[0]], k, j;
-    for (k = 1; k < levels.length; k++) {
-      idx[k] = [];
-      for (j = 0; j < levels[k]; j++) {
-        var parent = idx[k - 1][Math.min(idx[k - 1].length - 1, Math.floor(j * idx[k - 1].length / levels[k]))];
-        nodes.push({ x: 200 + (j - (levels[k] - 1) / 2) * (420 / levels[k]), y: k * 118, d: k, p: parent });
-        idx[k].push(nodes.length - 1);
+  function overlayCold(ctx, t, tc) {
+    var cg = 1 - seg(t, H[0].start - 0.3, H[0].start + 0.05);
+    // three lookups
+    var g1 = win(t, 0, 0, C[2].start - 0.05, C[2].start + 0.3);
+    if (g1 > 0.003) {
+      L.wordsText(ctx, 'Three simple', 146, 112, t, C[0].start, o(72, 600, { color: INK2, a: g1 }));
+      L.wordsText(ctx, 'code lookups.', 140, 250, t, C[0].start + 0.25, o(132, 700, { ls: -0.038, a: g1 }));
+    }
+    // the counters: the turn bottom left (it holds while "Four turns." is said), tokens read bottom right
+    var turn = 0, i;
+    for (i = 0; i < BEAMS.length; i++) if (t >= BEAMS[i].a) turn = i + 1;
+    var read = F.control.tokens * bornCount(tc) / N, cp = ease.ioE(seg(t, C[2].start + 0.3, C[2].start + 1.3));
+    var cs = L.fmtTokens(t >= BEAMS[3].b + 0.9 ? F.control.tokens : read), csize = mix(96, 360, cp);
+    var cw = L.measure(ctx, cs, o(csize, 700, { ls: -0.055 }));
+    var cvis = seg(t, C[1].start - 0.2, C[1].start + 0.2) * cg;
+    if (cvis > 0.003) {
+      L.numText(ctx, cs, mix(1770 - cw, 150, cp), mix(1000, 520, cp), o(csize, 700, { ls: -0.055, a: cvis, counting: L.fmtTokens(F.control.tokens) }));
+      L.text(ctx, 'tokens read', 1770, 1042, { size: 30, weight: 500, font: 't', color: INK3, a: cvis * (1 - cp), align: 'r' });
+    }
+    var tvis = cg * seg(t, C[1].start - 0.2, C[1].start + 0.1) * (1 - seg(t, C[2].start + 0.2, C[2].start + 0.5));
+    if (turn > 0 && tvis > 0.003) {
+      L.text(ctx, String(turn), 150, 1000, o(96, 700, { a: tvis }));
+      L.text(ctx, 'turn', 150, 1042, { size: 30, weight: 500, font: 't', color: INK3, a: tvis });
+    }
+    var mg = win(t, C[2].start, C[2].start, H[0].start - 0.3, H[0].start + 0.05);
+    if (mg > 0.003) {
+      L.riseText(ctx, 'tokens for three lookups.', 154, 592, ease.outQ(seg(t, C[2].start + 1.2, C[2].start + 1.6)), { size: 60, weight: 520, font: 'd', ls: -0.012, color: INK2, a: mg, shadow: HALO });
+      L.riseText(ctx, 'No index. ' + MODEL + ',', 154, 660, ease.outQ(seg(t, C[3].start - 0.1, C[3].start + 0.3)), Object.assign({}, D, { size: 56, a: mg, shadow: HALO }));
+      L.riseText(ctx, F.labels.firstSet + '.', 154, 724, ease.outQ(seg(t, C[3].start, C[3].start + 0.4)), Object.assign({}, D, { size: 56, a: mg, shadow: HALO }));
+      L.riseText(ctx, 'Every turn, an AI coding agent', 146, 96, ease.outQ(seg(t, C[3].start, C[3].start + 0.4)), { size: 56, weight: 560, font: 'd', ls: -0.02, color: INK2, a: mg, shadow: HALO });
+      L.riseText(ctx, 'reads its whole conversation again.', 142, 196, ease.outQ(seg(t, C[3].start + 0.3, C[3].start + 0.8)), o(84, 700, { ls: -0.035, a: mg, shadow: HALO }));
+    }
+    if (t > C[2].start + 0.5 && t < H[4].start) L.text(ctx, 'one dot = 100 tokens', 960, 1042, { size: 30, weight: 500, font: 't', color: INK3, align: 'c', a: seg(t, C[2].start + 0.5, C[2].start + 1.0) * (1 - seg(t, H[4].start - 0.4, H[4].start - 0.1)) });
+  }
+
+  function overlayChange(ctx, t, tc) {
+    var tPGR = cueAt(H[0], 'P G R');
+    var ng = win(t, H[0].start - 0.05, H[0].start, H[1].start - 0.7, H[1].start - 0.4);
+    if (ng > 0.003) {
+      L.text(ctx, 'Now the same lookups, with', 146, 120, o(56, 560, { color: INK2, a: ng * seg(t, H[0].start, H[0].start + 0.3) }));
+      L.markDraw(ctx, 146, 170, 100, seg(t, H[0].start + 0.9, H[0].start + 1.7), ACC, ng);
+      L.riseText(ctx, 'PeterGanuRusty', 270, 262, ease.outQ(seg(t, H[0].start + 0.9, H[0].start + 1.4)), o(150, 700, { ls: -0.04, a: ng, shadow: HALO }));
+      var pp = ease.spring(seg(t, tPGR, tPGR + 0.6));
+      if (pp > 0.001) {
+        var pw = L.measure(ctx, 'PGR', { size: 76, weight: 700, font: 'd', ls: 0.02 }), px = 150, py = 322, bw = pw + 64;
+        ctx.save(); ctx.translate(px + bw / 2, py + 48); ctx.scale(pp, pp); ctx.translate(-(px + bw / 2), -(py + 48));
+        L.rr(ctx, px, py, bw, 96, L.R_M); ctx.fillStyle = rgba(ACC, 0.14 * ng); ctx.fill(); ctx.strokeStyle = rgba(ACC, ng); ctx.lineWidth = 2.5; ctx.stroke();
+        L.text(ctx, 'PGR', px + 32, py + 70, { size: 76, weight: 700, font: 'd', ls: 0.02, color: ACC, a: ng });
+        L.text(ctx, 'for short', px + bw + 30, py + 68, { size: 56, weight: 500, font: 'd', ls: -0.01, color: INK2, a: ng * seg(t, tPGR + 0.2, tPGR + 0.5) });
+        ctx.restore();
       }
     }
-    return nodes;
-  })();
-  function drawTree(ox, oy, p, op, t, tGraded) {
+    // one question, one answer: above the two terminals
+    var qg = win(t, H[1].start - 0.1, H[1].start, RACE.tEnd, RACE.tEnd + 0.3);
+    if (qg > 0.003) {
+      L.riseText(ctx, 'One question.', 116, 172, ease.outQ(seg(t, H[1].start, H[1].start + 0.4)), o(112, 700, { ls: -0.045, a: qg }));
+      L.riseText(ctx, 'One answer.', 986, 172, ease.outQ(seg(t, H[2].start, H[2].start + 0.4)), o(112, 700, { ls: -0.045, color: ACC, a: qg }));
+    }
+    // the claim, over the two terminals that have moved down; it stays until the camera leaves
+    var kg = win(t, H[4].start - 0.05, H[4].start, H[5].end + 0.1, H[5].end + 0.5);
+    if (kg > 0.003) {
+      var pv = F.pct * ease.outQ(seg(tc, H[4].start, H[4].start + 0.7));
+      L.numText(ctx, Math.round(pv) + '%', 134, 340, o(420, 700, { ls: -0.055, a: kg, counting: F.pct + '%' }));
+      L.riseText(ctx, 'fewer tokens', 146, 444, ease.outQ(seg(t, H[4].start + 0.25, H[4].start + 0.6)), o(100, 700, { ls: -0.04, a: kg }));
+      var q1 = [F.control.tokText + ' to ' + F.best.tokText + ' tokens per task,', 'against no index.'], q2 = ['That is one comparison:', MODEL + ',', F.labels.firstSet + '.'];
+      q1.forEach(function (s1, n) { L.riseText(ctx, s1, 980, 100 + n * 66, ease.outQ(seg(t, H[4].start + 0.3 + n * 0.07, H[4].start + 0.7 + n * 0.07)), Object.assign({}, D, { a: kg, shadow: HALO })); });
+      q2.forEach(function (s1, n) { L.riseText(ctx, s1, 980, 264 + n * 66, ease.outQ(seg(t, H[5].start + n * 0.07, H[5].start + 0.4 + n * 0.07)), Object.assign({}, D, { a: kg, shadow: HALO })); });
+    }
+  }
+
+  // ================================================================ what it is: a program on the desktop that agents call
+  // The question runs from the agent's window to PGR's as a pulse of light, and the answer runs back.
+  var WQ = WH[1].start;
+  var WA_LINES = [{ at: WQ + 0.15, text: LOOKS[0], kind: 'cmd', cps: 34 }, { at: WQ + 2.95, text: 'callers:', kind: 'dim' }, { at: WQ + 3.1, text: 'load_settings, start_server, run_cli', kind: 'acc', cps: 90 }];
+  var WB_LINES = [{ at: WQ + 1.7, text: 'looking up parse_config', kind: 'dim' }, { at: WQ + 2.1, text: 'defined in config.py', kind: 'out' }, { at: WQ + 2.3, text: 'called by', kind: 'dim' }, { at: WQ + 2.4, text: 'load_settings, start_server, run_cli', kind: 'acc' }];
+  function pulse(ctx, x0, x1, y, p, col, a) {
+    if (p <= 0 || p >= 1) return;
+    var e = ease.ioC(p), k;
+    ctx.save(); ctx.globalCompositeOperation = 'lighter';
+    for (k = 0; k < 7; k++) { var pk = Math.max(0, e - k * 0.035); L.stamp(ctx, k ? col : HOT, mix(x0, x1, pk), y, 30 - k * 3, a * (1 - k / 8) * Math.sin(Math.PI * Math.min(1, p * 1.05)), 0.5); }
+    ctx.restore();
+  }
+  function drawWhat(ctx, t, c) {
+    var ox = SO.what[0], oy = SO.what[1];
+    if (!near(c, ox, oy)) return;
     ctx.save(); ctx.translate(ox, oy);
-    TREE.forEach(function (n, i) {
-      if (n.p < 0) return;
-      var q = ease.outC(seg(p, n.d * 0.22, n.d * 0.22 + 0.3)), a = TREE[n.p];
-      L.hair(ctx, 0.35 * op * q); ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(mix(a.x, n.x, q), mix(a.y, n.y, q)); ctx.stroke();
+    var w0 = WH[0].start + 0.15, g = 1;
+    L.riseText(ctx, 'A command-line program', 146, 160, ease.outQ(seg(t, w0, w0 + 0.5)), o(118, 700, { ls: -0.04, a: g }));
+    L.riseText(ctx, 'for the desktop.', 146, 280, ease.outQ(seg(t, w0 + 0.3, w0 + 0.8)), o(118, 700, { ls: -0.04, color: ACC, a: g }));
+    var bx = 150, by = 340, bw = 1620, bh = 560, ba = ease.outC(seg(t, WH[1].start - 0.4, WH[1].start + 0.2)) * g;
+    if (ba > 0.003) {
+      ctx.save(); ctx.globalAlpha = ba; ctx.setLineDash([10, 12]); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+      L.rr(ctx, bx, by, bw, bh, L.R_L); ctx.stroke(); ctx.setLineDash([]); ctx.restore();
+      L.text(ctx, 'Your machine', bx + 28, by + 48, { size: 34, weight: 560, font: 't', color: INK3, a: ba });
+    }
+    var pa = ease.outC(seg(t, WH[1].start - 0.4, WH[1].start + 0.2)) * g, dy = (1 - ease.outC(seg(t, WH[1].start - 0.4, WH[1].start + 0.3))) * 40;
+    var ty = by + 100 + dy, th = 420;
+    L.terminal(ctx, 180, ty, 640, th, t, { title: 'AI coding agent', lines: WA_LINES, size: 26, a: pa, sheen: 0.8 });
+    L.terminal(ctx, 1100, ty, 640, th, t, { title: 'PGR', lines: WB_LINES, size: 26, a: pa, sheen: 0.8, glow: ACC, glowK: 0.8 + 0.8 * seg(t, WQ + 1.55, WQ + 1.8), edge: ACC });
+    if (pa > 0.003) {
+      var ym1 = ty + 230, ym2 = ty + 300;
+      ctx.save(); ctx.globalAlpha = pa; ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(826, ym1); ctx.lineTo(1094, ym1); ctx.moveTo(1094, ym2); ctx.lineTo(826, ym2); ctx.stroke(); ctx.restore();
+      pulse(ctx, 830, 1090, ym1, seg(t, WQ + 0.95, WQ + 1.55), ACC, pa);
+      pulse(ctx, 1090, 830, ym2, seg(t, WQ + 2.45, WQ + 3.05), HOT, pa);
+    }
+    L.riseText(ctx, 'Local, no account.', 1770, 280, ease.outQ(seg(t, WH[2].start + 0.15, WH[2].start + 0.55)), o(64, 700, { color: ACC, align: 'r', a: g, ls: -0.03 }));
+    ctx.restore();
+  }
+
+  // ================================================================ gives: four things, each a live drawing in a window of its own
+  var GTITLE = ['Definition and callers', 'Search by meaning', 'What a change reaches', 'Findings that last'];
+  var GASK = ['where is load_settings defined, and who calls it?', 'which function saves a report to disk?', 'what does a change to load_settings reach?', 'what did the last session find?'];
+  var GANS = ['defined in settings.py, called by main, run_job, reload and others', 'write_report, in report.py', 'every function within two calls; the rest stay dark', 'session two starts with what session one found'];
+  function drawGives(ctx, t, c) {
+    var i, fr, gx, gy, cu, act, p, al, x, y, w = GWIN.w, h = GWIN.h;
+    // the headline sits above the four windows, in the world
+    var hg = win(t, stops[1].t1 - 0.5, stops[1].t1, stops[1].leave - 0.1, stops[1].leave + 0.3);
+    if (hg > 0.003 && near(c, OVERVIEW.x - 960, OVERVIEW.y - 540, 400)) L.wordsText(ctx, 'It gives an agent four things.', 5140, 125, t, GV[0].start + 0.2, o(124, 700, { ls: -0.04, a: hg }));
+    for (i = 0; i < 4; i++) {
+      fr = GFR[i];
+      if (!near(c, fr[0], fr[1], 1500)) continue;
+      cu = GV[i + 1]; act = atStop(t, 2 + i);
+      x = fr[0] + GWIN.dx; y = fr[1] + GWIN.dy;
+      var seen = seg(t, stops[2 + i].t1 - 0.6, stops[2 + i].t1);
+      al = ease.outC(seg(t, GV[0].start - 0.2, GV[0].start + 0.5 + i * 0.12)) * (0.5 + 0.5 * Math.max(act, seen));
+      L.terminal(ctx, x, y, w, h, t, { title: (i + 1) + '   ' + GTITLE[i], titleSize: 28, lines: [], a: al, sheen: act > 0.5 ? 0.9 : 0.25, glow: i === 2 ? null : ACC, glowK: 0.5 * act, cursor: false });
+      ctx.save(); ctx.globalAlpha = al; L.rr(ctx, x, y + 47, w, h - 47, 0); ctx.clip();
+      p = seg(t, cu.start + 0.15, cu.start + 0.15 + Math.max(2.6, cu.end - cu.start + 0.7));
+      // in the overview each window shows its finished drawing, dimmed; when the camera arrives the drawing starts over from nothing
+      var pv = 0.5 * (1 - seen) * (1 - seg(p, 0, 0.02));
+      if (pv > 0.01) { ctx.globalAlpha = al * pv; G.list[i](ctx, 0.95, { cx: x + w / 2, cy: y + 47 + 282, s: 0.86, labels: false }); ctx.globalAlpha = al; }
+      G.list[i](ctx, p, { cx: x + w / 2, cy: y + 47 + 282, s: 0.86, labels: true });
+      ctx.restore();
+      // what the agent asks, and the answer: typed under the drawing
+      var q0 = cu.start + 0.1, a0 = cu.start + 1.9, qa = al, qn = Math.max(0, Math.floor((t - q0) * 46)), an = Math.max(0, Math.floor((t - a0) * 70));
+      L.text(ctx, '>', x + 34, y + h - 66, { size: 28, font: 'm', weight: 600, color: ACC, a: qa });
+      L.text(ctx, GASK[i].slice(0, qn), x + 70, y + h - 66, { size: 28, font: 'm', weight: 500, color: INK, a: qa });
+      L.text(ctx, GANS[i].slice(0, an), x + 70, y + h - 24, { size: 28, font: 'm', weight: 500, color: ACC, a: qa });
+    }
+  }
+
+  // ================================================================ study
+  var ROWS = F.rows.slice().sort(function (a, b) { return a.tokens - b.tokens; });
+  var MAXTOK = ROWS.reduce(function (m, r) { return Math.max(m, r.tokens); }, 1);
+  function rowColor(r) { return r.best ? ACC : r.family === 'control' ? CONTROL : r.family === 'tool' ? [211, 211, 219] : [176, 100, 70]; }
+  var TREE = (function () {
+    var R = L.rng(5), nodes = [], edges = [], d, i;
+    nodes.push({ x: 0.5, y: 0 });
+    var prev = [0];
+    for (d = 1; d <= 3; d++) {
+      var cur = [], n = Math.pow(2, d);
+      for (i = 0; i < n; i++) { var idx = nodes.length; nodes.push({ x: (i + 0.5) / n + (R() - 0.5) * 0.04, y: d }); cur.push(idx); edges.push([prev[Math.floor(i / 2)], idx]); }
+      prev = cur;
+    }
+    return { nodes: nodes, edges: edges };
+  })();
+  var MD = [F.models.light, F.models.mid, F.models.top];
+
+  // one: the agents and the files
+  function sAgents(ctx, t, tc, c) {
+    var ox = SO.agents[0], oy = SO.agents[1], a0 = ST[0].start + 0.3, g = 1, i;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    L.numText(ctx, String(Math.round(F.study.agents * ease.outQ(seg(tc, a0, a0 + 1.6)))), 150, 330, o(250, 700, { ls: -0.055, a: g, counting: String(F.study.agents) }));
+    L.riseText(ctx, 'agents', 154, 410, ease.outQ(seg(t, a0 + 0.2, a0 + 0.6)), o(80, 600, { color: INK2, ls: -0.02, a: g }));
+    L.numText(ctx, String(Math.round(F.study.files * ease.outQ(seg(tc, a0 + 1.4, a0 + 2.6)))), 1000, 330, o(250, 700, { ls: -0.055, a: g, counting: String(F.study.files) }));
+    L.riseText(ctx, 'files, one ' + F.study.language + ' repository', 1004, 410, ease.outQ(seg(t, a0 + 1.6, a0 + 2.1)), o(60, 560, { color: INK2, ls: -0.015, a: g, shadow: HALO }));
+    // 884 dots, one for each agent, and 86 squares, one for each file, lit in turn under a sweep of light
+    var na = F.study.agents, cols = 52, lk = ease.outC(seg(t, a0 + 0.5, a0 + 3.4)), lit = Math.round(na * lk);
+    for (i = 0; i < na; i++) {
+      var on = i < lit, x = 156 + (i % cols) * 14.4, y = 480 + Math.floor(i / cols) * 17.5;
+      ctx.fillStyle = on ? rgba(i % 7 === 0 ? ACC : INK2, i % 7 === 0 ? 1 : 0.8) : 'rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.arc(x, y, 3.6, 0, 6.2832); ctx.fill();
+    }
+    var sx = 156 + 748 * lk;
+    L.track(ctx, sx, 480);
+    ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.stamp(ctx, ACC, sx, 640, 150, 0.5 * (lk > 0 && lk < 1 ? 1 : 0), 0.2); ctx.restore();
+    var nf = F.study.files, kf = ease.outC(seg(t, a0 + 1.8, a0 + 4.0)), litf = Math.round(nf * kf);
+    for (i = 0; i < nf; i++) {
+      var fx = 1006 + (i % 14) * 54, fy = 480 + Math.floor(i / 14) * 54;
+      L.rr(ctx, fx, fy, 38, 38, 5); ctx.fillStyle = i < litf ? rgba(INK2, 0.82) : 'rgba(255,255,255,0.08)'; ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // two: three questions, graded against the syntax tree
+  function sQuestions(ctx, t, c) {
+    var ox = SO.questions[0], oy = SO.questions[1], a0 = ST[1].start + 0.3, qs = F.study.questions, i;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    L.riseText(ctx, 'Three questions', 146, 130, ease.outQ(seg(t, a0, a0 + 0.4)), o(100, 700, { ls: -0.04 }));
+    var qopt = { size: 34, weight: 500, font: 't' };
+    for (i = 0; i < 3; i++) {
+      var qa = ease.outC(seg(t, a0 + 0.1 + i * 0.2, a0 + 0.7 + i * 0.2)), qy = 200 + i * 236 + (1 - qa) * 30;
+      L.panel(ctx, 150, qy, 1090, 206, { a: qa, sheen: 0.6, t: t });
+      L.text(ctx, qs[i].title, 190, qy + 60, { size: 44, weight: 650, font: 'd', ls: -0.02, color: INK, a: qa });
+      wrap(ctx, qs[i].text, 1010, qopt).forEach(function (ln, n) { L.text(ctx, ln, 190, qy + 112 + n * 42, Object.assign({ color: INK2, a: qa }, qopt)); });
+    }
+    // the syntax tree, drawn on, and the tick that grades against it
+    var tk = seg(t, a0 + 0.8, a0 + 2.4), tx0 = 1330, ty0 = 230, tw = 420, th = 450, nodes = TREE.nodes, edges = TREE.edges;
+    ctx.lineWidth = 2;
+    edges.forEach(function (e, n) {
+      var a = nodes[e[0]], b = nodes[e[1]], p = ease.outC(seg(tk, n / edges.length * 0.7, n / edges.length * 0.7 + 0.3));
+      ctx.strokeStyle = rgba(INK2, 0.6 * p); ctx.beginPath(); ctx.moveTo(tx0 + a.x * tw, ty0 + a.y * th / 3); ctx.lineTo(mix(tx0 + a.x * tw, tx0 + b.x * tw, p), mix(ty0 + a.y * th / 3, ty0 + b.y * th / 3, p)); ctx.stroke();
     });
-    TREE.forEach(function (n, i) {
-      var q = ease.outC(seg(p, n.d * 0.22 + 0.08, n.d * 0.22 + 0.3));
-      if (q <= 0) return;
-      var hit = n.d === 3 && (i % 3 === 0) ? ease.outQ(seg(t, tGraded + 0.5 + (i % 7) * 0.12, tGraded + 0.9 + (i % 7) * 0.12)) : 0;
-      ctx.fillStyle = rgba(hit > 0 ? ACC : INK, (hit > 0 ? 1 : 0.55) * op * q); ctx.beginPath(); ctx.arc(n.x, n.y, 7 + hit * 3, 0, Math.PI * 2); ctx.fill();
-      if (hit > 0) L.stamp(ctx, ACC, n.x, n.y, 30, 0.55 * hit * op);
+    nodes.forEach(function (nd, n) {
+      var p = ease.outC(seg(tk, n / nodes.length * 0.7, n / nodes.length * 0.7 + 0.3));
+      ctx.fillStyle = rgba(n % 3 === 0 ? ACC : INK2, p); ctx.beginPath(); ctx.arc(tx0 + nd.x * tw, ty0 + nd.y * th / 3, 10 * p, 0, 6.2832); ctx.fill();
+      if (n % 3 === 0 && p > 0.3) L.stamp(ctx, ACC, tx0 + nd.x * tw, ty0 + nd.y * th / 3, 34, 0.5 * p, 0.3);
+    });
+    var gt = cueAt(ST[1], 'graded');
+    L.riseText(ctx, 'graded against', 1290, 790, ease.outQ(seg(t, gt, gt + 0.4)), o(56, 560, { color: INK2, ls: -0.012, shadow: HALO }));
+    L.riseText(ctx, 'the syntax tree.', 1290, 856, ease.outQ(seg(t, gt + 0.1, gt + 0.5)), o(56, 560, { color: INK2, ls: -0.012, shadow: HALO }));
+    ctx.restore();
+  }
+
+  // three: the models of the runs
+  function sModels(ctx, t, c) {
+    var ox = SO.models[0], oy = SO.models[1], a0 = ST[2].start + 0.3, i;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    L.riseText(ctx, 'Three models', 146, 140, ease.outQ(seg(t, a0, a0 + 0.4)), o(100, 700, { ls: -0.04 }));
+    var keys = ['haiku', 'sonnet', 'opus'];
+    for (i = 0; i < 3; i++) {
+      var m = MD[i], tt0 = cueAt(ST[2], keys[i]) - 0.2, ka = ease.outC(seg(t, tt0, tt0 + 0.6)), bh = 300 + i * 70, bx = 150 + i * 550, by = 700 - bh * ka;
+      L.panel(ctx, bx, by, 510, bh * ka + 0.01, { a: ka, sheen: 0.5, t: t, glow: i === 2 ? ACC : null, glowK: 0.6 });
+      var ta = ka * seg(ka, 0.5, 1);
+      L.text(ctx, m.name, bx + 36, by + 92, { size: 52, weight: 700, font: 'd', ls: -0.03, color: i === 2 ? ACC : INK, a: ta });
+      L.text(ctx, m.effort + ' effort', bx + 36, by + 144, { size: 36, weight: 560, font: 't', color: INK2, a: ta });
+    }
+    var sa = ease.outC(seg(t, ST[2].end - 1.2, ST[2].end - 0.6)), np = { size: 30, weight: 500, font: 't', color: INK3, a: sa };
+    wrap(ctx, F.modelsNote, 1620, np).forEach(function (ln, n) { L.text(ctx, ln, 150, 790 + n * 40, np); });
+    ctx.restore();
+  }
+
+  // four: the leaderboard, fewest tokens first
+  function sBoard(ctx, t, tc, c) {
+    var ox = SO.board[0], oy = SO.board[1], a0 = ST[3].start + 0.3, i;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    var ha = seg(t, a0, a0 + 0.3), title = F.cap.configs + ' ways to find code, fewest tokens first';
+    L.text(ctx, title, 146, 92, o(60, 700, { a: ha, ls: -0.03 }));
+    L.text(ctx, MODEL + ', ' + F.labels.firstSet, 146, 160, o(60, 560, { color: INK2, a: ha, ls: -0.015 }));
+    L.text(ctx, 'tokens per task', 940, 222, { size: 24, weight: 560, font: 't', color: INK3, a: ha });
+    L.text(ctx, 'turns', 1770, 222, { size: 24, weight: 560, font: 't', color: INK3, a: ha, align: 'r' });
+    var bx0 = 940, bmax = 520;
+    for (i = 0; i < ROWS.length; i++) {
+      var r = ROWS[i], rt0 = a0 + 0.2 + i * 0.2, rp = ease.outC(seg(t, rt0, rt0 + 0.55)), rpc = ease.outC(seg(tc, rt0, rt0 + 0.55)), ry = 262 + i * 50 + (1 - rp) * 24, ra = rp, col = rowColor(r);
+      var bw = Math.max(3, bmax * r.tokens / MAXTOK * rp);
+      L.track(ctx, bx0 + bw, ry);
+      if (r.best) { L.rr(ctx, 134, ry - 36, 1652, 46, L.R_M); ctx.fillStyle = 'rgba(255,122,61,' + (0.1 * ra).toFixed(3) + ')'; ctx.fill(); ctx.strokeStyle = rgba(ACC, 0.6 * ra); ctx.lineWidth = 1; ctx.stroke(); }
+      var nm = { size: 26, weight: r.best ? 700 : 520, font: 't', color: r.best ? INK : INK2, a: ra };
+      L.text(ctx, fit(ctx, r.name, 770, nm), 156, ry, nm);
+      ctx.fillStyle = rgba(col, ra * 0.9); L.rr(ctx, bx0, ry - 24, bw, 20, 4); ctx.fill();
+      if (ra > 0.2 && bw > 8) L.stamp(ctx, r.best ? ACC : INK2, bx0 + bw, ry - 14, 26, 0.5 * ra * (rpc < 1 ? 1 : 0.35), 0.4);
+      var lx = bx0 + Math.max(3, bmax * r.tokens / MAXTOK * rpc) + 16;                // the label rides the frame's own time, so it never doubles
+      L.numText(ctx, L.fmtTokens(r.tokens * rpc), lx, ry, { size: 28, weight: 650, font: 't', color: r.best ? INK : INK2, a: ra, counting: L.fmtTokens(r.tokens) });
+      L.numText(ctx, r.turnsText, 1770, ry, { size: 28, weight: 560, font: 't', color: INK2, a: ra, align: 'r' });
+      if (r.best) { var tg = F.bestLabel || 'Most reliable', tm = cueAt(ST[3], 'most reliable'); L.text(ctx, tg, 1290, ry - 2, { size: 26, weight: 700, font: 't', ls: 0.02, color: ACC, a: ra * seg(t, tm - 0.1, tm + 0.3) }); }
+    }
+    ctx.restore();
+  }
+
+  // five: the range over four comparisons, grouped by model
+  function sRange(ctx, t, tc, c) {
+    var ox = SO.range[0], oy = SO.range[1], a0 = ST[4].start + 0.3, i, j;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    L.numText(ctx, F.cap.range_min + ' to ' + F.cap.range_max, 134, 215, o(190, 700, { ls: -0.05, a: seg(t, a0, a0 + 0.3), counting: F.cap.range_min + ' to ' + F.cap.range_max }));
+    L.riseText(ctx, 'fewer tokens than no index, across ' + F.cap.cells + ' comparisons.', 150, 290, ease.outQ(seg(t, a0 + 0.3, a0 + 0.8)), Object.assign({}, D, { size: 54, shadow: HALO }));
+    var groups = [F.models.light, F.models.mid], sets = [{ id: 'original', name: F.labels.firstSet }, { id: 'held-out', name: F.labels.secondSet.replace(' question', '') }], n = 0;
+    for (i = 0; i < 2; i++) {
+      var m = groups[i], gy = 370 + i * 215, ga = ease.outC(seg(t, a0 + 0.7 + i * 0.9, a0 + 1.2 + i * 0.9));
+      L.text(ctx, m.label, 150, gy, { size: 56, weight: 700, font: 'd', ls: -0.02, color: INK, a: ga });
+      for (j = 0; j < 2; j++) {
+        var cell = F.cells.filter(function (q) { return q.class === m.id && q.set === sets[j].id; })[0];
+        if (!cell) continue;
+        var t0 = a0 + 0.9 + n * 0.45, ca = ease.outC(seg(t, t0, t0 + 0.6)), cac = ease.outC(seg(tc, t0, t0 + 0.6)), cy = gy + 66 + j * 70, bwf = 800 * cell.pct / F.range.max;
+        var isMax = cell.pct === F.range.max, isMin = cell.pct === F.range.min, bwx = Math.max(4, bwf * ca);
+        L.track(ctx, 760 + bwx, cy);
+        L.text(ctx, sets[j].name, 150, cy + 6, { size: 50, weight: 560, font: 'd', ls: -0.015, color: INK2, a: ca });
+        ctx.fillStyle = rgba(isMax ? ACC : isMin ? [211, 211, 219] : [176, 100, 70], ca * 0.95); L.rr(ctx, 760, cy - 36, bwx, 46, 6); ctx.fill();
+        L.numText(ctx, pct(cell.pct * cac), 760 + Math.max(4, bwf * cac) + 20, cy + 6, { size: 50, weight: 700, font: 'd', color: INK, a: ca, counting: pct(cell.pct) });
+        n++;
+      }
+    }
+    ctx.restore();
+  }
+
+  // six: fully correct, every run
+  function sReliable(ctx, t, c) {
+    var ox = SO.reliable[0], oy = SO.reliable[1], a0 = ST[5].start + 0.3, i;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    var best = F.best, tg = (F.bestLabel || 'Most reliable') + ': ' + best.name;
+    L.riseText(ctx, tg, 150, 118, ease.outQ(seg(t, a0 - 0.1, a0 + 0.4)), o(60, 700, { color: ACC, ls: -0.02, shadow: HALO }));
+    L.numText(ctx, F.reliable.perfect + ' of ' + F.reliable.runs, 134, 340, o(250, 700, { ls: -0.05, a: seg(t, a0, a0 + 0.3) }));
+    L.riseText(ctx, 'runs fully correct, on both question sets.', 150, 424, ease.outQ(seg(t, a0 + 0.3, a0 + 0.8)), Object.assign({}, D, { size: 62, shadow: HALO }));
+    L.riseText(ctx, F.models.light.name + ' and ' + F.models.mid.name + '.', 150, 496, ease.outQ(seg(t, a0 + 0.6, a0 + 1.1)), Object.assign({}, D, { size: 56, shadow: HALO }));
+    var n12 = F.reliable.runs;
+    for (i = 0; i < n12; i++) {
+      var ta = ease.spring(seg(t, a0 + 0.9 + i * 0.16, a0 + 1.4 + i * 0.16)), tx = 170 + (i % 6) * 170 + (i % 6 >= 3 ? 40 : 0), ty = 560 + Math.floor(i / 6) * 140;
+      ctx.save(); ctx.translate(tx + 50, ty + 50); ctx.scale(Math.max(0.001, ta), Math.max(0.001, ta));
+      ctx.beginPath(); ctx.arc(0, 0, 50, 0, 6.2832); ctx.fillStyle = rgba(ACC, 0.14); ctx.fill(); ctx.strokeStyle = rgba(ACC, 1); ctx.lineWidth = 2.5; ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(-18, 2); ctx.lineTo(-5, 15); ctx.lineTo(20, -14); ctx.lineWidth = 6; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = rgba(INK, 1); ctx.stroke();
+      ctx.restore();
+      if (ta > 0.2 && ta < 1.05) { ctx.save(); ctx.globalCompositeOperation = 'lighter'; L.stamp(ctx, ACC, tx + 50, ty + 50, 90, 0.4 * (1.05 - ta), 0.3); ctx.restore(); }
+    }
+    ctx.restore();
+  }
+
+  // the limits: one repository, and two of the four things measured
+  function sLimits(ctx, t, c) {
+    var ox = SO.limits[0], oy = SO.limits[1], a0 = CL[0].start + 0.3, i;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    var qs = ['The limits are real:', 'one repository,', F.study.runsMin + ' to ' + F.study.runsMax + ' runs for each setup.'];
+    qs.forEach(function (s, n) { L.riseText(ctx, s, 146, 150 + n * 112, ease.outQ(seg(t, a0 + n * 0.5, a0 + 0.5 + n * 0.5)), o(n === 0 ? 100 : 104, 700, { ls: -0.04, color: n === 0 ? ACC : INK })); });
+    // the repository: one box, the files of the study as squares
+    var ra = ease.outC(seg(t, a0 + 0.8, a0 + 1.4));
+    if (ra > 0.003) {
+      ctx.save(); ctx.globalAlpha = ra; ctx.setLineDash([10, 12]); ctx.lineWidth = 1.5; ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      L.rr(ctx, 150, 440, 1620, 150, L.R_L); ctx.stroke(); ctx.setLineDash([]);
+      L.text(ctx, 'one ' + F.study.language + ' repository', 180, 486, { size: 30, weight: 560, font: 't', color: INK3, a: 1 });
+      for (i = 0; i < F.study.files; i++) { L.rr(ctx, 180 + (i % 43) * 36, 508 + Math.floor(i / 43) * 36, 28, 28, 4); ctx.fillStyle = 'rgba(184,184,193,0.5)'; ctx.fill(); }
+      ctx.restore();
+    }
+    var s2 = CL[1].start + 0.1;
+    L.riseText(ctx, 'The study measures the first two things only.', 150, 700, ease.outQ(seg(t, s2, s2 + 0.5)), Object.assign({}, D, { size: 62, shadow: HALO }));
+    var names = ['Definition and callers', 'Search by meaning', 'What a change reaches', 'Findings that last'];
+    names.forEach(function (s, n) {
+      var ia = ease.outC(seg(t, s2 + 0.4 + n * 0.12, s2 + 0.9 + n * 0.12)), on = n < 2, x = 150 + n * 410;
+      L.rr(ctx, x, 740, 390, 76, L.R_M); ctx.strokeStyle = on ? rgba(ACC, ia) : 'rgba(255,255,255,' + (0.3 * ia).toFixed(3) + ')'; ctx.lineWidth = on ? 2 : 1.5; ctx.stroke();
+      if (on) { ctx.fillStyle = rgba(ACC, 0.14 * ia); ctx.fill(); }
+      L.text(ctx, s, x + 26, 790, { size: 32, weight: 620, font: 't', color: on ? INK : INK2, a: ia });
     });
     ctx.restore();
   }
 
-  // ---------- close
-  var cl_1 = ML('One repository.', 'display h1', 150, 20, 96);
-  var cl_2 = ML(F.study.runsMin + ' to ' + F.study.runsMax + ' runs for each setup.', 'display h1', 150, 120, 96);
-  var cl_3 = ML('Measured: the first two.', 'display h1', 150, 220, 96);
-  var cl_g = GV_NAMES.map(function (s) { return ML(s[0] + '<br>' + s[1], 'sub s ctr', 0, 0, 44); });
-  var cl_st = MEASURED.map(function (m) { return ML(m ? 'Measured' : 'Not measured', 'sub s ctr ' + (m ? 'acc' : 'ink2'), 0, 0, 48); });
-  var cl_nm = ML('PeterGanuRusty', 'display', 0, 0, 156);
-  var cl_pp = ML('Private preview', 'q big', 0, 0);
-  var cl_mk = L.markSvg(ui, 340, 't');
-
-  function drawClose(t) {
-    var c1 = CL.cues[0], c2 = CL.cues[1], c3 = CL.cues[2], k;
-    var pg = 1 - ease.inC(seg(t, c3.start - 0.5, c3.start - 0.05));
-    var tRuns = cueAt(c1, 'a few runs');
-    pop(cl_1, ease.outQ(seg(t, c1.start + 0.05, c1.start + 0.55)) * pg);
-    pop(cl_2, ease.outQ(seg(t, tRuns - 0.1, tRuns + 0.45)) * pg);
-    var o2 = ease.outQ(seg(t, c2.start, c2.start + 0.5));
-    pop(cl_3, o2 * pg);
-    // the four things from before: the first two measured, the other two not
-    for (k = 0; k < 4; k++) {
-      var cx = GV_CENTERS[k], s0 = c2.start + 0.25 + k * 0.12, a = ease.outC(seg(t, s0, s0 + 0.6)) * pg;
-      if (a > 0) {
-        ctx.save(); ctx.globalAlpha = a * (k < 2 ? 1 : 0.4);
-        G.list[k](ctx, 1, { cx: cx, cy: 495, s: 0.34, labels: false });
-        ctx.restore();
-        if (k > 1) { L.hair(ctx, 0.5 * a); ctx.setLineDash([5, 7]); ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(cx - 180, 495 - 118, 360, 236, 18); else ctx.rect(cx - 180, 495 - 118, 360, 236); ctx.stroke(); ctx.setLineDash([]); }
-      }
-      var l = cl_g[k], sb = cl_st[k];
-      l.root._x = cx - l.root.offsetWidth / 2; l.root._y = 608; l.root.style.transform = 'translate3d(' + l.root._x + 'px,608px,0)';
-      sb.root._x = cx - sb.root.offsetWidth / 2; sb.root._y = 326; sb.root.style.transform = 'translate3d(' + sb.root._x + 'px,326px,0)';
-      pop(l, ease.outQ(seg(t, s0 + 0.2, s0 + 0.6)) * pg);
-      pop(sb, ease.outQ(seg(t, s0 + 0.2, s0 + 0.6)) * pg);
-    }
-    // the name and the mark
-    var tn = c3.start - 0.05;
-    var mp = ease.ioC(seg(t, tn, tn + 0.9)), np = ease.outQ(seg(t, tn + 0.5, tn + 1.1)), pp = ease.outQ(seg(t, tn + 0.85, tn + 1.3));
-    cl_mk.root._x = 150; cl_mk.root._y = 330;
-    cl_mk.root.style.transform = 'translate3d(150px,330px,0)';
-    L.markDraw(cl_mk, mp);
-    cl_nm.root._x = 560; cl_nm.root._y = 400; cl_nm.root.style.transform = 'translate3d(560px,400px,0)';
-    cl_pp.root._x = 566; cl_pp.root._y = 590; cl_pp.root.style.transform = 'translate3d(566px,590px,0)';
-    pop(cl_nm, np); pop(cl_pp, pp);
-    // the filament under the name: the best lane, once
-    var fl = ease.outQ(seg(t, tn + 0.9, tn + 1.6));
-    if (fl > 0) {
-      var fx0 = 566, fx1 = fx0 + (1120 - 0) * M / N * 1.6 * fl, fy = 760;
-      ctx.fillStyle = rgba(ACC, 0.9); ctx.fillRect(fx0, fy, Math.max(0, fx1 - fx0), 2);
-      var grad = ctx.createLinearGradient(fx0, 0, fx1, 0); grad.addColorStop(0, 'rgba(255,122,61,0)'); grad.addColorStop(1, 'rgba(255,122,61,0.3)');
-      ctx.fillStyle = grad; ctx.fillRect(fx0, fy - 10, Math.max(0, fx1 - fx0), 22);
-      L.stamp(ctx, ACC, fx1, fy + 1, 46, 0.8 * fl);
-    }
+  // close: the name and the install command
+  var CLOSE_LINES = K.installLines(F.installers.items, cueAt(CL[2], 'One command') - 0.05, 420);
+  function sClose(ctx, t, c) {
+    var ox = SO.close[0], oy = SO.close[1], s0 = CL[2].start + 0.1;
+    if (!near(c, ox, oy)) return;
+    ctx.save(); ctx.translate(ox, oy);
+    L.markDraw(ctx, 146, 54, 88, seg(t, s0, s0 + 0.7), ACC, 1);
+    L.riseText(ctx, 'PeterGanuRusty', 262, 124, ease.outQ(seg(t, s0, s0 + 0.5)), o(80, 700, { ls: -0.04 }));
+    L.wordsText(ctx, 'One command installs it.', 140, 330, t, cueAt(CL[2], 'One command'), o(150, 700, {}));
+    L.terminal(ctx, 150, 392, 1620, 500, t, { title: 'Install', lines: CLOSE_LINES, size: 34, a: ease.outC(seg(t, s0, s0 + 0.35)), sheen: 0.7, glow: ACC, glowK: 0.6 });
+    ctx.restore();
   }
 
-  // ---------- the film
-  var domAll = Array.prototype.slice.call(ui.children);
-
-  // which scene draws at time t, and the curtain between them
-  var BOUNDS = [GV.start, SD.start, CL.start];
-  function curtainAt(t) {
-    var x = -101;
-    BOUNDS.forEach(function (b) {
-      var cover = seg(t, b - 0.22, b), uncover = seg(t, b + 0.02, b + 0.34);
-      if (cover > 0 && uncover === 0) x = mix(-101, 0, ease.inC(cover));
-      else if (uncover > 0 && uncover < 1) x = mix(0, 101, ease.outC(uncover));
-    });
-    return x;
-  }
-
-  var lastScene = null;
-  function seek(t) {
-    t = clamp(t, 0, DUR);
-    var frame = Math.round(t * FPS);
-    world.begin();
-    L.background(ctx, world.dpr, Math.sin(t * 0.21) * 30, Math.cos(t * 0.17) * 20);
-    var which = t < GV.start ? 'flow' : t < SD.start ? 'gives' : t < CL.start ? 'study' : 'close';
-    if (which !== lastScene) {
-      domAll.forEach(function (e) { L.vis(e, false); });
-      lastScene = which;
+  // ================================================================ the film
+  function draw(ctx, t, sub) {
+    var c = camAt(t), tc = sub && sub.t !== undefined ? sub.t : t;
+    L.background(ctx, t, -140 * Math.sin(c.x * 0.0007), -90 * Math.sin(c.y * 0.0009), 1);
+    K.floor(ctx, c, t, 1 - 0.55 * seg(t, CL[2].start - 0.2, CL[2].start + 0.5));
+    if (t < tPanEnd + 0.1) drawWorld(ctx, t, tc, c);
+    ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
+    if (t > tMove0 - 0.2) {
+      L.layer(ctx, c, 1.0);
+      drawWhat(ctx, t, c); drawGives(ctx, t, c);
+      sAgents(ctx, t, tc, c); sQuestions(ctx, t, c); sModels(ctx, t, c); sBoard(ctx, t, tc, c); sRange(ctx, t, tc, c); sReliable(ctx, t, c); sLimits(ctx, t, c); sClose(ctx, t, c);
+      ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
     }
-    ctx.lineCap = 'butt'; ctx.lineJoin = 'miter';
-    if (which === 'flow') drawFlow(t);
-    else if (which === 'gives') drawGives(t);
-    else if (which === 'study') drawStudy(t);
-    else drawClose(t);
-    // end of the film: a short fade, so the file does not stop on a hard frame
-    var fade = seg(t, DUR - 0.35, DUR);
-    if (fade > 0) { ctx.globalAlpha = fade; ctx.fillStyle = '#0a0a0c'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-    curtain.style.transform = 'translate3d(' + curtainAt(t).toFixed(2) + '%,0,0)';
-    var gs = L.grainShift(frame, 3);
-    grainEl.style.transform = 'translate3d(' + (-gs[0]) + 'px,' + (-gs[1]) + 'px,0)';
+    K.bokeh(ctx, c, t, 1 - 0.5 * seg(t, CL[2].start - 0.2, CL[2].start + 0.5));
+    ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
+    if (t < tPanEnd + 0.1) { overlayCold(ctx, t, tc); overlayChange(ctx, t, tc); }
+    // the names in the pictures up to here are invented examples: say so, small, for as long as they are on screen
+    var ill = win(t, C[0].start, C[0].start + 0.5, stops[6].t0, stops[6].t0 + 0.5);
+    if (ill > 0.003) L.text(ctx, 'Illustration: example names', 1770, 44, { size: 28, weight: 560, font: 't', color: INK3, align: 'r', a: ill * 0.9 });
   }
-
-  window.PGR = {
-    fps: FPS, duration: DUR, ready: false, seek: seek,
-    sceneTimes: TL.scenes.map(function (s) { return { id: s.id, start: s.start, dur: s.dur }; })
-  };
-  L.ready().then(function () { seek(0); window.PGR.ready = true; });
+  function post(t) {
+    var fi = 1 - seg(t, 0, 0.5), fo = seg(t, DUR - 0.3, DUR);
+    return { bloom: 0.22 + 0.12 * win(t, tDone - 0.2, tDone + 0.1, tDone + 0.6, tDone + 1.4), fade: Math.max(fi, fo), vig: 0.3, thr: 0.58 };
+  }
+  L.film({ duration: DUR, fps: TL.fps, draw: draw, post: post, sceneTimes: TL.scenes.map(function (s) { return { id: s.id, start: s.start, dur: s.dur }; }) });
 })();

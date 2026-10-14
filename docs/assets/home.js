@@ -1,156 +1,243 @@
-/* The Overview page where the particle stage cannot run (no WebGL2, or a screen too short for it): the two
-   token streams on a 2D canvas. One canvas draws two lanes to the same scale: lane length is tokens per task,
-   one particle stands for 1k tokens, the stream speed follows turns per task. Every number comes from
-   window.SHOWCASE. The lanes, their labels and the difference are also written in the page, so without a
-   script, without canvas or with reduced motion the page shows the same measurements as a still. */
+/* The first screen of the Overview: two terminal windows replay one session, an agent with no index and an agent with pgr. The
+   turns and the tokens are the measured means of the headline cell; the page is written finished, and this script hides the turns
+   and plays them in order, once, then rests on the finished frame (Replay plays it again). The replay is a function of one clock
+   that counts elapsed milliseconds, so it is the same at 60, 120 and 144 Hz and can be paused and replayed without drifting. A
+   layer of small elements, each moved by one Web Animation on the compositor, carries the tokens from a command to the context meter
+   (a canvas redrawn every frame cost the page a quarter of its frames). The pointer lights the
+   windows and moves them a little against each other, in whole device pixels so the text stays sharp. The frame loop runs only
+   while something moves: when the page rests, nothing runs. Under reduced motion none of this runs and the page keeps its end. */
 (function () {
   'use strict';
-  var App = window.App, data = window.SHOWCASE, fig = document.getElementById('stream');
-  if (!App || !data || !fig || App.gl) return;
-  var found = App.headline(data);
-  if (!found || !found.c) return;
-  var host = fig.querySelector('.lanes'), els = [fig.querySelector('.lane-ref'), fig.querySelector('.lane-best')];
-  var canvas = document.createElement('canvas'), ctx = canvas.getContext ? canvas.getContext('2d') : null;
-  if (!host || !ctx || !els[0] || !els[1]) return;
-  canvas.setAttribute('aria-hidden', 'true');
-  host.appendChild(canvas);
-  var gap = fig.querySelector('.gap');
-  if (gap) gap.classList.add('wait');   // before the canvas takes over, so the label never flashes
-  fig.classList.add('has-canvas');
+  var App = window.App, duel = document.getElementById('duel');
+  if (!App || !duel || App.reduced) return;
+  var scene = duel.closest('.scene');
+  if (!scene) return;
+  var each = function (list, fn) { Array.prototype.forEach.call(list, fn); };
 
-  var PX_PER_TURN = 22, EDGE = 0.045, rows = 6;
-  // Near, middle and far particles: size, brightness and speed fall with distance.
-  var LAYERS = [{ a: 0.95, t: 1.6, s: 1 }, { a: 0.6, t: 1.1, s: 0.82 }, { a: 0.32, t: 0.8, s: 0.64 }];
-  var R = Math.max(found.b.tokens, found.c.tokens);
-  var rgb = (getComputedStyle(document.documentElement).getPropertyValue('--accent-rgb') || '255,122,61').replace(/\s/g, '');
-  var lanes = [found.c, found.b].map(function (p, i) {
-    var el = els[i];
-    return { el: el, tokens: p.tokens, turns: p.turns, accent: i === 1, ph: [0, 0, 0],
-      tokEl: el.querySelector('[data-tok]'), turnEl: el.querySelector('[data-turns]'),
-      tokText: el.querySelector('[data-tok]') ? el.querySelector('[data-tok]').textContent : '',
-      turnText: el.querySelector('[data-turns]') ? el.querySelector('[data-turns]').textContent : '' };
-  });
+  var TURN = 1800, START = 250, TYPE = 22, LINE = 85, GROW = 1000, ENTER = 1500;
 
-  // One particle for each 1k tokens of the longest lane, spread evenly along it so the density never clumps.
-  var seed = 7;
-  function rnd() { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }
-  var N = Math.max(40, Math.round(R / 1000)), P = [];
-  for (var i = 0; i < N; i++) {
-    var r = rnd();
-    P.push({ s: (i + rnd()) / N, row: rnd(), layer: r < 0.2 ? 0 : r < 0.55 ? 1 : 2 });
-  }
-
-  var W = 0, H = 0, dpr = 1, tr = [], ticks = [], spacing = 16;
-  function measure() {
-    // Layout sizes, not bounding boxes: the card may be mid-reveal and scaled when this runs.
-    W = host.offsetWidth; H = host.offsetHeight;
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(W * dpr);
-    canvas.height = Math.round(H * dpr);
-    tr = lanes.map(function (lane) {
-      var b = lane.el.querySelector('.lane-track');
-      return { x: lane.el.offsetLeft + b.offsetLeft, y: lane.el.offsetTop + b.offsetTop, w: b.offsetWidth, h: b.offsetHeight };
+  function Windowed(el) {
+    this.el = el;
+    this.ref = el.classList.contains('term-ref');
+    this.turns = Array.prototype.map.call(el.querySelectorAll('.turn'), function (li) {
+      var cmd = li.querySelector('.turn-cmd');
+      return { li: li, cmd: cmd, full: cmd.textContent, outs: Array.prototype.slice.call(li.querySelectorAll('.ol')), on: false, typed: -1, lines: -1, k: -1, emitted: -1 };
     });
-    rows = Math.max(5, Math.round(tr[0].h / 8));
-    spacing = tr[0].w * rows / N;   // the room a particle has along its row, so a streak never runs into the next one
-    ticks = Array.prototype.map.call(fig.querySelectorAll('.scale span'), function (s) { return parseFloat(s.getAttribute('data-v')) / R; })
-      .filter(function (f) { return f > 0 && f < 1; });
+    this.n = this.turns.length;
+    this.segs = Array.prototype.slice.call(el.querySelectorAll('.blk'));
+    this.tok = el.querySelector('.tok');
+    this.total = parseFloat(this.tok.getAttribute('data-to'));
+    this.per = this.total / this.n;
+    this.state = el.querySelector('.term-state');
+    this.turnsLabel = el.querySelector('.meter-turns');
+    this.done = this.state.getAttribute('data-done');
+    this.finalTok = this.tok.textContent;
+    this.finalTurns = this.turnsLabel.textContent;
+    this.shown = { tok: '', turns: '', state: '' };
+    this.begin = function (i) { return START + i * TURN; };
+    this.out = function (i) { return this.turns[i].full.length * TYPE + 140; };
+    this.end = this.begin(this.n - 1) + this.out(this.n - 1) + GROW;
   }
-  function box(x, y, w, h, rad) { ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y, w, h, rad); else ctx.rect(x, y, w, h); }
-  function clamp(v) { return v < 0 ? 0 : v > 1 ? 1 : v; }
+  Windowed.prototype.render = function (t) {
+    var started = 0, sum = 0, last = this.turns[this.n - 1];
+    for (var i = 0; i < this.n; i += 1) {
+      var turn = this.turns[i], lt = t - this.begin(i), out = this.out(i);
+      var on = lt >= 0, typed = on ? Math.min(turn.full.length, Math.floor(lt / TYPE) + 1) : 0;
+      var k = App.ease(Math.max(0, Math.min(1, (lt - out) / GROW)));
+      var lines = on ? Math.max(0, Math.floor((lt - out) / LINE) + 1) : 0;
+      if (on) started += 1;
+      sum += this.per * k;
+      if (on !== turn.on) { turn.on = on; turn.li.classList.toggle('on', on); }
+      if (typed !== turn.typed) { turn.typed = typed; turn.cmd.textContent = on ? turn.full.slice(0, typed) : turn.full; }
+      if (lines !== turn.lines) { turn.lines = lines; turn.outs.forEach(function (ol, j) { ol.classList.toggle('on', j < lines); }); }
+      if (k !== turn.k) { turn.k = k; this.segs[i].style.transform = 'scaleX(' + k.toFixed(4) + ')'; }
+    }
+    var finished = t >= this.end - 40 && last.k >= 1;
+    var tok = finished ? this.finalTok : App.tokens(sum);
+    var turns = finished ? this.finalTurns : started + (started === 1 ? ' turn' : ' turns');
+    var state = finished ? this.done : (t < START ? 'ready' : 'working');
+    if (tok !== this.shown.tok) { this.shown.tok = tok; this.tok.textContent = tok; }
+    if (turns !== this.shown.turns) { this.shown.turns = turns; this.turnsLabel.textContent = turns; }
+    if (state !== this.shown.state) {
+      this.shown.state = state;
+      this.state.textContent = state;
+      this.state.classList.toggle('busy', state === 'working');
+      this.state.classList.toggle('fin', finished);
+    }
+    return finished;
+  };
 
-  // The lane of the best configuration starts as long as the no-index lane and settles on its measured length.
-  var intro = -1, DELAY = 0.45, SPAN = 1.5, shownTok = null, shownTurn = null, waiting = true;
-  function draw(dt) {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, H);
-    var k = intro < 0 ? 0 : App.ease(clamp((intro - DELAY) / SPAN)), hair = dpr >= 2 ? 0.5 : 1;
-    var startFrac = lanes[0].tokens / R;
-    lanes.forEach(function (lane, n) {
-      var t = tr[n], frac = n ? startFrac + (lane.tokens / R - startFrac) * k : lane.tokens / R;
-      var turns = n ? lanes[0].turns + (lane.turns - lanes[0].turns) * k : lane.turns;
-      var tone = lane.accent ? rgb : '178,178,190', vf = turns * PX_PER_TURN / t.w;
-      // the lane itself, then the scale lines inside it
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = hair;
-      box(t.x + hair / 2, t.y + hair / 2, t.w * frac - hair, t.h - hair, 10);
-      ctx.fillStyle = lane.accent ? 'rgba(' + rgb + ',.09)' : 'rgba(255,255,255,.04)';
-      ctx.fill();
-      ctx.strokeStyle = lane.accent ? 'rgba(' + rgb + ',.6)' : 'rgba(255,255,255,.16)';
-      ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,.07)';
-      for (var m = 0; m < ticks.length; m++) {
-        if (ticks[m] < frac - 0.002) ctx.fillRect(Math.round((t.x + ticks[m] * t.w) * dpr) / dpr, t.y + 4, hair, t.h - 8);
-      }
-      ctx.fillStyle = lane.accent ? 'rgb(' + rgb + ')' : 'rgb(184,184,193)';
-      ctx.fillRect(t.x + t.w * frac - 1.5, t.y - 3, 2, t.h + 6);
-      // the stream: additive, so overlaps brighten instead of covering
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = 'rgb(' + tone + ')';
-      for (var j = 0; j < 3; j++) lane.ph[j] += vf * LAYERS[j].s * dt;
-      for (var q = 0; q < P.length; q++) {
-        var p = P[q], L = LAYERS[p.layer], x = p.s + lane.ph[p.layer];
-        x -= Math.floor(x);
-        if (x >= frac) continue;
-        var f = Math.min(1, x / EDGE, (frac - x) / EDGE);
-        if (f <= 0) continue;
-        var a = L.a * f * f * (3 - 2 * f), len = Math.max(1.5, Math.min(vf * t.w * L.s * 0.11, spacing * 0.6)), px = t.x + x * t.w;
-        var yy = Math.round((t.y + (Math.floor(p.row * rows) + 0.5) * t.h / rows) * dpr) / dpr - L.t / 2;
-        if (p.layer === 0) {
-          // near particles: a faint long tail behind a short bright head
-          ctx.globalAlpha = a * 0.3;
-          ctx.fillRect(px - len * 2.4, yy, len * 2.4, L.t);
-          ctx.globalAlpha = a;
-          ctx.fillRect(px - len * 0.6, yy, len * 0.6, L.t);
-        } else {
-          ctx.globalAlpha = a;
-          ctx.fillRect(px - len, yy, len, L.t);
+  var wins = [];
+  try { each(duel.querySelectorAll('.term'), function (el) { wins.push(new Windowed(el)); }); } catch (err) { return; }
+  if (wins.length !== 2) return;
+  var delta = duel.querySelector('.duel-delta');
+  var refEnd = Math.max.apply(null, wins.map(function (w) { return w.end; })), settle = refEnd + 350;
+
+  /* ---------- the controls: Pause and Replay, in the foot of the duel ---------- */
+  var ctl = duel.querySelector('.duel-ctl');
+  if (!ctl) { ctl = document.createElement('div'); ctl.className = 'duel-ctl'; duel.appendChild(ctl); }
+  ctl.hidden = false;
+  ctl.innerHTML = '<button type="button" data-act="pause" aria-pressed="false">Pause</button><button type="button" data-act="replay">Replay</button>';
+  var pauseButton = ctl.querySelector('[data-act="pause"]');
+
+  /* ---------- state ---------- */
+  var t = -ENTER, playing = true, visible = true, finished = false, lastNow = 0, raf = 0;
+  var fx = document.createElement('div'), root = document.documentElement, alive = 0, pending = 0;
+  fx.className = 'scene-fx'; fx.setAttribute('aria-hidden', 'true');
+  scene.appendChild(fx);
+  var accentRgb = '255,122,61';
+  function readAccent() { accentRgb = getComputedStyle(root).getPropertyValue('--accent-rgb').trim().replace(/\s+/g, '') || '255,122,61'; }
+  readAccent();
+  document.addEventListener('themechange', readAccent);
+
+  // A token leaves a command and arrives at the context meter. Each is one small element with one Web Animation: the browser runs
+  // it on the compositor from the clock, so it costs the page no frames and is the same at any refresh rate. Where a token starts and
+  // ends is read with the other reads of the frame, before anything is written (locate), and the element is made after the writes
+  // (launch), so a token never forces a layout. The number of tokens in the air follows the pace.
+  function locate(win, i) {
+    if (alive + pending >= Math.max(1, Math.round(4 * App.pace.scale)) || App.pace.level >= 3) return null;
+    pending += 1;
+    var turn = win.turns[i], box = turn.cmd.getBoundingClientRect(), at = scene.getBoundingClientRect(), seg = win.segs[i].getBoundingClientRect();
+    return { win: win, x0: box.left + Math.min(box.width, 40) - at.left, y0: box.top + box.height / 2 - at.top, x1: seg.right - at.left, y1: seg.top + seg.height / 2 - at.top };
+  }
+  function launch(g) {
+    var win = g.win, x0 = g.x0, y0 = g.y0, x1 = g.x1, y1 = g.y1;
+    pending -= 1;
+    var bend = (Math.random() - 0.5) * 60, r = 2.6 + Math.random() * 2.2, d = 520 + Math.random() * 280, keys = [];
+    for (var s = 0; s <= 6; s += 1) {
+      var u = s / 6, e = 1 - Math.pow(1 - u, 3), arc = Math.sin(e * Math.PI);
+      keys.push({ offset: u, opacity: Math.min(1, u * 6) * (1 - u * 0.35), transform: 'translate3d(' + (x0 + (x1 - x0) * e + arc * bend - r).toFixed(1) + 'px,' + (y0 + (y1 - y0) * e - arc * 18 - r).toFixed(1) + 'px,0)' });
+    }
+    var el = document.createElement('i'), core = win.ref ? '213,218,226' : accentRgb;
+    el.style.cssText = 'position:absolute;left:0;top:0;width:' + (r * 5).toFixed(1) + 'px;height:' + (r * 5).toFixed(1) + 'px;margin:' + (-r * 1.5).toFixed(1) + 'px 0 0 ' + (-r * 1.5).toFixed(1) + 'px;border-radius:50%;opacity:0;will-change:transform,opacity;' +
+      'background:radial-gradient(circle closest-side,rgba(' + core + ',1) 0,rgba(' + core + ',1) 26%,rgba(' + core + ',.32) 44%,rgba(' + core + ',0) 100%)';
+    fx.appendChild(el);
+    alive += 1;
+    var run = el.animate(keys, { duration: d, easing: 'linear', fill: 'both' });
+    run.onfinish = function () { alive -= 1; if (el.parentNode) el.parentNode.removeChild(el); };
+  }
+
+  /* ---------- the pointer: a light that follows it, the two windows shifted against each other ---------- */
+  var aim = { x: 0, y: 0, nx: 0, ny: 0 }, cur = { x: 0, y: 0, nx: 0, ny: 0 }, pointerSeen = false;
+  var glow = scene.querySelector('.glow'), terms = wins.map(function (w) { return w.el; });
+  if (App.fine) {
+    scene.addEventListener('pointermove', function (e) {
+      var box = scene.getBoundingClientRect();
+      aim.x = e.clientX - box.left; aim.y = e.clientY - box.top;
+      aim.nx = (aim.x / box.width - 0.5) * 2; aim.ny = (aim.y / box.height - 0.5) * 2;
+      if (!pointerSeen) { cur.x = aim.x; cur.y = aim.y; pointerSeen = true; }
+      kick();
+    }, { passive: true });
+    scene.addEventListener('pointerleave', function () { aim.nx = 0; aim.ny = 0; kick(); });
+    terms.forEach(function (el) { App.light(el); });
+  }
+  var snap = function (v) { var d = window.devicePixelRatio || 1; return Math.round(v * d) / d; };
+  function follow(dt) {
+    var f = 1 - Math.pow(0.0015, dt / 1000), moved = false;
+    var dx = aim.x - cur.x, dy = aim.y - cur.y, dnx = aim.nx - cur.nx, dny = aim.ny - cur.ny;
+    if (Math.abs(dx) + Math.abs(dy) > 0.4 && pointerSeen) { cur.x += dx * f; cur.y += dy * f; moved = true; if (glow) glow.style.translate = cur.x.toFixed(1) + 'px ' + cur.y.toFixed(1) + 'px'; }
+    if (App.pace.level >= 2) { dnx = -cur.nx; dny = -cur.ny; }   // frames are missing their slot: the windows hold still
+    if (Math.abs(dnx) + Math.abs(dny) > 0.002) {
+      cur.nx += dnx * f; cur.ny += dny * f; moved = true;
+      terms[0].style.transform = 'translate3d(' + snap(cur.nx * -7) + 'px,' + snap(cur.ny * -4) + 'px,0)';
+      terms[1].style.transform = 'translate3d(' + snap(cur.nx * 7) + 'px,' + snap(cur.ny * 4) + 'px,0)';
+    }
+    return moved;
+  }
+
+  /* ---------- the clock ---------- */
+  function reset() {
+    t = -300; finished = false;
+    while (fx.firstChild) fx.removeChild(fx.firstChild);
+    alive = 0;
+    wins.forEach(function (w) { w.turns.forEach(function (turn) { turn.emitted = -1; }); w.render(0); });
+    if (delta) delta.classList.remove('on');
+    scene.classList.remove('settled');
+  }
+  function step(now, dt) {
+    if (playing && visible && !finished) {
+      var before = t, launches = [];
+      t += dt;
+      var at = Math.max(0, t);
+      // The reads of the frame first, then every write: while a turn's output arrives, tokens leave its command for the meter, one every 260 ms.
+      wins.forEach(function (w) {
+        for (var i = 0; i < w.n; i += 1) {
+          var lt = at - w.begin(i) - w.out(i);
+          if (lt >= 0 && lt < GROW && t > before) {
+            var due = Math.floor(lt / 260), turn = w.turns[i];
+            while (turn.emitted < due) { turn.emitted += 1; var g = locate(w, i); if (g) launches.push(g); }
+          }
         }
+      });
+      wins.forEach(function (w) { w.render(at); });
+      launches.forEach(launch);
+      if (t >= settle) {
+        finished = true;
+        wins.forEach(function (w) { w.render(refEnd + 10000); });
+        if (delta) delta.classList.add('on');
+        scene.classList.add('settled');
       }
-    });
-    ctx.globalAlpha = 1;
-    ctx.globalCompositeOperation = 'source-over';
-    // the numbers on the labels follow the lane while it settles, then read exactly as written in the page
-    var b = lanes[1];
-    var tok = k >= 1 ? b.tokText : App.tokens(startFrac * R + (b.tokens - startFrac * R) * k);
-    var trn = k >= 1 ? b.turnText : App.turns(lanes[0].turns + (b.turns - lanes[0].turns) * k);
-    if (b.tokEl && tok !== shownTok) { shownTok = tok; b.tokEl.textContent = tok; }
-    if (b.turnEl && trn !== shownTurn) { shownTurn = trn; b.turnEl.textContent = trn; }
-    if (gap && (k < 1) !== waiting) { waiting = k < 1; gap.classList.toggle('wait', waiting); }
+    }
   }
+  function frame(now) {
+    raf = 0;
+    App.pace.tick(now);
+    // The clock is elapsed time: a slow frame moves the replay on by what it took. Only a gap this long, a page that was in the
+    // background for more than a second, is not counted.
+    var dt = lastNow ? Math.min(now - lastNow, 1000) : 16;
+    lastNow = now;
+    step(now, dt);
+    var moving = follow(dt);
+    if ((playing && visible && !finished) || moving) raf = requestAnimationFrame(frame);
+    else lastNow = 0;
+  }
+  function kick() { if (!raf) raf = requestAnimationFrame(frame); }
 
-  var visible = false, running = false, last = 0;
-  function still() { intro = DELAY + SPAN + 1; draw(0); }
-  function tick(now) {
-    if (App.reduced) { running = false; still(); return; }
-    if (!visible || document.hidden) { running = false; return; }
-    // Never draw faster than about 70 times a second, whatever the screen: the motion is timed, not stepped.
-    if (last && now - last < 12) { requestAnimationFrame(tick); return; }
-    var dt = last ? Math.min(0.05, (now - last) / 1000) : 0;
-    last = now;
-    if (intro >= 0) intro += dt;
-    draw(dt);
-    requestAnimationFrame(tick);
-  }
-  function start() { if (running || App.reduced) return; running = true; last = 0; requestAnimationFrame(tick); }
-
-  measure();
-  if (App.reduced) still(); else draw(0);
-  if ('ResizeObserver' in window) {
-    new ResizeObserver(function () { measure(); if (!running) { if (App.reduced) still(); else draw(0); } }).observe(host);
-  }
-  if ('IntersectionObserver' in window && !App.reduced) {
+  ctl.addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    if (b.getAttribute('data-act') === 'pause') {
+      playing = !playing;
+      b.setAttribute('aria-pressed', playing ? 'false' : 'true');
+      b.textContent = playing ? 'Pause' : 'Play';
+      scene.classList.toggle('paused', !playing);
+    } else {
+      reset(); playing = true;
+      pauseButton.setAttribute('aria-pressed', 'false'); pauseButton.textContent = 'Pause'; scene.classList.remove('paused');
+    }
+    kick();
+  });
+  if ('IntersectionObserver' in window) {
     new IntersectionObserver(function (entries) {
-      var e = entries[entries.length - 1];
-      visible = e.isIntersecting;
-      if (visible && e.intersectionRatio >= 0.35 && intro < 0) intro = 0;
-      if (visible) start();
-    }, { threshold: [0, 0.35] }).observe(host);
-    document.addEventListener('visibilitychange', function () { if (!document.hidden && visible) start(); });
-  } else if (!App.reduced) {
-    visible = true;
-    intro = 0;
-    start();
+      visible = entries.some(function (e) { return e.isIntersecting; });
+      scene.classList.toggle('idle', !visible);
+      if (visible) kick();
+    }).observe(scene);
   }
+  // Leaving the first screen: the pair eases up and fades a little, as one write to one element.
+  var lastHp = -1;
+  App.onFrame(function (y) {
+    var hp = Math.min(1, Math.max(0, y / (scene.offsetHeight * 0.8)));
+    if (Math.abs(hp - lastHp) < 0.002 && hp !== 0 && hp !== 1) return;
+    lastHp = hp;
+    duel.style.opacity = hp > 0 ? (1 - hp * 0.5).toFixed(3) : '';
+    duel.style.translate = hp > 0 ? '0 ' + snap(-hp * 40) + 'px' : '';
+  });
+  App.duel = {
+    replay: function () { ctl.querySelector('[data-act="replay"]').click(); },
+    pause: function () { if (playing) pauseButton.click(); }
+  };
+
+  // The breathing glow of the first capability card runs only while the card is in view.
+  var breath = document.querySelector('.cap-main');
+  if (breath && 'IntersectionObserver' in window) {
+    new IntersectionObserver(function (entries) { breath.classList.toggle('in-view', entries.some(function (e) { return e.isIntersecting; })); }).observe(breath);
+  }
+
+  scene.classList.add('live');
+  duel.setAttribute('role', 'group');
+  each(duel.querySelectorAll('.term'), function (el) { el.setAttribute('aria-hidden', 'true'); });
+  reset();
+  t = -ENTER;
+  kick();
 })();

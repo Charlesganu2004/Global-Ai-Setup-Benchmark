@@ -1,0 +1,103 @@
+/* Blocks that more than one page shows: the pair of lanes drawn to one scale, the size on disk, the second agent program, the
+   search lab. A lane is as long as its value and every lane of a block is drawn to one scale. A bar grows once, when its block
+   comes into view; written finished, it is whole with no script and under reduced motion. */
+
+.rl-fig { display: grid; gap: .6rem; margin-top: .6rem; }
+.rl-lane { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .15rem .8rem; align-items: baseline; }
+.rl-name { font-size: var(--t-small); color: var(--ink-2); }
+.rl-lane.best .rl-name { color: var(--accent-ink); }
+.rl-num { font-size: var(--t-sub); font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.rl-bar { grid-column: 1 / -1; display: block; height: .55rem; border-radius: var(--r-s); background: color-mix(in srgb, var(--ink) 7%, transparent); overflow: hidden; }
+.rl-bar i { display: block; height: 100%; border-radius: var(--r-s); background: var(--c-control); transform-origin: 0 50%; transform: scaleX(var(--v)); transition: transform 1100ms var(--ease-out); }
+.rl-lane.best .rl-bar i { background: linear-gradient(90deg, rgba(var(--accent-rgb), .75), var(--accent)); box-shadow: 0 0 18px -2px rgba(var(--accent-rgb), .55); }
+.rl-lane:nth-child(2) .rl-bar i { transition-delay: 90ms; } .rl-lane:nth-child(3) .rl-bar i { transition-delay: 180ms; }
+.motion-ready .draw:not(.in) .rl-bar i { transform: scaleX(0); }
+
+.card { background: var(--panel); border: var(--hair) solid var(--line-2); border-radius: var(--r-l); box-shadow: var(--shadow); overflow: hidden; }
+.sub { display: block; color: var(--ink-3); font-size: var(--t-micro); line-height: 1.35; white-space: nowrap; font-weight: 400; }
+.group-title, .footnote { font-size: var(--t-small); line-height: 1.5; color: var(--ink-2); max-width: 72ch; }
+.footnote { margin: .8rem 0 0; }
+.plain { list-style: none; display: grid; gap: .5rem; }
+.plain li { color: var(--ink-2); font-size: var(--t-sub); line-height: 1.5; max-width: 72ch; }
+
+/* size on disk */
+.size-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1rem, 2vw, 2rem); margin-top: 1rem; }
+.size-card { padding: clamp(1.1rem, 2vw, 1.8rem); display: grid; align-content: start; gap: .4rem; }
+.size-card h3 { font: 700 var(--d2)/1.1 var(--font); letter-spacing: -.03em; }
+.lang-line { margin-top: 1.1rem; max-width: 52rem; font: 600 clamp(1.05rem, .95rem + .4vw, 1.4rem)/1.4 var(--font); letter-spacing: -.015em; color: var(--ink); border-left: 2px solid var(--accent); padding-left: 1rem; }
+
+/* the second agent program */
+.cx-headline { font: 700 var(--d1)/1.04 var(--font); letter-spacing: -.045em; max-width: 22ch; margin-bottom: 1rem; text-wrap: balance; }
+.cx-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: clamp(1rem, 2vw, 2rem); margin: 1.2rem 0; }
+.cx-card { padding: clamp(1.1rem, 2vw, 1.8rem); display: grid; align-content: start; gap: .5rem; }
+.cx-title { font: 650 var(--t-title)/1.2 var(--font); letter-spacing: -.02em; }
+.cx-verdict { font-size: var(--t-body); color: var(--ink-2); }
+.cx-verdict b { font: 700 clamp(2.2rem, 1.4rem + 2vw, 4rem)/1 var(--font); letter-spacing: -.045em; color: var(--ink); margin-right: .2em; }
+.cx-facts { list-style: none; display: grid; gap: .3rem; margin-top: .6rem; color: var(--ink-2); font-size: var(--t-small); line-height: 1.5; }
+.cx-limits { margin-top: 1rem; }
+.cx-note { margin: 1rem 0; max-width: 62ch; color: var(--ink-2); font-size: var(--t-sub); line-height: 1.5; }
+
+/* the search lab */
+.table-wrap { overflow-x: auto; border: var(--hair) solid var(--line-2); border-radius: var(--r-l); background: var(--panel); }
+.lab-table { width: 100%; border-collapse: collapse; font-size: var(--t-sub); }
+.lab-table th, .lab-table td { padding: .85rem 1.1rem; text-align: left; border-top: var(--hair) solid var(--line); vertical-align: top; font-variant-numeric: tabular-nums; }
+.lab-table thead th { border-top: 0; color: var(--ink-3); font-size: var(--t-small); font-weight: 600; }
+.lab-name { font-weight: 650; }
+.mbar { position: relative; display: block; height: .5rem; min-width: 6.5rem; margin-top: .5rem; border-radius: var(--r-s); background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.mbar i { position: absolute; inset: 0; border-radius: inherit; background: var(--c-control); transform-origin: 0 50%; transform: scaleX(var(--v)); transition: transform 1100ms var(--ease-out); }
+.mbar b { position: absolute; top: -.18rem; bottom: -.18rem; left: calc(var(--a) * 100%); width: calc((var(--b) - var(--a)) * 100%); min-width: 2px; border: 2px solid var(--ink-2); border-top: 0; border-bottom: 0; opacity: .75; }
+.lab-table tbody tr:first-child .mbar i { background: linear-gradient(90deg, rgba(var(--accent-rgb), .75), var(--accent)); }
+.motion-ready .draw:not(.in) .mbar i { transform: scaleX(0); }
+.lab-pairs { margin: .4rem 0 1rem; }
+.lab-pairs b { color: var(--ink); }
+
+/* the range plot: the saving of the most reliable configuration in each cell where it was set against no index */
+.rp { margin-top: 1rem; display: grid; gap: .4rem; max-width: 46rem; }
+.rp-axis { position: relative; height: 1.15rem; font-size: var(--t-micro); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.rp-axis span { position: absolute; left: calc(var(--v) * 100%); transform: translateX(-50%); }
+.rp-axis span:first-child { transform: none; }
+.rp-axis span:last-child { transform: translateX(-100%); }
+.rp-track { position: relative; height: 1.7rem; border-radius: var(--r-s); background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.rp-span { position: absolute; top: .6rem; height: .5rem; left: calc(var(--a) * 100%); width: calc((var(--b) - var(--a)) * 100%); border-radius: 999px; background: linear-gradient(90deg, rgba(var(--accent-rgb), .45), rgba(var(--accent-rgb), .8)); }
+.rp-dot { position: absolute; top: 50%; left: calc(var(--v) * 100%); width: .85rem; height: .85rem; margin: -.425rem 0 0 -.425rem; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); box-shadow: 0 0 12px -1px rgba(var(--accent-rgb), .6); }
+.rp-legend { list-style: none; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .4rem 1.6rem; margin-top: .9rem; max-width: 46rem; }
+.rp-legend li { display: grid; grid-template-columns: 3.4rem minmax(0, 1fr); gap: .5rem; align-items: baseline; font-size: var(--t-small); line-height: 1.4; color: var(--ink-2); }
+.rp-legend b { font-weight: 700; font-variant-numeric: tabular-nums; color: var(--ink); }
+
+/* the figures a section is about, set large */
+.stats { list-style: none; display: grid; gap: 1.1rem; }
+.stats li { display: grid; gap: .1rem; padding-top: 1rem; border-top: var(--hair) solid var(--line-2); }
+.stats b { font: 700 clamp(2.6rem, 1.4rem + 3.4vw, 6rem)/.95 var(--font); letter-spacing: -.055em; font-variant-numeric: tabular-nums; }
+.stats li:first-child b { color: var(--accent-ink); }
+.stats small { color: var(--ink-2); font-size: var(--t-sub); }
+
+/* round six: teams of agents */
+.team-stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr)); gap: 1.6rem 2rem; margin-top: 1.2rem; }
+.team-stats li { align-content: start; }
+.team-stats b { font-size: clamp(2rem, 1.3rem + 1.6vw, 2.9rem); line-height: 1; letter-spacing: -.045em; }
+/* the figure stays on one line, and a change in tokens says its direction in a word under it, in the ink of a label */
+.team-stats .fig-n { display: block; white-space: nowrap; }
+.team-stats .fig-dir { display: block; margin-top: .3rem; font: 650 var(--t-sub)/1.2 var(--font); font-style: normal; letter-spacing: 0; color: var(--ink-2); }
+.team-lanes { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr)); gap: 1rem 2.4rem; padding: 0 1.3rem 1.1rem; }
+.team-lane-title { font-size: var(--t-small); font-weight: 600; color: var(--ink-3); }
+.pick { display: grid; gap: .8rem; max-width: 64rem; margin: 1.2rem 0 1.6rem; padding: clamp(1.1rem, 2vw, 1.8rem); border: var(--hair) solid var(--line-2); border-left: 2px solid var(--accent); border-radius: var(--r-l); background: var(--panel); }
+.pick-title { font: 700 var(--t-body)/1.3 var(--font); }
+.pick-text, .pick-caveats li { color: var(--ink-2); font-size: var(--t-sub); line-height: 1.55; max-width: 72ch; }
+.pick-after { list-style: none; display: grid; gap: .35rem; }
+.pick-after li { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr); gap: .15rem 1rem; font-size: var(--t-small); line-height: 1.45; color: var(--ink-2); }
+.pick-after b { color: var(--ink); font-weight: 650; }
+.pick-caveats { list-style: none; display: grid; gap: .65rem; }
+.pick-caveats b { color: var(--ink); font-weight: 650; }
+.pick code { font-size: .92em; }
+/* the line under the headline figures of the first screens when the highlighted configuration is a pack alone */
+.pick-line { margin: 0; max-width: 72ch; color: var(--ink-2); font-size: var(--t-small); line-height: 1.45; }
+.pick-line b { color: var(--ink); font-weight: 650; }
+.pick-line a { color: var(--accent-ink); text-underline-offset: .18em; }
+.bench-lead .pick-line { margin-top: .9rem; }
+.duel > .pick-line { grid-column: 1 / -1; padding: 0 .2rem; max-width: 110ch; }
+@media (max-width: 900px) { .pick-after li { grid-template-columns: 1fr; } }
+
+@media (max-width: 900px) {
+  .size-grid, .cx-grid, .rp-legend { grid-template-columns: 1fr; }
+}
+@media (forced-colors: active) { .rl-bar i, .mbar i { forced-color-adjust: none; } }

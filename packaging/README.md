@@ -1,9 +1,9 @@
 # Packaging PeterGanuRusty (pgr) as a pip package
 
-Private maintainer notes. This folder turns the Rust program `pgr` (package `lxr` in
+Maintainer notes. This folder turns the Rust program `pgr` (package `lxr` in
 `rust/crates/lxr`) into a Python wheel named `peterganurusty`, so that people can type
 `pip install peterganurusty` and get a `pgr` command, the way they install any Python tool.
-The wheel holds a compiled binary only. The source stays in this private repository.
+The wheel holds a compiled binary only. The source is in this repository and is not in the wheel.
 
 ## What is in a wheel
 
@@ -194,7 +194,7 @@ hold the token. Try TestPyPI first. Wheels only:
 
 Anyone in the world can download the program and, with enough effort, take the binary apart.
 Platforms without a wheel get "no matching distribution", because there is no sdist to build
-from: that is what keeps the source private, and it means every platform you want to support
+from: that is what keeps the source out of the wheel, and it means every platform you want to support
 needs its wheel in the upload.
 
 ### (b) A separate public repository that holds only release files
@@ -217,12 +217,11 @@ or, to let pip choose the wheel that fits the machine, point it at the release p
 No account and no token on the user's side. The wheels are public, as with PyPI, but the owner
 controls the repository and no PyPI account is needed.
 
-### (c) Release files on this private repository
+### (c) Release files on this repository
 
-Needs: nothing new from the owner except giving each person read access to the repository. Only
-those people can fetch the files. A plain `pip install <url>` does not work on a private
-repository (GitHub answers 404 without credentials), so the user needs the GitHub command line
-tool (`gh`), logged in as a person with access:
+Needs: nothing new from the owner. The repository is public, so anyone can fetch the release files
+and a plain `pip install <url>` of a wheel works without credentials. The GitHub command line
+tool (`gh`) does the same from a terminal, and also reaches the wheels of a workflow run:
 
     gh release download v0.1.0 --repo OWNER/Global-Ai-Setup-Benchmark --pattern "*win_amd64.whl" --dir .
     pip install .\peterganurusty-0.1.0-py3-none-win_amd64.whl
@@ -256,7 +255,7 @@ script) is not part of this work.
   `num-bigint` instead of the five `malachite` crates; `verify_wheel.py` fails a wheel whose notices
   name one). The only licence outside the common permissive ones is `xxhash-rust`, BSL-1.0 (Boost,
   permissive). The model is MIT.
-- **Where to publish.** PyPI, a public releases repository, the private repository, or a mix.
+- **Where to publish.** PyPI, a separate releases repository, this repository (the route in use), or a mix.
 - **The name.** `peterganurusty` is free on PyPI; a project named `pgr` already exists there and
   may install a command with the same name `pgr`.
 - **Licence texts of 24 crates.** Their packages carry no licence file (the `oxc_*`,

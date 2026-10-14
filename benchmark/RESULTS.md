@@ -1,42 +1,45 @@
 # Benchmark results
 
-884 agents measured on one repository: three lookup questions and, in round five, three held-out ones, 47 ways of finding the answer, three model tiers, three ways of organising the agents. 169.9 million tokens measured, 87% of them cache reads.
+1235 agents measured on one repository: three lookup questions and, in round five, three held-out ones, 59 ways of finding the answer, three models, three ways of organising the agents. 230.1 million tokens measured, 86% of them cache reads.
 
 The charts are on the project site. This file is the same data as tables, written by `benchmark/harness/build_site.py`. Read the section "Known weaknesses of the study" at the end before quoting a number. A "Correct" column is a mean score between 0 and 1 over the answers, with partial credit, not a share of fully correct runs. The no-index control of the second session had its reads altered by another tool on the test machine; its figures are shown as measured and are not set against the product's for correctness.
 
 ## Findings
 
-- An agent starts with about 63k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 884 agents measured, 87% of all tokens were cache reads, 13% were cache writes and 0.7% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
-- Tokens follow turns. Among methods run at least twice, one agent answering all three questions averaged from 2.0 turns (Shipped: lx ask, embeddings on, Tier B, 3 runs: 129k tokens) to 7.0 turns (graphify + semble, Tier C, 2 runs: 480k tokens).
-- Cheapest tier, one agent, methods run at least three times, fewest tokens first: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; C12 lx about + hybrid: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L3 lx + hybrid search: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.
-- Where the shipped build, the round 1 leaders and the control stand among those 40 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 1; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 2; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 26; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 22; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 40.
-- Two turns is the floor for this task: one to ask and one to answer. On Tier C, scout, 17 methods took exactly two turns and answered everything correctly in each of their 3 runs: S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, S1r Shipped: lx ask, default index, run again with round five, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, C7 token-goat + semble, RM pgr, memory only, RGSO pgr, all three, memory from an exploring session, RGSM pgr, all three, memory from the same questions.
-- Two turns is the floor for this task: one to ask and one to answer. On Tier B, coder, 17 methods took exactly two turns and answered everything correctly in each of their 2 to 3 runs: C15 lx ask + token-goat read, L2 lx + cards, S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, R1 lx shipped + Rust embeddings, C2 lx + Rust embeddings + token-goat, C12 lx about + hybrid, C11 lx about + Rust cards, S4 Shipped: all commands, embeddings on, C13 lx, every new command, C14 lx, every new command + token-goat, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, RGM pgr, graph and memory, RGSM pgr, all three, memory from the same questions, RM pgr, memory only, RG pgr, code graph only.
-- The shipped build on an index with Rust embeddings and on the default index without them. Tier C, one agent: Shipped: lx ask, embeddings on 130k (2 turns over 3 runs), against Shipped: lx ask, default index 130k (2 turns over 3 runs); Shipped: all commands, embeddings on 198k (2 to 4 turns over 3 runs), against Shipped: all commands, default index 130k (2 turns over 3 runs).
-- The shipped build on an index with Rust embeddings and on the default index without them. Tier B, one agent: Shipped: lx ask, embeddings on 129k (2 turns over 3 runs), against Shipped: lx ask, default index 196k (3 turns over 6 runs); Shipped: all commands, embeddings on 130k (2 turns over 3 runs), against Shipped: all commands, default index 196k (3 turns over 3 runs).
-- The shipped build on an index with Rust embeddings and on the default index without them. Tier A, one agent: Shipped: lx ask, embeddings on 199k (3 turns over 1 run), against Shipped: lx ask, default index 201k (3 turns over 1 run); Shipped: all commands, embeddings on 199k (3 turns over 1 run), against Shipped: all commands, default index 199k (3 turns over 1 run).
-- What merging in the Rust index's name and doc search added on the default index: the shipped build against the round 2 build. Tier C, one agent: Shipped: lx ask, default index 130k (2 turns over 3 runs), against lx ask, no Rust embeddings 130k (2 turns over 3 runs); Shipped: all commands, default index 130k (2 turns over 3 runs), against lx, every new command, no Rust embeddings 131k (2 turns over 3 runs).
-- What merging in the Rust index's name and doc search added on the default index: the shipped build against the round 2 build. Tier B, one agent: Shipped: lx ask, default index 196k (3 turns over 6 runs), against lx ask, no Rust embeddings 296k (4 to 5 turns over 2 runs); Shipped: all commands, default index 196k (3 turns over 3 runs), against lx, every new command, no Rust embeddings 196k (3 turns over 2 runs).
-- Round 2, before that search was merged in: the same commands on an index built with Rust embeddings and without. Tier C, one agent: lx ask, one call 130k (2 turns over 3 runs), against lx ask, no Rust embeddings 130k (2 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against lx, every new command, no Rust embeddings 131k (2 turns over 3 runs).
-- Round 2, before that search was merged in: the same commands on an index built with Rust embeddings and without. Tier B, one agent: lx ask, one call 129k (2 turns over 2 runs), against lx ask, no Rust embeddings 296k (4 to 5 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against lx, every new command, no Rust embeddings 196k (3 turns over 2 runs).
-- Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Tier C, one agent: lx, as shipped after round 1 197k (2 to 5 turns over 6 runs), against lx shipped + token-goat 242k (3 to 5 turns over 3 runs); lx shipped + Rust embeddings 176k (2 to 3 turns over 3 runs), against lx + Rust embeddings + token-goat 177k (2 to 3 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against lx, every new command + token-goat 131k (2 turns over 3 runs); lx ask, one call 130k (2 turns over 3 runs), against lx ask + token-goat read 130k (2 turns over 3 runs).
-- Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Tier B, one agent: lx, as shipped after round 1 217k (3 to 4 turns over 3 runs), against lx shipped + token-goat 196k (3 turns over 2 runs); lx shipped + Rust embeddings 129k (2 turns over 2 runs), against lx + Rust embeddings + token-goat 129k (2 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against lx, every new command + token-goat 130k (2 turns over 2 runs); lx ask, one call 129k (2 turns over 2 runs), against lx ask + token-goat read 129k (2 turns over 2 runs).
-- Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier C, one agent: lx, every new command 130k (2 turns over 3 runs), against Rust index + graphify + semble 289k (3 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat + graphify + semble 311k (4 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat 282k (3 to 5 turns over 3 runs).
-- Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Tier B, one agent: lx, every new command 130k (2 turns over 2 runs), against Rust index + graphify + semble 428k (5 to 7 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat + graphify + semble 314k (3 to 6 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat 393k (5 to 6 turns over 2 runs).
-- Tier C, scout, one agent: no index used 365k tokens and $0.0074 over 5 runs. Among the 36 methods run at least twice and fully correct every time, the leanest was Shipped: lx ask, embeddings on at 130k tokens and $0.0019 over 3 runs, 64% fewer tokens.
-- Tier B, coder, one agent: no index used 281k tokens and $0.103 over 3 runs. Among the 31 methods run at least twice and fully correct every time, the leanest was lx ask + token-goat read at 129k tokens and $0.0309 over 2 runs, 54% fewer tokens. 5 methods ran once on this tier and answered everything; the lowest of those single runs was lx improved + Rust embeddings at 128k tokens.
-- Tier A, apex, one agent: no index used 298k tokens and $0.343 over 3 runs. Only one method was run twice on this tier and was fully correct both times: lx, as shipped after round 1 at 272k tokens and $0.164 over 2 runs, 9% fewer tokens. 32 methods ran once on this tier and answered everything; the lowest of those single runs was lx ask + token-goat read at 135k tokens.
-- The model tier moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Tier C (98% correct), $0.103 on Tier B (100%) and $0.343 on Tier A (100%). Send lookups to the cheapest tier.
-- In these runs orchestration came with more fully correct runs, and it is the expensive part. With Tier C subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 43 three-subagent runs returned a wrong detail; orchestrated on the same tier, 48 of 48 ended fully correct, 45 of them before the review changed anything. The orchestrator is of a larger model class than the subagents, so this compares more than orchestration, and every cost is an estimate at list prices, with the cost of planning imputed from the few planning calls that were measured.
-- A cold start costs far more than a warm one. Writing the 63k start-up context to the cache costs $0.316 on Tier A against $0.0127 to read it back, 25 times as much. Subagents started together all pay the cold price; started one after another within five minutes they share the cached part.
+- An agent starts with about 64k tokens of context before it reads one line of code, and every later turn re-reads all of it. Across the 1235 agents measured, 86% of all tokens were cache reads, 13% were cache writes and 1.0% were output. What an index saves in tool output is small next to that. What it really buys is fewer turns.
+- Tokens follow turns. Among methods run at least twice, one agent answering all three questions averaged from 1.0 turns (The pack only, no lookup command, Claude Sonnet 5.5 at medium effort, 3 runs: 70k tokens) to 7.0 turns (graphify + semble, Claude Haiku 5.5 at low effort, 2 runs: 480k tokens).
+- Claude Haiku 5.5 at low effort, one agent, methods run at least three times, fewest tokens first: TPX The pack only, no lookup command: 71k tokens, 1.0 turns, 3 of 3 runs fully correct; TP pgr, graph and search, with a pack in the prompt: 119k tokens, 1.7 turns, 3 of 3 runs fully correct; S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct; L4 lx ask, one call: 130k tokens, 2.0 turns, 3 of 3 runs fully correct.
+- Where the shipped build, the round 1 leaders and the control stand among those 48 methods: S1 Shipped: lx ask, default index: 130k tokens, 2.0 turns, 2 of 3 runs fully correct, place 3; S3 Shipped: lx ask, embeddings on: 130k tokens, 2.0 turns, 3 of 3 runs fully correct, place 4; A9 lx, as shipped after round 1: 197k tokens, 3.0 turns, 5 of 6 runs fully correct, place 33; R1 lx shipped + Rust embeddings: 176k tokens, 2.7 turns, 3 of 3 runs fully correct, place 25; A0 No index: 365k tokens, 5.0 turns, 4 of 5 runs fully correct, place 48.
+- Two turns is the floor for this task: one to ask and one to answer. On Claude Haiku 5.5 at low effort, 19 methods took exactly two turns and answered everything correctly in each of their 3 runs: TPX The pack only, no lookup command, TP pgr, graph and search, with a pack in the prompt, S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, C12 lx about + hybrid, L3 lx + hybrid search, C15 lx ask + token-goat read, C13 lx, every new command, S2 Shipped: all commands, default index, N1 lx ask, no Rust embeddings, N2 lx, every new command, no Rust embeddings, C14 lx, every new command + token-goat, S1r Shipped: lx ask, default index, run again with round five, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, C7 token-goat + semble, RM pgr, memory only, RGSO pgr, all three, memory from an exploring session, RGSM pgr, all three, memory from the same questions.
+- Two turns is the floor for this task: one to ask and one to answer. On Claude Sonnet 5.5 at medium effort, 19 methods took exactly two turns and answered everything correctly in each of their 2 to 3 runs: TPX The pack only, no lookup command, C15 lx ask + token-goat read, L2 lx + cards, S3 Shipped: lx ask, embeddings on, L4 lx ask, one call, R1 lx shipped + Rust embeddings, C2 lx + Rust embeddings + token-goat, C12 lx about + hybrid, C11 lx about + Rust cards, S4 Shipped: all commands, embeddings on, C13 lx, every new command, C14 lx, every new command + token-goat, S3r Shipped: lx ask, embeddings on, run again with round five, RGS pgr, graph and search in one call, RGM pgr, graph and memory, RGSM pgr, all three, memory from the same questions, RM pgr, memory only, RG pgr, code graph only, TP pgr, graph and search, with a pack in the prompt.
+- The shipped build on an index with Rust embeddings and on the default index without them. Claude Haiku 5.5 at low effort, one agent: Shipped: lx ask, embeddings on 130k (2 turns over 3 runs), against Shipped: lx ask, default index 130k (2 turns over 3 runs); Shipped: all commands, embeddings on 198k (2 to 4 turns over 3 runs), against Shipped: all commands, default index 130k (2 turns over 3 runs).
+- The shipped build on an index with Rust embeddings and on the default index without them. Claude Sonnet 5.5 at medium effort, one agent: Shipped: lx ask, embeddings on 129k (2 turns over 3 runs), against Shipped: lx ask, default index 196k (3 turns over 6 runs); Shipped: all commands, embeddings on 130k (2 turns over 3 runs), against Shipped: all commands, default index 196k (3 turns over 3 runs).
+- The shipped build on an index with Rust embeddings and on the default index without them. Claude Opus 5.5 at maximum effort, one agent: Shipped: lx ask, embeddings on 199k (3 turns over 1 run), against Shipped: lx ask, default index 201k (3 turns over 1 run); Shipped: all commands, embeddings on 199k (3 turns over 1 run), against Shipped: all commands, default index 199k (3 turns over 1 run).
+- What merging in the Rust index's name and doc search added on the default index: the shipped build against the round 2 build. Claude Haiku 5.5 at low effort, one agent: Shipped: lx ask, default index 130k (2 turns over 3 runs), against lx ask, no Rust embeddings 130k (2 turns over 3 runs); Shipped: all commands, default index 130k (2 turns over 3 runs), against lx, every new command, no Rust embeddings 131k (2 turns over 3 runs).
+- What merging in the Rust index's name and doc search added on the default index: the shipped build against the round 2 build. Claude Sonnet 5.5 at medium effort, one agent: Shipped: lx ask, default index 196k (3 turns over 6 runs), against lx ask, no Rust embeddings 296k (4 to 5 turns over 2 runs); Shipped: all commands, default index 196k (3 turns over 3 runs), against lx, every new command, no Rust embeddings 196k (3 turns over 2 runs).
+- Round 2, before that search was merged in: the same commands on an index built with Rust embeddings and without. Claude Haiku 5.5 at low effort, one agent: lx ask, one call 130k (2 turns over 3 runs), against lx ask, no Rust embeddings 130k (2 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against lx, every new command, no Rust embeddings 131k (2 turns over 3 runs).
+- Round 2, before that search was merged in: the same commands on an index built with Rust embeddings and without. Claude Sonnet 5.5 at medium effort, one agent: lx ask, one call 129k (2 turns over 2 runs), against lx ask, no Rust embeddings 296k (4 to 5 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against lx, every new command, no Rust embeddings 196k (3 turns over 2 runs).
+- Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Claude Haiku 5.5 at low effort, one agent: lx, as shipped after round 1 197k (2 to 5 turns over 6 runs), against lx shipped + token-goat 242k (3 to 5 turns over 3 runs); lx shipped + Rust embeddings 176k (2 to 3 turns over 3 runs), against lx + Rust embeddings + token-goat 177k (2 to 3 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against lx, every new command + token-goat 131k (2 turns over 3 runs); lx ask, one call 130k (2 turns over 3 runs), against lx ask + token-goat read 130k (2 turns over 3 runs).
+- Does adding token-goat beside lx change anything? Each pair is the same lx build without it and with it. Claude Sonnet 5.5 at medium effort, one agent: lx, as shipped after round 1 217k (3 to 4 turns over 3 runs), against lx shipped + token-goat 196k (3 turns over 2 runs); lx shipped + Rust embeddings 129k (2 turns over 2 runs), against lx + Rust embeddings + token-goat 129k (2 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against lx, every new command + token-goat 130k (2 turns over 2 runs); lx ask, one call 129k (2 turns over 2 runs), against lx ask + token-goat read 129k (2 turns over 2 runs).
+- Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Claude Haiku 5.5 at low effort, one agent: lx, every new command 130k (2 turns over 3 runs), against Rust index + graphify + semble 289k (3 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat + graphify + semble 311k (4 to 5 turns over 3 runs); lx, every new command 130k (2 turns over 3 runs), against Rust index + token-goat 282k (3 to 5 turns over 3 runs).
+- Do the engines do as well without lx in front of them? lx with every command against the raw commands of the engines it wraps. Claude Sonnet 5.5 at medium effort, one agent: lx, every new command 130k (2 turns over 2 runs), against Rust index + graphify + semble 428k (5 to 7 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat + graphify + semble 314k (3 to 6 turns over 2 runs); lx, every new command 130k (2 turns over 2 runs), against Rust index + token-goat 393k (5 to 6 turns over 2 runs).
+- Claude Haiku 5.5 at low effort, one agent: no index used 365k tokens and $0.0074 over 5 runs. Among the 41 methods run at least twice and fully correct every time, the leanest was The pack only, no lookup command at 71k tokens and $0.0012 over 3 runs, 81% fewer tokens.
+- Claude Sonnet 5.5 at medium effort, one agent: no index used 281k tokens and $0.103 over 3 runs. Among the 33 methods run at least twice and fully correct every time, the leanest was The pack only, no lookup command at 70k tokens and $0.0163 over 3 runs, 75% fewer tokens.
+- Claude Opus 5.5 at maximum effort, one agent: no index used 298k tokens and $0.343 over 3 runs. Only one method was run twice on this model and was fully correct both times: lx, as shipped after round 1 at 272k tokens and $0.164 over 2 runs, 9% fewer tokens. 32 methods ran once on this model and answered everything; the lowest of those single runs was lx ask + token-goat read at 135k tokens.
+- The model moves cost far more than the method does. With the start-up context cached, the same no-index job cost $0.0074 on Claude Haiku 5.5 at low effort (98% correct), $0.103 on Claude Sonnet 5.5 at medium effort (100%) and $0.343 on Claude Opus 5.5 at maximum effort (100%). Send lookups to Claude Haiku 5.5 at low effort.
+- In these runs orchestration came with more fully correct runs, and it is the expensive part. With Claude Haiku 5.5 at low effort subagents the orchestrator's two calls were 97% of the run's cost. Without a brief or a reviewer, 5 of 49 three-subagent runs returned a wrong detail; orchestrated on the same model, 66 of 66 ended fully correct, 63 of them before the review changed anything. The orchestrator is of a larger model than the subagents, so this compares more than orchestration, and every cost is an estimate at list prices, with the cost of planning imputed from the few planning calls that were measured.
+- A cold start costs far more than a warm one. Writing the 64k start-up context to the cache costs $0.320 on Claude Opus 5.5 at maximum effort against $0.0128 to read it back, 25 times as much. Subagents started together all pay the cold price; started one after another within five minutes they share the cached part.
 - token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.
 
 ## One agent
 
-One agent answers all three questions. Fewest tokens first within each tier.
+One agent answers all three questions. Fewest tokens first within each model.
 
 | Method | Tier | Runs | Turns | Start-up | Re-read | Added | Output | Total tokens | Cost warm | Cost cold | Correct |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| TPX The pack only, no lookup command | C | 3 | 1.0 | 69,686 | 0 | 0 | 945 | 70,631 | $0.0012 | $0.0092 | 100% |
+| TPXh The pack only, no lookup command, held-out questions | C | 3 | 1.0 | 69,596 | 0 | 0 | 1,304 | 70,900 | $0.0013 | $0.0094 | 100% |
+| TP pgr, graph and search, with a pack in the prompt | C | 3 | 1.7 | 69,616 | 46,409 | 2,180 | 483 | 118,688 | $0.0017 | $0.0097 | 100% |
 | H1 Shipped lx ask, default index, hooks on | C | 3 | 2.0 | 62,891 | 62,889 | 3,300 | 262 | 129,342 | $0.0018 | $0.0090 | 100% |
 | HB Shipped lx ask through Bash, hooks on | C | 3 | 2.0 | 62,899 | 62,897 | 3,264 | 474 | 129,533 | $0.0019 | $0.0091 | 100% |
 | H3 Shipped lx ask, embeddings on, hooks on | C | 3 | 2.0 | 62,883 | 62,881 | 3,438 | 382 | 129,584 | $0.0019 | $0.0091 | 100% |
@@ -59,23 +62,38 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | RM pgr, memory only | C | 3 | 2.0 | 64,980 | 64,978 | 4,125 | 736 | 134,819 | $0.0022 | $0.0097 | 100% |
 | RGSO pgr, all three, memory from an exploring session | C | 3 | 2.0 | 65,093 | 65,091 | 4,081 | 637 | 134,902 | $0.0021 | $0.0096 | 100% |
 | RGSM pgr, all three, memory from the same questions | C | 3 | 2.0 | 65,087 | 65,085 | 4,170 | 618 | 134,960 | $0.0021 | $0.0096 | 100% |
+| R6Vh pgr, graph and search in one call, inside a virtual machine, held-out questions | C | 3 | 2.0 | 65,433 | 65,431 | 4,037 | 276 | 135,177 | $0.0020 | $0.0095 | 100% |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 3 | 2.0 | 65,300 | 65,298 | 3,974 | 740 | 135,312 | $0.0022 | $0.0097 | 100% |
 | H9 Round 1 lx, hooks on | C | 3 | 2.3 | 62,896 | 84,920 | 3,300 | 778 | 151,894 | $0.0023 | $0.0095 | 100% |
 | SB Shipped lx ask through Bash, hooks off | C | 3 | 2.3 | 63,186 | 85,267 | 3,552 | 354 | 152,360 | $0.0021 | $0.0094 | 100% |
 | C11 lx about + Rust cards | C | 3 | 2.3 | 63,070 | 85,179 | 3,858 | 570 | 152,676 | $0.0022 | $0.0095 | 100% |
 | L2 lx + cards | C | 3 | 2.3 | 63,028 | 85,233 | 3,779 | 952 | 152,991 | $0.0024 | $0.0097 | 100% |
 | H5 token-goat commands, hooks on | C | 3 | 2.3 | 62,860 | 85,549 | 5,603 | 977 | 154,990 | $0.0027 | $0.0099 | 100% |
 | RGM pgr, graph and memory | C | 3 | 2.3 | 65,178 | 87,945 | 3,359 | 623 | 157,105 | $0.0023 | $0.0098 | 100% |
+| R6V pgr, graph and search in one call, inside a virtual machine | C | 3 | 2.3 | 65,417 | 88,440 | 3,929 | 520 | 158,306 | $0.0023 | $0.0098 | 100% |
+| TI Demonstration set T, the loadout is in the prompt | C | 3 | 2.3 | 67,268 | 90,809 | 3,745 | 829 | 162,650 | $0.0025 | $0.0102 | 100% |
 | A8 lx improved + Rust embeddings | C | 2 | 2.5 | 62,637 | 95,472 | 3,880 | 706 | 162,695 | $0.0024 | $0.0096 | 95% |
+| TPGh pgr, code graph only, with a graph pack, held-out questions | C | 3 | 2.3 | 69,585 | 93,947 | 4,083 | 356 | 167,971 | $0.0023 | $0.0103 | 100% |
+| TPNh pgr, graph and search, with a pack, without the neural network, held-out questions | C | 3 | 2.3 | 69,602 | 93,906 | 4,389 | 522 | 168,419 | $0.0024 | $0.0104 | 100% |
 | R1 lx shipped + Rust embeddings | C | 3 | 2.7 | 63,012 | 106,959 | 4,197 | 1,368 | 175,536 | $0.0029 | $0.0102 | 100% |
 | C2 lx + Rust embeddings + token-goat | C | 3 | 2.7 | 63,097 | 107,452 | 4,956 | 1,010 | 176,514 | $0.0028 | $0.0101 | 100% |
 | A5 token-goat alone | C | 3 | 2.7 | 62,806 | 107,987 | 5,765 | 586 | 177,144 | $0.0027 | $0.0099 | 100% |
 | C6 token-goat + graphify + semble | C | 3 | 2.7 | 63,076 | 108,610 | 7,437 | 1,006 | 180,129 | $0.0031 | $0.0104 | 100% |
 | RGSh pgr, graph and search in one call, held-out questions | C | 3 | 2.7 | 65,004 | 111,127 | 4,370 | 554 | 181,055 | $0.0026 | $0.0101 | 100% |
+| R6 pgr, graph and search in one call, round six | C | 3 | 2.7 | 65,284 | 111,355 | 4,028 | 420 | 181,088 | $0.0025 | $0.0100 | 100% |
+| RN pgr, graph and search in one call, without the neural network | C | 3 | 2.7 | 65,306 | 111,238 | 4,357 | 662 | 181,563 | $0.0026 | $0.0102 | 97% |
+| RNh pgr, graph and search in one call, without the neural network, held-out questions | C | 3 | 2.7 | 65,322 | 111,330 | 4,609 | 759 | 182,021 | $0.0027 | $0.0102 | 97% |
+| TPS pgr, search only, with a search pack | C | 3 | 2.7 | 66,879 | 114,772 | 4,868 | 1,054 | 187,572 | $0.0030 | $0.0106 | 81% |
+| TPG pgr, code graph only, with a graph pack | C | 3 | 2.7 | 69,614 | 118,250 | 3,589 | 273 | 191,727 | $0.0025 | $0.0105 | 97% |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 3 | 2.7 | 69,526 | 118,063 | 4,273 | 579 | 192,441 | $0.0027 | $0.0107 | 100% |
 | A4 lx first version + Rust embeddings | C | 2 | 3.0 | 62,635 | 128,320 | 3,676 | 837 | 195,468 | $0.0028 | $0.0100 | 100% |
 | A9 lx, as shipped after round 1 | C | 6 | 3.0 | 62,852 | 129,520 | 3,899 | 773 | 197,045 | $0.0028 | $0.0100 | 99% |
 | A6 token-goat + lx improved | C | 2 | 3.0 | 62,729 | 129,008 | 4,732 | 798 | 197,267 | $0.0029 | $0.0101 | 99% |
 | S4 Shipped: all commands, embeddings on | C | 3 | 3.0 | 63,171 | 129,759 | 3,929 | 730 | 197,588 | $0.0028 | $0.0100 | 100% |
 | RGSOh pgr, all three, memory from an exploring session, held-out questions | C | 3 | 3.0 | 65,109 | 134,639 | 4,882 | 560 | 205,190 | $0.0029 | $0.0104 | 97% |
+| T0 Demonstration set T, no notes | C | 3 | 3.0 | 65,643 | 134,843 | 4,888 | 506 | 205,880 | $0.0029 | $0.0104 | 53% |
+| TL Demonstration set T, the agent loads the notes | C | 3 | 3.0 | 65,888 | 136,122 | 5,078 | 327 | 207,416 | $0.0028 | $0.0104 | 100% |
+| TPN pgr, graph and search, with a pack, without the neural network | C | 3 | 3.0 | 69,639 | 142,642 | 4,013 | 706 | 217,000 | $0.0030 | $0.0110 | 100% |
 | C10 lx about + cards | C | 3 | 3.3 | 63,075 | 151,814 | 4,247 | 475 | 219,611 | $0.0029 | $0.0102 | 100% |
 | L1 lx + about | C | 3 | 3.3 | 63,080 | 151,629 | 4,105 | 925 | 219,739 | $0.0031 | $0.0104 | 100% |
 | C9 lx finds, token-goat reads | C | 3 | 3.3 | 63,068 | 151,943 | 5,147 | 712 | 220,870 | $0.0032 | $0.0104 | 100% |
@@ -92,11 +110,14 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | RSM pgr, search and memory | C | 3 | 4.3 | 65,034 | 228,821 | 6,502 | 1,354 | 301,711 | $0.0044 | $0.0119 | 85% |
 | C1 Rust index + token-goat + graphify + semble | C | 3 | 4.3 | 63,154 | 232,189 | 14,429 | 823 | 310,595 | $0.0052 | $0.0124 | 99% |
 | RSh pgr, search only, held-out questions | C | 3 | 4.3 | 64,940 | 233,201 | 11,660 | 3,127 | 312,927 | $0.0060 | $0.0135 | 72% |
+| TPSh pgr, search only, with a search pack, held-out questions | C | 3 | 4.7 | 66,908 | 261,500 | 12,198 | 2,718 | 343,325 | $0.0062 | $0.0139 | 72% |
 | A2 Rust index alone, embeddings on | C | 2 | 5.0 | 62,629 | 273,990 | 13,282 | 1,794 | 351,694 | $0.0059 | $0.0131 | 100% |
 | A0h No index, held-out questions | C | 3 | 4.7 | 64,820 | 266,802 | 22,191 | 6,957 | 360,770 | $0.0096 | $0.0170 | 100% |
 | H0 No index, hooks on | C | 3 | 5.0 | 62,709 | 279,467 | 15,414 | 4,458 | 362,048 | $0.0076 | $0.0148 | 99% |
 | A0 No index | C | 5 | 5.0 | 62,702 | 281,856 | 15,960 | 3,990 | 364,508 | $0.0074 | $0.0146 | 98% |
 | A1 graphify + semble | C | 2 | 7.0 | 62,630 | 407,221 | 8,293 | 1,879 | 480,023 | $0.0067 | $0.0139 | 96% |
+| TPXh The pack only, no lookup command, held-out questions | B | 3 | 1.0 | 69,599 | 0 | 0 | 245 | 69,844 | $0.0164 | $0.176 | 100% |
+| TPX The pack only, no lookup command | B | 3 | 1.0 | 69,689 | 0 | 0 | 237 | 69,926 | $0.0163 | $0.177 | 100% |
 | A8 lx improved + Rust embeddings | B | 1 | 2.0 | 62,640 | 62,638 | 2,710 | 430 | 128,418 | $0.0361 | $0.180 | 100% |
 | H1 Shipped lx ask, default index, hooks on | B | 2 | 2.0 | 62,894 | 64,340 | 1,450 | 264 | 128,946 | $0.0317 | $0.176 | 100% |
 | H3 Shipped lx ask, embeddings on, hooks on | B | 2 | 2.0 | 62,886 | 64,356 | 1,474 | 339 | 129,056 | $0.0325 | $0.177 | 100% |
@@ -121,7 +142,10 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | RM pgr, memory only | B | 3 | 2.0 | 64,983 | 64,981 | 3,980 | 177 | 134,120 | $0.0377 | $0.187 | 100% |
 | RGSOh pgr, all three, memory from an exploring session, held-out questions | B | 3 | 2.0 | 65,112 | 65,110 | 3,996 | 197 | 134,415 | $0.0380 | $0.188 | 100% |
 | RG pgr, code graph only | B | 3 | 2.0 | 65,071 | 65,069 | 3,939 | 659 | 134,738 | $0.0425 | $0.192 | 100% |
+| TI Demonstration set T, the loadout is in the prompt | B | 3 | 2.0 | 67,271 | 69,144 | 939 | 422 | 137,776 | $0.0339 | $0.189 | 100% |
+| TP pgr, graph and search, with a pack in the prompt | B | 3 | 2.0 | 69,619 | 69,617 | 2,925 | 300 | 142,461 | $0.0382 | $0.198 | 100% |
 | C6 token-goat + graphify + semble | B | 2 | 2.5 | 63,079 | 99,420 | 2,700 | 456 | 165,656 | $0.0438 | $0.189 | 100% |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | B | 3 | 2.3 | 69,529 | 94,856 | 2,242 | 285 | 166,911 | $0.0413 | $0.201 | 100% |
 | A5 token-goat alone | B | 3 | 2.7 | 62,980 | 109,943 | 3,779 | 583 | 177,285 | $0.0499 | $0.195 | 100% |
 | RGSh pgr, graph and search in one call, held-out questions | B | 3 | 2.7 | 65,007 | 111,963 | 2,873 | 276 | 180,119 | $0.0453 | $0.195 | 100% |
 | A6 token-goat + lx improved | B | 1 | 3.0 | 62,732 | 128,176 | 3,072 | 271 | 194,251 | $0.0486 | $0.193 | 100% |
@@ -139,6 +163,7 @@ One agent answers all three questions. Fewest tokens first within each tier.
 | A9 lx, as shipped after round 1 | B | 3 | 3.3 | 62,916 | 151,400 | 2,323 | 321 | 216,959 | $0.0519 | $0.197 | 100% |
 | L1 lx + about | B | 2 | 3.5 | 63,083 | 163,347 | 1,820 | 280 | 228,529 | $0.0526 | $0.198 | 100% |
 | A0h No index, held-out questions | B | 2 | 3.5 | 64,823 | 172,050 | 11,878 | 1,679 | 250,430 | $0.0939 | $0.243 | 100% |
+| TL Demonstration set T, the agent loads the notes | B | 3 | 3.7 | 65,891 | 185,145 | 1,802 | 262 | 253,099 | $0.0573 | $0.209 | 100% |
 | A7 lx, improved | B | 1 | 4.0 | 62,647 | 193,715 | 3,503 | 415 | 260,280 | $0.0642 | $0.208 | 100% |
 | A0r No index, run again with round five | B | 3 | 3.7 | 64,807 | 183,758 | 10,794 | 1,824 | 261,183 | $0.0949 | $0.244 | 97% |
 | C10 lx about + cards | B | 2 | 4.0 | 63,078 | 196,714 | 2,072 | 366 | 262,230 | $0.0608 | $0.206 | 100% |
@@ -198,10 +223,12 @@ One agent answers all three questions. Fewest tokens first within each tier.
 
 ## Three subagents
 
-Three subagents started together, one question each. Cheapest tier only, nobody reviews the answers. Fewest tokens first within each tier.
+Three subagents started together, one question each. Claude Haiku 5.5 at low effort only, nobody reviews the answers. Fewest tokens first within each model.
 
 | Method | Tier | Runs | Turns | Start-up | Re-read | Added | Output | Total tokens | Cost warm | Cost cold | Correct |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| TP pgr, graph and search, with a pack in the prompt | C | 3 | 4.0 | 199,050 | 66,383 | 2,912 | 1,059 | 269,405 | $0.0035 | $0.0264 | 100% |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 3 | 5.0 | 198,960 | 133,693 | 5,856 | 1,121 | 339,630 | $0.0046 | $0.0275 | 100% |
 | H3 Shipped lx ask, embeddings on, hooks on | C | 1 | 6.0 | 187,527 | 187,521 | 8,298 | 401 | 383,747 | $0.0050 | $0.0266 | 100% |
 | H1 Shipped lx ask, default index, hooks on | C | 1 | 6.0 | 187,551 | 187,545 | 8,199 | 801 | 384,096 | $0.0052 | $0.0267 | 100% |
 | HB Shipped lx ask through Bash, hooks on | C | 1 | 6.0 | 187,575 | 187,569 | 8,382 | 792 | 384,318 | $0.0052 | $0.0268 | 100% |
@@ -216,6 +243,7 @@ Three subagents started together, one question each. Cheapest tier only, nobody 
 | SB Shipped lx ask through Bash, hooks off | C | 1 | 6.0 | 188,775 | 188,769 | 8,417 | 918 | 386,879 | $0.0053 | $0.0270 | 100% |
 | C13 lx, every new command | C | 1 | 6.0 | 188,562 | 188,556 | 8,496 | 1,272 | 386,886 | $0.0055 | $0.0272 | 100% |
 | C14 lx, every new command + token-goat | C | 1 | 6.0 | 188,817 | 188,811 | 8,272 | 1,072 | 386,972 | $0.0053 | $0.0271 | 100% |
+| R6 pgr, graph and search in one call, round six | C | 3 | 6.0 | 194,730 | 194,724 | 8,863 | 764 | 399,081 | $0.0054 | $0.0278 | 100% |
 | A5 token-goat alone | C | 2 | 6.5 | 187,552 | 220,908 | 10,263 | 942 | 419,665 | $0.0058 | $0.0274 | 100% |
 | A4 lx first version + Rust embeddings | C | 1 | 7.0 | 186,783 | 251,676 | 8,890 | 838 | 448,187 | $0.0059 | $0.0274 | 92% |
 | A8 lx improved + Rust embeddings | C | 1 | 7.0 | 186,789 | 251,776 | 9,097 | 973 | 448,635 | $0.0060 | $0.0275 | 100% |
@@ -230,6 +258,7 @@ Three subagents started together, one question each. Cheapest tier only, nobody 
 | C2 lx + Rust embeddings + token-goat | C | 1 | 7.0 | 188,169 | 255,464 | 10,678 | 1,134 | 455,445 | $0.0063 | $0.0280 | 100% |
 | C8 token-goat + graphify | C | 1 | 7.0 | 187,971 | 255,096 | 10,818 | 1,617 | 455,502 | $0.0066 | $0.0282 | 100% |
 | C6 token-goat + graphify + semble | C | 1 | 7.0 | 188,106 | 255,325 | 11,952 | 984 | 456,367 | $0.0064 | $0.0281 | 100% |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 3 | 7.0 | 194,746 | 262,555 | 9,887 | 617 | 467,804 | $0.0061 | $0.0285 | 100% |
 | A9 lx, as shipped after round 1 | C | 3 | 7.7 | 187,766 | 297,393 | 9,487 | 1,327 | 495,973 | $0.0067 | $0.0283 | 100% |
 | A7 lx, improved | C | 1 | 8.0 | 186,810 | 316,948 | 9,051 | 911 | 513,720 | $0.0066 | $0.0281 | 100% |
 | H9 Round 1 lx, hooks on | C | 1 | 8.0 | 187,566 | 318,297 | 8,707 | 739 | 515,309 | $0.0065 | $0.0281 | 100% |
@@ -248,13 +277,14 @@ Three subagents started together, one question each. Cheapest tier only, nobody 
 
 ## Orchestrator + subagents
 
-A top-tier orchestrator writes three briefs, three subagents answer, and the orchestrator checks the answers with the method's own tools and corrects them. The tier shown is the subagents' tier. Fewest tokens first within each tier.
+A Claude Opus 5.5 (maximum effort) orchestrator writes three briefs, three subagents answer, and the orchestrator checks the answers with the method's own tools and corrects them. The tier shown is the subagents' tier. Fewest tokens first within each model.
 
 | Method | Tier | Runs | Turns | Start-up | Re-read | Added | Output | Total tokens | Cost warm | Cost cold | Correct |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | C13 lx, every new command | C | 1 | 9.0 | 314,405 | 252,352 | 12,072 | 19,462 | 598,291 | $0.415 | $1.04 | 100% |
 | S2 Shipped: all commands, default index | C | 1 | 10.0 | 314,228 | 318,889 | 13,650 | 8,703 | 655,470 | $0.244 | $0.868 | 100% |
 | S1 Shipped: lx ask, default index | C | 3 | 10.7 | 314,318 | 362,534 | 14,142 | 9,649 | 700,644 | $0.242 | $0.866 | 100% |
+| TP pgr, graph and search, with a pack in the prompt | C | 3 | 10.0 | 333,978 | 338,583 | 15,247 | 14,132 | 701,940 | $0.342 | $1.01 | 100% |
 | A8 lx improved + Rust embeddings | C | 1 | 11.0 | 312,041 | 381,303 | 15,521 | 9,343 | 718,208 | $0.247 | $0.868 | 100% |
 | C15 lx ask + token-goat read | C | 1 | 11.0 | 313,716 | 384,593 | 13,520 | 8,498 | 720,327 | $0.215 | $0.838 | 100% |
 | N1 lx ask, no Rust embeddings | C | 1 | 11.0 | 313,617 | 384,155 | 14,522 | 8,651 | 720,945 | $0.226 | $0.850 | 100% |
@@ -276,18 +306,29 @@ A top-tier orchestrator writes three briefs, three subagents answer, and the orc
 | C7 token-goat + semble | C | 1 | 12.0 | 313,661 | 453,165 | 17,244 | 12,043 | 796,113 | $0.267 | $0.890 | 100% |
 | C8 token-goat + graphify | C | 1 | 12.0 | 313,617 | 455,629 | 20,362 | 9,825 | 799,433 | $0.259 | $0.883 | 100% |
 | C6 token-goat + graphify + semble | C | 1 | 12.0 | 313,806 | 455,469 | 20,609 | 10,640 | 800,524 | $0.281 | $0.905 | 100% |
+| R6 pgr, graph and search in one call, round six | C | 3 | 11.7 | 325,325 | 443,192 | 15,458 | 20,614 | 804,589 | $0.469 | $1.12 | 100% |
 | L1 lx + about | C | 1 | 13.0 | 313,813 | 515,064 | 14,569 | 8,874 | 852,320 | $0.209 | $0.832 | 100% |
 | A6 token-goat + lx improved | C | 1 | 13.0 | 312,409 | 516,538 | 16,609 | 8,083 | 853,639 | $0.243 | $0.864 | 100% |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 3 | 12.3 | 325,381 | 490,795 | 17,124 | 21,253 | 854,553 | $0.489 | $1.14 | 100% |
 | R1 lx shipped + Rust embeddings | C | 1 | 13.0 | 313,541 | 514,527 | 16,491 | 10,571 | 855,130 | $0.256 | $0.879 | 100% |
 | C3 lx shipped + token-goat | C | 1 | 13.0 | 313,965 | 515,767 | 18,858 | 11,431 | 860,021 | $0.297 | $0.921 | 100% |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 3 | 12.0 | 333,800 | 481,760 | 18,366 | 28,754 | 862,680 | $0.644 | $1.31 | 100% |
 | A7 lx, improved | C | 1 | 14.0 | 312,069 | 579,796 | 15,860 | 9,114 | 916,839 | $0.266 | $0.887 | 100% |
 | A3 lx, first version | C | 1 | 14.0 | 312,013 | 577,637 | 15,491 | 11,921 | 917,062 | $0.288 | $0.910 | 100% |
 | C10 lx about + cards | C | 1 | 14.0 | 313,793 | 580,864 | 16,057 | 9,149 | 919,863 | $0.236 | $0.860 | 100% |
 | L2 lx + cards | C | 1 | 14.0 | 313,605 | 582,323 | 16,539 | 9,772 | 922,239 | $0.255 | $0.879 | 100% |
+| TPHV pgr, graph and search, with a pack and the hub, inside a virtual machine | C | 3 | 13.0 | 335,209 | 555,066 | 18,673 | 22,539 | 931,487 | $0.525 | $1.19 | 100% |
+| TPH pgr, graph and search, with a pack and the hub | C | 3 | 13.3 | 334,701 | 574,924 | 16,444 | 13,037 | 939,106 | $0.327 | $0.997 | 100% |
+| TPHh pgr, graph and search, with a pack and the hub, held-out questions | C | 3 | 13.7 | 334,519 | 600,508 | 20,105 | 24,693 | 979,825 | $0.588 | $1.26 | 100% |
+| TPHVh pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions | C | 3 | 13.7 | 335,034 | 603,104 | 21,611 | 25,320 | 985,068 | $0.598 | $1.27 | 100% |
 | A2 Rust index alone, embeddings on | C | 1 | 15.0 | 312,009 | 650,852 | 41,109 | 15,483 | 1,019,453 | $0.398 | $1.02 | 100% |
 | C1 Rust index + token-goat + graphify + semble | C | 1 | 15.0 | 314,109 | 661,188 | 45,357 | 8,230 | 1,028,884 | $0.262 | $0.885 | 100% |
+| THV pgr, graph and search, with the hub, inside a virtual machine | C | 3 | 15.0 | 326,531 | 674,961 | 18,620 | 27,347 | 1,047,460 | $0.622 | $1.27 | 100% |
+| TH pgr, graph and search, with the hub | C | 3 | 15.3 | 326,074 | 699,398 | 19,085 | 18,327 | 1,062,884 | $0.466 | $1.11 | 100% |
 | C5 Rust index + graphify + semble | C | 1 | 16.0 | 313,769 | 723,143 | 27,494 | 12,134 | 1,076,540 | $0.325 | $0.949 | 100% |
 | C4 Rust index + token-goat | C | 1 | 16.0 | 313,793 | 729,036 | 41,229 | 9,074 | 1,093,132 | $0.275 | $0.899 | 100% |
+| THh pgr, graph and search, with the hub, held-out questions | C | 3 | 15.7 | 326,074 | 724,580 | 20,983 | 25,760 | 1,097,397 | $0.614 | $1.26 | 100% |
+| THVh pgr, graph and search, with the hub, inside a virtual machine, held-out questions | C | 3 | 17.0 | 326,564 | 819,459 | 22,691 | 25,338 | 1,194,053 | $0.630 | $1.28 | 100% |
 | A0 No index | C | 3 | 17.3 | 312,646 | 818,431 | 45,460 | 23,118 | 1,199,654 | $0.572 | $1.19 | 100% |
 | H0 No index, hooks on | C | 2 | 18.0 | 312,323 | 868,185 | 47,536 | 24,780 | 1,252,824 | $0.574 | $1.20 | 100% |
 | A1 graphify + semble | C | 3 | 21.7 | 313,705 | 1,098,959 | 26,751 | 15,215 | 1,454,631 | $0.363 | $0.986 | 100% |
@@ -310,7 +351,7 @@ A top-tier orchestrator writes three briefs, three subagents answer, and the orc
 
 ## Orchestrated, reviewer reads only
 
-Orchestrated, but the top-tier reviewer may not look anything up: it sees the three questions and the three answers, with no tool policy and no repository path. Fewest tokens first within each tier.
+Orchestrated, but the Claude Opus 5.5 (maximum effort) reviewer may not look anything up: it sees the three questions and the three answers, with no tool policy and no repository path. Fewest tokens first within each model.
 
 | Method | Tier | Runs | Turns | Start-up | Re-read | Added | Output | Total tokens | Cost warm | Cost cold | Correct |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -318,19 +359,23 @@ Orchestrated, but the top-tier reviewer may not look anything up: it sees the th
 | S1 Shipped: lx ask, default index | C | 2 | 8.0 | 314,310 | 189,061 | 8,438 | 47,173 | 558,982 | $0.951 | $1.57 | 100% |
 | A0 No index | C | 2 | 12.0 | 313,746 | 454,348 | 19,816 | 10,684 | 798,594 | $0.174 | $0.797 | 96% |
 
-## Orchestrated, mid-tier reviewer
+## Three models, each in its role
 
-Orchestrated, with the mid-tier model as reviewer, allowed the method's own tools. Fewest tokens first within each tier.
+Claude Opus 5.5 at maximum effort plans the work, Claude Haiku 5.5 at low effort does the lookups, and Claude Sonnet 5.5 at medium effort reviews the answers, allowed the method's own tools. Fewest tokens first within each model.
 
 | Method | Tier | Runs | Turns | Start-up | Re-read | Added | Output | Total tokens | Cost warm | Cost cold | Correct |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | S3 Shipped: lx ask, embeddings on | C | 2 | 10.5 | 314,633 | 352,482 | 12,064 | 7,664 | 686,844 | $0.191 | $0.656 | 100% |
+| R6 pgr, graph and search in one call, round six | C | 3 | 10.3 | 325,306 | 351,700 | 13,141 | 25,280 | 715,427 | $0.540 | $1.02 | 100% |
+| TP pgr, graph and search, with a pack in the prompt | C | 3 | 10.3 | 333,989 | 361,997 | 12,739 | 13,585 | 722,309 | $0.300 | $0.795 | 100% |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 3 | 10.3 | 333,855 | 362,797 | 14,155 | 20,414 | 731,220 | $0.431 | $0.925 | 100% |
 | S1 Shipped: lx ask, default index | C | 2 | 12.0 | 314,677 | 452,494 | 12,938 | 7,450 | 787,558 | $0.183 | $0.648 | 100% |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 3 | 11.7 | 325,386 | 451,823 | 15,995 | 33,432 | 826,636 | $0.691 | $1.17 | 100% |
 | A0 No index | C | 2 | 17.0 | 313,935 | 796,848 | 33,620 | 11,747 | 1,156,150 | $0.244 | $0.709 | 100% |
 
 ## Orchestrated, cheapest reviewer
 
-Orchestrated, with the cheapest model as reviewer, allowed the method's own tools. Fewest tokens first within each tier.
+Orchestrated, with Claude Haiku 5.5 at low effort as reviewer, allowed the method's own tools. Fewest tokens first within each model.
 
 | Method | Tier | Runs | Turns | Start-up | Re-read | Added | Output | Total tokens | Cost warm | Cost cold | Correct |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
@@ -417,15 +462,42 @@ Orchestrated, with the cheapest model as reviewer, allowed the method's own tool
 | A0r | No index, run again with round five | The same prompt and commands as A0, measured on the day of the fifth round. |
 | S1r | Shipped: lx ask, default index, run again with round five | The same prompt and commands as S1, measured on the day of the fifth round. |
 | S3r | Shipped: lx ask, embeddings on, run again with round five | The same prompt and commands as S3, measured on the day of the fifth round. |
+| R6 | pgr, graph and search in one call, round six | RGS run again in round six, with the same commands and the same policy text, so that every comparison inside the round is same-day. |
+| TP | pgr, graph and search, with a pack in the prompt | R6 plus, in every prompt, the output of pgr pack on the question, computed by the harness before the agent starts (it costs no model call) and put in the prompt (engines graph and search). |
+| TPG | pgr, code graph only, with a graph pack | The agent has the commands of RG; its prompt holds the output of pgr pack on the question, computed by the harness before the agent starts (it costs no model call) and put in the prompt, built with the graph engine only. |
+| TPS | pgr, search only, with a search pack | The agent has the command of RS; its prompt holds the output of pgr pack on the question, computed by the harness before the agent starts (it costs no model call) and put in the prompt, built with the search engine only. |
+| TH | pgr, graph and search, with the hub | R6 plus the note hub: the subagents file what they found with pgr handoff and the reviewer starts from pgr loadout, in a note bank that is new for every cell and repeat. Orchestrated runs only. |
+| TPH | pgr, graph and search, with a pack and the hub | TP plus the note hub: the subagents file what they found with pgr handoff and the reviewer starts from pgr loadout, in a note bank that is new for every cell and repeat. Orchestrated runs only. |
+| T0 | Demonstration set T, no notes | Set T is a demonstration set that the builders wrote to show one feature: each question needs one lookup and one note that an earlier agent filed. Asked with the commands of R6, no hub command and no note: the floor, because the notes cannot be known. |
+| TL | Demonstration set T, the agent loads the notes | Set T is a demonstration set that the builders wrote to show one feature: each question needs one lookup and one note that an earlier agent filed. The commands of R6 plus pgr loadout and pgr recall on the team's note bank. |
+| TI | Demonstration set T, the loadout is in the prompt | Set T is a demonstration set that the builders wrote to show one feature: each question needs one lookup and one note that an earlier agent filed. As TL, and the loadout of each question's task is already in the prompt. |
+| R6V | pgr, graph and search in one call, inside a virtual machine | R6's commands, run inside a WSL 2 virtual machine. The agent stays in the harness; the copy of the repository, the Linux build of pgr, its index and the note banks are inside the virtual machine, and code is printed with sed there. The Read, Grep and Glob tools are not used. |
+| THV | pgr, graph and search, with the hub, inside a virtual machine | TH's commands and hub, run inside a WSL 2 virtual machine, with the note bank in the VM. The agent stays in the harness; the copy of the repository, the Linux build of pgr, its index and the note banks are inside the virtual machine, and code is printed with sed there. The Read, Grep and Glob tools are not used. Orchestrated runs only. |
+| TPHV | pgr, graph and search, with a pack and the hub, inside a virtual machine | TPH's commands, pack and hub, run inside a WSL 2 virtual machine; the pack is the one TP gets, because the Linux build gives the same text. The agent stays in the harness; the copy of the repository, the Linux build of pgr, its index and the note banks are inside the virtual machine, and code is printed with sed there. The Read, Grep and Glob tools are not used. Orchestrated runs only. |
+| RN | pgr, graph and search in one call, without the neural network | R6's commands, with the search working on words only. The repository is a copy whose pgr index was built with PGR_NO_MODEL=1, and every call sets the same variable, so pgr's only neural part, its embedding table, plays no part and search works on words alone. |
+| TPN | pgr, graph and search, with a pack, without the neural network | RN plus, in every prompt, the output of pgr pack on the question, computed beforehand on the same words-only copy (engines graph and search). The repository is a copy whose pgr index was built with PGR_NO_MODEL=1, and every call sets the same variable, so pgr's only neural part, its embedding table, plays no part and search works on words alone. |
+| TPX | The pack only, no lookup command | The pack of TP is in the prompt and the agent may call no lookup command and no tool at all: it answers from the pack and may say that a field is unknown. It measures whether the pack alone is enough, and what the answer costs when it is not. |
+| R6h | pgr, graph and search in one call, round six, held-out questions | The same method as R6 on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPh | pgr, graph and search, with a pack in the prompt, held-out questions | The same method as TP on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPGh | pgr, code graph only, with a graph pack, held-out questions | The same method as TPG on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPSh | pgr, search only, with a search pack, held-out questions | The same method as TPS on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| THh | pgr, graph and search, with the hub, held-out questions | The same method as TH on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPHh | pgr, graph and search, with a pack and the hub, held-out questions | The same method as TPH on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| R6Vh | pgr, graph and search in one call, inside a virtual machine, held-out questions | The same method as R6V on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| THVh | pgr, graph and search, with the hub, inside a virtual machine, held-out questions | The same method as THV on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPHVh | pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions | The same method as TPHV on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| RNh | pgr, graph and search in one call, without the neural network, held-out questions | The same method as RN on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPNh | pgr, graph and search, with a pack, without the neural network, held-out questions | The same method as TPN on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
+| TPXh | The pack only, no lookup command, held-out questions | The same method as TPX on the held-out set of three questions, which for round six is a second set and not an untouched one, because the pack was written after these questions had been run. |
 
 ## How it was measured
 
 - Repository: 86 Python files, 2.97 MB, one commit, read-only for every agent. Ground truth for the three questions comes from Python's syntax tree, and every answer is graded against it by a script.
-- Tiers: C is the Haiku class at low effort, B the Sonnet class at medium effort, A the Opus class at maximum effort. The planning call always ran at Tier A, and so did the review, except in the reviewer variants described below. Model names are resolved at run time by alias.
+- models: C is the Haiku class at low effort, B the Sonnet class at medium effort, A the Opus class at maximum effort. The planning call always ran at Claude Opus 5.5 at maximum effort, and so did the review, except in the reviewer variants described below. Model names are resolved at run time by alias.
 - Tokens are the usage fields the API returned for each request, summed per agent. Start-up context is the whole prompt of an agent's first request; re-read is cache-read tokens on later requests; added is new context written on later requests (tool results and the agent's own earlier output).
-- Cost uses list prices per million tokens: Tier A $4 in, $20 out, $0.20 cache read; Tier B $2, $10, $0.20; Tier C $0.10, $0.50. Cache writes are priced at 1.25 times input and the Tier C cache read at a tenth of input, which are the published multipliers rather than figures printed for these models. Warm and cold differ only in how the start-up context is priced: all read from cache, or all written.
-- The orchestrator's planning prompt is the same for every method and tier, so it was run 3 times and its briefs reused; a run that reused them is charged the mean of the measured planning calls.
-- Reviewer variants. In the standard orchestrated run the reviewer is the Tier A model with the method's own tools. Three variants swap only the reviewer: Tier A with no tools, Tier B with tools and Tier C with tools. The planning briefs and the subagents are the same.
+- Cost uses list prices per million tokens: Claude Opus 5.5 at maximum effort $4 in, $20 out, $0.20 cache read; Claude Sonnet 5.5 at medium effort $2, $10, $0.20; Claude Haiku 5.5 at low effort $0.10, $0.50. Cache writes are priced at 1.25 times input and the Claude Haiku 5.5 at low effort cache read at a tenth of input, which are the published multipliers rather than figures printed for these models. Warm and cold differ only in how the start-up context is priced: all read from cache, or all written.
+- The orchestrator's planning prompt is the same for every method and tier, so it was run 51 times and its briefs reused; a run that reused them is charged the mean of the measured planning calls.
+- Reviewer variants. In the standard orchestrated run the reviewer is the Claude Opus 5.5 at maximum effort model with the method's own tools. Three variants swap only the reviewer: Claude Opus 5.5 at maximum effort with no tools, Claude Sonnet 5.5 at medium effort with tools and Claude Haiku 5.5 at low effort with tools. The planning briefs and the subagents are the same.
 - Hooks. The runs without token-goat's hooks come from the rounds made before the hooks were ever installed and from a round made after they were uninstalled again; the runs with them were made in between, in one round. The client applies a hook change at once, so no restart separates them. A hook run that let a call through is a row in an agent's transcript, which is how runs and rewritten calls are counted; a call the hook refused leaves no row, only an error in place of the result, and each of those is counted as one hook run and one refused call. Methods measured with the hooks on carry "hooks on" in their name and are never averaged with their twins.
 - One round was stopped part-way and resumed, and the resumed round ran most of its agents a second time. Where an agent has two transcripts the later one is counted and the earlier one is left out, so no run is counted twice and no half-finished one is graded.
 - Limits. One repository, one language, three easy questions, and between one and 6 runs per cell: a difference of one turn between two methods is inside the noise, and a single-run cell is an example, not an average. Every agent carried the test machine's client, skills and connectors, so the start-up figure belongs to that machine and is not a constant. Wall-clock seconds depend on what else the machine was doing: round 2 and part of round 4 ran while other jobs held every processor core, and a row can mix runs from several rounds. Read seconds as a rough guide and never across rounds; token counts do not depend on machine load.
@@ -433,14 +505,14 @@ Orchestrated, with the cheapest model as reviewer, allowed the method's own tool
 
 ## Orchestrated runs
 
-- Across 70 orchestrated runs with the standard reviewer, the subagents handed back 3 wrong answers out of 210. The reviewer corrected 3 of them, left 0 wrong, and changed 0 right answers into wrong ones. 70 of the 70 runs ended fully correct.
-- With Tier C, scout subagents (48 runs over 36 methods), the orchestrator's planning and review were 33% of the tokens and 97% of the cost of a run, cache warm. The three subagents together averaged 569k tokens and the review 210k. Against one agent of that tier answering all three questions with the same method, the orchestrated run used 4.5 times the tokens (from 2.9 to 6.1) and 95 times the money.
-- With Tier B, coder subagents (14 runs over 8 methods), the orchestrator's planning and review were 33% of the tokens and 65% of the cost of a run, cache warm. The three subagents together averaged 574k tokens and the review 213k. Against one agent of that tier answering all three questions with the same method, the orchestrated run used 4.1 times the tokens (from 3.3 to 6.4) and 8 times the money.
-- With Tier A, apex subagents (8 runs over 8 methods), the orchestrator's planning and review were 28% of the tokens and 38% of the cost of a run, cache warm. The three subagents together averaged 687k tokens and the review 198k. Against one agent of that tier answering all three questions with the same method, the orchestrated run used 3.2 times the tokens (from 2.4 to 4.5) and 5 times the money.
-- Three subagents with nobody reviewing them, Tier C: 38 of 43 runs were fully correct. The same 36 methods on that tier with the standard review: 48 of 48.
-- Top tier, no tools: 6 runs on 3 methods. A review cost $0.0265 to $1.21 (median $0.0315) against $0.0877 to $0.441 (median $0.107) over 9 runs of the standard reviewer on the same methods, cheaper on average on 2 of the 3, and wrote 695 to 59,621 output tokens (median 940) against a median of 2,856. It was handed 1 wrong answer, corrected 0 and broke 0 right ones. 5 of 6 runs ended fully correct.
-- Mid tier with the method's tools: 6 runs on 3 methods. A review cost $0.0357 to $0.101 (median $0.0602) against $0.0877 to $0.441 (median $0.107) over 9 runs of the standard reviewer on the same methods, cheaper on average on 3 of the 3, and wrote 267 to 1,814 output tokens (median 608) against a median of 2,856. Its subagents handed it no wrong answer, so these runs price the reviewer and do not show whether it catches a mistake. 6 of 6 runs ended fully correct.
-- Cheapest tier with the method's tools: 6 runs on 3 methods. A review cost $0.0020 to $0.0061 (median $0.0025) against $0.0877 to $0.441 (median $0.107) over 9 runs of the standard reviewer on the same methods, cheaper on average on 3 of the 3, and wrote 768 to 3,790 output tokens (median 936) against a median of 2,856. Its subagents handed it no wrong answer, so these runs price the reviewer and do not show whether it catches a mistake. 6 of 6 runs ended fully correct.
+- Across 106 orchestrated runs with the standard reviewer, the subagents handed back 4 wrong answers out of 318. The reviewer corrected 4 of them, left 0 wrong, and changed 0 right answers into wrong ones. 106 of the 106 runs ended fully correct.
+- With Claude Haiku 5.5 at low effort subagents (84 runs over 48 methods), the orchestrator's planning and review were 33% of the tokens and 97% of the cost of a run, cache warm. The three subagents together averaged 586k tokens and the review 216k. Against one agent of that model answering all three questions with the same method, the orchestrated run used 4.6 times the tokens (from 2.9 to 6.3) and 107 times the money.
+- With Claude Sonnet 5.5 at medium effort subagents (14 runs over 8 methods), the orchestrator's planning and review were 33% of the tokens and 65% of the cost of a run, cache warm. The three subagents together averaged 574k tokens and the review 213k. Against one agent of that model answering all three questions with the same method, the orchestrated run used 4.1 times the tokens (from 3.3 to 6.4) and 8 times the money.
+- With Claude Opus 5.5 at maximum effort subagents (8 runs over 8 methods), the orchestrator's planning and review were 28% of the tokens and 38% of the cost of a run, cache warm. The three subagents together averaged 687k tokens and the review 198k. Against one agent of that model answering all three questions with the same method, the orchestrated run used 3.2 times the tokens (from 2.4 to 4.5) and 5 times the money.
+- Three subagents with nobody reviewing them, Claude Haiku 5.5 at low effort: 50 of 55 runs were fully correct. The same 40 methods on that model with the standard review: 60 of 60.
+- Claude Opus 5.5 at maximum effort, no tools: 6 runs on 3 methods. A review cost $0.0265 to $1.21 (median $0.0315) against $0.0877 to $0.441 (median $0.107) over 9 runs of the standard reviewer on the same methods, cheaper on average on 2 of the 3, and wrote 695 to 59,621 output tokens (median 940) against a median of 2,856. It was handed 1 wrong answer, corrected 0 and broke 0 right ones. 5 of 6 runs ended fully correct.
+- Claude Sonnet 5.5 at medium effort with the method's tools: 18 runs on 7 methods. A review cost $0.0357 to $0.101 (median $0.0391) against $0.0559 to $0.441 (median $0.107) over 21 runs of the standard reviewer on the same methods, cheaper on average on 7 of the 7, and wrote 245 to 1,814 output tokens (median 284) against a median of 2,121. Its subagents handed it no wrong answer, so these runs price the reviewer and do not show whether it catches a mistake. 18 of 18 runs ended fully correct.
+- Claude Haiku 5.5 at low effort with the method's tools: 6 runs on 3 methods. A review cost $0.0020 to $0.0061 (median $0.0025) against $0.0877 to $0.441 (median $0.107) over 9 runs of the standard reviewer on the same methods, cheaper on average on 3 of the 3, and wrote 768 to 3,790 output tokens (median 936) against a median of 2,856. Its subagents handed it no wrong answer, so these runs price the reviewer and do not show whether it catches a mistake. 6 of 6 runs ended fully correct.
 
 ### Who used what inside an orchestrated run
 
@@ -484,6 +556,18 @@ Means over the runs of each method and subagent tier. Cost is with the start-up 
 | C13 lx, every new command | C | 1 | 68,025 | 388,022 | 142,244 | 598,291 | $0.132 | $0.0057 | $0.278 | $0.415 | 99% | 2.0 | 202 |
 | C14 lx, every new command + token-goat | C | 1 | 68,025 | 522,719 | 203,211 | 793,955 | $0.132 | $0.0071 | $0.0884 | $0.227 | 97% | 3.0 | 140 |
 | C15 lx ask + token-goat read | C | 1 | 68,025 | 520,698 | 131,604 | 720,327 | $0.132 | $0.0068 | $0.0757 | $0.215 | 97% | 2.0 | 96 |
+| R6 pgr, graph and search in one call, round six | C | 3 | 81,927 | 538,029 | 184,633 | 804,589 | $0.358 | $0.0072 | $0.104 | $0.469 | 98% | 2.7 | 214 |
+| TP pgr, graph and search, with a pack in the prompt | C | 3 | 75,029 | 478,413 | 148,498 | 701,940 | $0.220 | $0.0063 | $0.115 | $0.342 | 98% | 2.0 | 201 |
+| TH pgr, graph and search, with the hub | C | 3 | 79,836 | 679,427 | 303,621 | 1,062,884 | $0.316 | $0.0086 | $0.141 | $0.466 | 98% | 4.3 | 207 |
+| TPH pgr, graph and search, with a pack and the hub | C | 3 | 74,949 | 667,847 | 196,310 | 939,106 | $0.219 | $0.0084 | $0.100 | $0.327 | 97% | 2.7 | 232 |
+| THV pgr, graph and search, with the hub, inside a virtual machine | C | 3 | 90,263 | 726,162 | 231,035 | 1,047,460 | $0.525 | $0.0093 | $0.0874 | $0.622 | 99% | 3.3 | 379 |
+| TPHV pgr, graph and search, with a pack and the hub, inside a virtual machine | C | 3 | 82,365 | 649,364 | 199,758 | 931,487 | $0.367 | $0.0083 | $0.149 | $0.525 | 98% | 2.7 | 355 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 3 | 82,789 | 539,177 | 232,587 | 854,553 | $0.375 | $0.0074 | $0.106 | $0.489 | 98% | 3.3 | 238 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 3 | 89,259 | 573,162 | 200,259 | 862,680 | $0.505 | $0.0076 | $0.132 | $0.644 | 99% | 2.7 | 321 |
+| THh pgr, graph and search, with the hub, held-out questions | C | 3 | 85,875 | 703,233 | 308,290 | 1,097,397 | $0.437 | $0.0091 | $0.168 | $0.614 | 99% | 4.3 | 293 |
+| TPHh pgr, graph and search, with a pack and the hub, held-out questions | C | 3 | 86,067 | 669,288 | 224,470 | 979,825 | $0.441 | $0.0083 | $0.138 | $0.588 | 99% | 3.0 | 288 |
+| THVh pgr, graph and search, with the hub, inside a virtual machine, held-out questions | C | 3 | 87,820 | 773,104 | 333,129 | 1,194,053 | $0.476 | $0.0095 | $0.144 | $0.630 | 98% | 4.7 | 378 |
+| TPHVh pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions | C | 3 | 86,272 | 648,295 | 250,501 | 985,068 | $0.445 | $0.0085 | $0.145 | $0.598 | 99% | 3.3 | 359 |
 | A0 No index | B | 2 | 68,025 | 591,939 | 387,290 | 1,047,254 | $0.132 | $0.177 | $0.344 | $0.654 | 73% | 5.0 | 179 |
 | A1 graphify + semble | B | 2 | 68,025 | 690,111 | 208,085 | 966,221 | $0.132 | $0.172 | $0.152 | $0.456 | 62% | 3.0 | 138 |
 | A7 lx, improved | B | 1 | 68,025 | 580,327 | 269,897 | 918,249 | $0.132 | $0.146 | $0.141 | $0.418 | 65% | 4.0 | 110 |
@@ -543,6 +627,18 @@ Counted per question: three questions a run. An answer counts as wrong when it i
 | C13 lx, every new command | C | 1 | 100% | 100% | 0 | 0 | 0 | 0 | 1 of 1 |
 | C14 lx, every new command + token-goat | C | 1 | 100% | 100% | 0 | 0 | 0 | 0 | 1 of 1 |
 | C15 lx ask + token-goat read | C | 1 | 83% | 100% | 1 | 1 | 0 | 0 | 1 of 1 |
+| R6 pgr, graph and search in one call, round six | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| TP pgr, graph and search, with a pack in the prompt | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| TH pgr, graph and search, with the hub | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| TPH pgr, graph and search, with a pack and the hub | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| THV pgr, graph and search, with the hub, inside a virtual machine | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| TPHV pgr, graph and search, with a pack and the hub, inside a virtual machine | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 3 | 94% | 100% | 1 | 1 | 0 | 0 | 3 of 3 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| THh pgr, graph and search, with the hub, held-out questions | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| TPHh pgr, graph and search, with a pack and the hub, held-out questions | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| THVh pgr, graph and search, with the hub, inside a virtual machine, held-out questions | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
+| TPHVh pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions | C | 3 | 100% | 100% | 0 | 0 | 0 | 0 | 3 of 3 |
 | A0 No index | B | 2 | 100% | 100% | 0 | 0 | 0 | 0 | 2 of 2 |
 | A1 graphify + semble | B | 2 | 100% | 100% | 0 | 0 | 0 | 0 | 2 of 2 |
 | A7 lx, improved | B | 1 | 100% | 100% | 0 | 0 | 0 | 0 | 1 of 1 |
@@ -600,6 +696,18 @@ Counted per question: three questions a run. An answer counts as wrong when it i
 | C13 lx, every new command | C | 130,244 | $0.0019 | 100% | 386,886 | $0.0055 | 100% | 598,291 | $0.415 | 100% | 4.6x | 221x |
 | C14 lx, every new command + token-goat | C | 130,642 | $0.0020 | 100% | 386,972 | $0.0053 | 100% | 793,955 | $0.227 | 100% | 6.1x | 112x |
 | C15 lx ask + token-goat read | C | 130,244 | $0.0020 | 100% | 386,137 | $0.0055 | 100% | 720,327 | $0.215 | 100% | 5.5x | 107x |
+| R6 pgr, graph and search in one call, round six | C | 181,088 | $0.0025 | 100% | 399,081 | $0.0054 | 100% | 804,589 | $0.469 | 100% | 4.4x | 189x |
+| TP pgr, graph and search, with a pack in the prompt | C | 118,688 | $0.0017 | 100% | 269,405 | $0.0035 | 100% | 701,940 | $0.342 | 100% | 5.9x | 204x |
+| TH pgr, graph and search, with the hub | C |  |  |  |  |  |  | 1,062,884 | $0.466 | 100% |  |  |
+| TPH pgr, graph and search, with a pack and the hub | C |  |  |  |  |  |  | 939,106 | $0.327 | 100% |  |  |
+| THV pgr, graph and search, with the hub, inside a virtual machine | C |  |  |  |  |  |  | 1,047,460 | $0.622 | 100% |  |  |
+| TPHV pgr, graph and search, with a pack and the hub, inside a virtual machine | C |  |  |  |  |  |  | 931,487 | $0.525 | 100% |  |  |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | 135,312 | $0.0022 | 100% | 467,804 | $0.0061 | 100% | 854,553 | $0.489 | 100% | 6.3x | 225x |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | 192,441 | $0.0027 | 100% | 339,630 | $0.0046 | 100% | 862,680 | $0.644 | 100% | 4.5x | 239x |
+| THh pgr, graph and search, with the hub, held-out questions | C |  |  |  |  |  |  | 1,097,397 | $0.614 | 100% |  |  |
+| TPHh pgr, graph and search, with a pack and the hub, held-out questions | C |  |  |  |  |  |  | 979,825 | $0.588 | 100% |  |  |
+| THVh pgr, graph and search, with the hub, inside a virtual machine, held-out questions | C |  |  |  |  |  |  | 1,194,053 | $0.630 | 100% |  |  |
+| TPHVh pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions | C |  |  |  |  |  |  | 985,068 | $0.598 | 100% |  |  |
 | A0 No index | B | 280,547 | $0.103 | 100% |  |  |  | 1,047,254 | $0.654 | 100% | 3.7x | 6x |
 | A1 graphify + semble | B | 266,073 | $0.0709 | 100% |  |  |  | 966,221 | $0.456 | 100% | 3.6x | 6x |
 | A7 lx, improved | B | 260,280 | $0.0642 | 100% |  |  |  | 918,249 | $0.418 | 100% | 3.5x | 7x |
@@ -731,6 +839,26 @@ Three questions a run: the tokens and the money of a run divided by three times 
 | C15 lx ask + token-goat read | C | One agent | 3 | 100% | 43,415 | $0.0007 | 59 |
 | C15 lx ask + token-goat read | C | Three subagents | 1 | 100% | 128,712 | $0.0018 | 109 |
 | C15 lx ask + token-goat read | C | Orchestrator + subagents | 1 | 100% | 240,109 | $0.0715 | 96 |
+| R6 pgr, graph and search in one call, round six | C | One agent | 3 | 100% | 60,363 | $0.0008 | 10 |
+| R6 pgr, graph and search in one call, round six | C | Three subagents | 3 | 100% | 133,027 | $0.0018 | 7 |
+| R6 pgr, graph and search in one call, round six | C | Orchestrator + subagents | 3 | 100% | 268,196 | $0.156 | 214 |
+| TP pgr, graph and search, with a pack in the prompt | C | One agent | 3 | 100% | 39,563 | $0.0006 | 7 |
+| TP pgr, graph and search, with a pack in the prompt | C | Three subagents | 3 | 100% | 89,802 | $0.0012 | 6 |
+| TP pgr, graph and search, with a pack in the prompt | C | Orchestrator + subagents | 3 | 100% | 233,980 | $0.114 | 201 |
+| TH pgr, graph and search, with the hub | C | Orchestrator + subagents | 3 | 100% | 354,295 | $0.155 | 207 |
+| TPH pgr, graph and search, with a pack and the hub | C | Orchestrator + subagents | 3 | 100% | 313,035 | $0.109 | 232 |
+| THV pgr, graph and search, with the hub, inside a virtual machine | C | Orchestrator + subagents | 3 | 100% | 349,153 | $0.207 | 379 |
+| TPHV pgr, graph and search, with a pack and the hub, inside a virtual machine | C | Orchestrator + subagents | 3 | 100% | 310,496 | $0.175 | 355 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | One agent | 3 | 100% | 45,104 | $0.0007 | 9 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | Three subagents | 3 | 100% | 155,935 | $0.0020 | 8 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | Orchestrator + subagents | 3 | 100% | 284,851 | $0.163 | 238 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | One agent | 3 | 100% | 64,147 | $0.0009 | 12 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | Three subagents | 3 | 100% | 113,210 | $0.0015 | 8 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | Orchestrator + subagents | 3 | 100% | 287,560 | $0.215 | 321 |
+| THh pgr, graph and search, with the hub, held-out questions | C | Orchestrator + subagents | 3 | 100% | 365,799 | $0.205 | 293 |
+| TPHh pgr, graph and search, with a pack and the hub, held-out questions | C | Orchestrator + subagents | 3 | 100% | 326,608 | $0.196 | 288 |
+| THVh pgr, graph and search, with the hub, inside a virtual machine, held-out questions | C | Orchestrator + subagents | 3 | 100% | 398,018 | $0.210 | 378 |
+| TPHVh pgr, graph and search, with a pack and the hub, inside a virtual machine, held-out questions | C | Orchestrator + subagents | 3 | 100% | 328,356 | $0.199 | 359 |
 | A0 No index | B | One agent | 3 | 100% | 93,516 | $0.0344 | 25 |
 | A0 No index | B | Orchestrator + subagents | 2 | 100% | 349,084 | $0.218 | 179 |
 | A1 graphify + semble | B | One agent | 1 | 100% | 88,691 | $0.0236 | 24 |
@@ -770,9 +898,9 @@ Standard reviewer, every method together. Each run asks each question once.
 
 | Subagent tier | Question | Answers | Subagents fully right | After review fully right | Subagents, mean score | After review, mean score |
 |---|---|---:|---:|---:|---:|---:|
-| C | Q1 | 48 | 48 of 48 | 48 of 48 | 100% | 100% |
-| C | Q2 | 48 | 47 of 48 | 48 of 48 | 99% | 100% |
-| C | Q3 | 48 | 46 of 48 | 48 of 48 | 99% | 100% |
+| C | Q1 | 84 | 84 of 84 | 84 of 84 | 100% | 100% |
+| C | Q2 | 84 | 83 of 84 | 84 of 84 | 99% | 100% |
+| C | Q3 | 84 | 81 of 84 | 84 of 84 | 99% | 100% |
 | B | Q1 | 14 | 14 of 14 | 14 of 14 | 100% | 100% |
 | B | Q2 | 14 | 14 of 14 | 14 of 14 | 100% | 100% |
 | B | Q3 | 14 | 14 of 14 | 14 of 14 | 100% | 100% |
@@ -784,37 +912,45 @@ Standard reviewer, every method together. Each run asks each question once.
 
 | Reviewer | Runs | Answers | Wrong before review | Corrected | Still wrong | Right answers broken | Runs fully correct |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| Top tier with the method's tools (standard), every method and tier | 70 | 210 | 3 | 3 | 0 | 0 | 70 of 70 |
-| Top tier with the method's tools (standard), on the methods and tier the variants ran on | 9 | 27 | 0 | 0 | 0 | 0 | 9 of 9 |
-| Top tier, no tools | 6 | 18 | 1 | 0 | 1 | 0 | 5 of 6 |
-| Mid tier with the method's tools | 6 | 18 | 0 | 0 | 0 | 0 | 6 of 6 |
-| Cheapest tier with the method's tools | 6 | 18 | 0 | 0 | 0 | 0 | 6 of 6 |
+| Claude Opus 5.5 at maximum effort with the method's tools (standard), every method and tier | 106 | 318 | 4 | 4 | 0 | 0 | 106 of 106 |
+| Claude Opus 5.5 at maximum effort with the method's tools (standard), on the methods and tier the variants ran on | 21 | 63 | 1 | 1 | 0 | 0 | 21 of 21 |
+| Claude Opus 5.5 at maximum effort, no tools | 6 | 18 | 1 | 0 | 1 | 0 | 5 of 6 |
+| Claude Sonnet 5.5 at medium effort with the method's tools | 18 | 54 | 0 | 0 | 0 | 0 | 18 of 18 |
+| Claude Haiku 5.5 at low effort with the method's tools | 6 | 18 | 0 | 0 | 0 | 0 | 6 of 6 |
 
 ### Who reviews, and with what
 
 | Method | Subagent tier | Reviewer | Runs | Review tokens | Review output tokens | Review turns | Review cost | Total tokens | Total cost | Subagents, mean score | After review, mean score | Corrected | Still wrong | Broken | Runs fully correct |
 |---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| A0 No index | C | Top tier with the method's tools (standard) | 3 | 308,182 | 13,068 | 4.0 | $0.434 | 1,199,654 | $0.572 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
-| A0 No index | C | Top tier, no tools | 2 | 64,123 | 931 | 1.0 | $0.0313 | 798,594 | $0.174 | 96% | 96% | 0 | 1 | 0 | 1 of 2 |
-| A0 No index | C | Mid tier with the method's tools | 2 | 282,528 | 1,647 | 4.0 | $0.0991 | 1,156,150 | $0.244 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| A0 No index | C | Cheapest tier with the method's tools | 2 | 284,434 | 3,674 | 4.0 | $0.0061 | 1,125,739 | $0.151 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| S1 Shipped: lx ask, default index | C | Top tier with the method's tools (standard) | 3 | 178,195 | 2,390 | 2.7 | $0.104 | 700,644 | $0.242 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
-| S1 Shipped: lx ask, default index | C | Top tier, no tools | 2 | 103,223 | 40,025 | 1.0 | $0.813 | 558,982 | $0.951 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| S1 Shipped: lx ask, default index | C | Mid tier with the method's tools | 2 | 163,914 | 340 | 2.5 | $0.0433 | 787,558 | $0.183 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| S1 Shipped: lx ask, default index | C | Cheapest tier with the method's tools | 2 | 164,588 | 936 | 2.5 | $0.0025 | 654,018 | $0.140 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| S3 Shipped: lx ask, embeddings on | C | Top tier with the method's tools (standard) | 3 | 178,019 | 2,142 | 2.7 | $0.0993 | 724,898 | $0.238 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
-| S3 Shipped: lx ask, embeddings on | C | Top tier, no tools | 2 | 63,966 | 772 | 1.0 | $0.0281 | 553,620 | $0.166 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| S3 Shipped: lx ask, embeddings on | C | Mid tier with the method's tools | 2 | 197,956 | 556 | 3.0 | $0.0529 | 686,844 | $0.191 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
-| S3 Shipped: lx ask, embeddings on | C | Cheapest tier with the method's tools | 2 | 130,825 | 792 | 2.0 | $0.0020 | 619,237 | $0.140 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| A0 No index | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 308,182 | 13,068 | 4.0 | $0.434 | 1,199,654 | $0.572 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| A0 No index | C | Claude Opus 5.5 at maximum effort, no tools | 2 | 64,123 | 931 | 1.0 | $0.0313 | 798,594 | $0.174 | 96% | 96% | 0 | 1 | 0 | 1 of 2 |
+| A0 No index | C | Claude Sonnet 5.5 at medium effort with the method's tools | 2 | 282,528 | 1,647 | 4.0 | $0.0991 | 1,156,150 | $0.244 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| A0 No index | C | Claude Haiku 5.5 at low effort with the method's tools | 2 | 284,434 | 3,674 | 4.0 | $0.0061 | 1,125,739 | $0.151 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| S1 Shipped: lx ask, default index | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 178,195 | 2,390 | 2.7 | $0.104 | 700,644 | $0.242 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| S1 Shipped: lx ask, default index | C | Claude Opus 5.5 at maximum effort, no tools | 2 | 103,223 | 40,025 | 1.0 | $0.813 | 558,982 | $0.951 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| S1 Shipped: lx ask, default index | C | Claude Sonnet 5.5 at medium effort with the method's tools | 2 | 163,914 | 340 | 2.5 | $0.0433 | 787,558 | $0.183 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| S1 Shipped: lx ask, default index | C | Claude Haiku 5.5 at low effort with the method's tools | 2 | 164,588 | 936 | 2.5 | $0.0025 | 654,018 | $0.140 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| S3 Shipped: lx ask, embeddings on | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 178,019 | 2,142 | 2.7 | $0.0993 | 724,898 | $0.238 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| S3 Shipped: lx ask, embeddings on | C | Claude Opus 5.5 at maximum effort, no tools | 2 | 63,966 | 772 | 1.0 | $0.0281 | 553,620 | $0.166 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| S3 Shipped: lx ask, embeddings on | C | Claude Sonnet 5.5 at medium effort with the method's tools | 2 | 197,956 | 556 | 3.0 | $0.0529 | 686,844 | $0.191 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| S3 Shipped: lx ask, embeddings on | C | Claude Haiku 5.5 at low effort with the method's tools | 2 | 130,825 | 792 | 2.0 | $0.0020 | 619,237 | $0.140 | 100% | 100% | 0 | 0 | 0 | 2 of 2 |
+| R6 pgr, graph and search in one call, round six | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 184,633 | 2,072 | 2.7 | $0.104 | 804,589 | $0.469 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| R6 pgr, graph and search in one call, round six | C | Claude Sonnet 5.5 at medium effort with the method's tools | 3 | 157,600 | 260 | 2.3 | $0.0419 | 715,427 | $0.540 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| TP pgr, graph and search, with a pack in the prompt | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 148,498 | 2,903 | 2.0 | $0.115 | 701,940 | $0.342 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| TP pgr, graph and search, with a pack in the prompt | C | Claude Sonnet 5.5 at medium effort with the method's tools | 3 | 143,034 | 321 | 2.0 | $0.0385 | 722,309 | $0.300 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 232,587 | 1,442 | 3.3 | $0.106 | 854,553 | $0.489 | 94% | 100% | 1 | 0 | 0 | 3 of 3 |
+| R6h pgr, graph and search in one call, round six, held-out questions | C | Claude Sonnet 5.5 at medium effort with the method's tools | 3 | 158,313 | 257 | 2.3 | $0.0428 | 826,636 | $0.691 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | Claude Opus 5.5 at maximum effort with the method's tools (standard) | 3 | 200,259 | 2,898 | 2.7 | $0.132 | 862,680 | $0.644 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
+| TPh pgr, graph and search, with a pack in the prompt, held-out questions | C | Claude Sonnet 5.5 at medium effort with the method's tools | 3 | 143,268 | 313 | 2.0 | $0.0394 | 731,220 | $0.431 | 100% | 100% | 0 | 0 | 0 | 3 of 3 |
 
 ## token-goat hooks, off and on
 
 - token-goat's hooks, installed in the client: with no index they ran in 9 of 9 runs, rewrote 3.7 tool results a run, and the runs used 2% more tokens, inside the 21% by which repeats of one prompt without the hooks differ; 5 of 9 of those runs ended fully correct, against 13 of 17 without the hooks. With index commands sent through PowerShell they ran in 6 of 32 runs. Through Bash they ran in 7 of 7 runs, rewrote nothing, and the runs used 4% more tokens, inside the 26% by which repeats of one prompt without the hooks differ.
-- No index, where every lookup is one of the client's own Grep, Glob and Read calls: 9 runs with the hooks against 17 without, compared setup by setup and tier by tier (5 pairs, 2 of them with a single run on one side). The hooks ran in 9 of 9 runs, 27.7 times a run on average, rewrote 3.7 tool results a run, added 4.0 notes a run and refused 0.11 calls a run. Tokens a run: 547k without, 559k with (+2%, inside the 21% by which repeats of one prompt without the hooks differ; pair by pair from -2% to +4%). Turns: 7.8 and 8.0. Mean score: 97% and 98%. Runs fully correct: 13 of 17 and 5 of 9.
+- No index, where every lookup is one of the client's own Grep, Glob and Read calls: 9 runs with the hooks against 17 without, compared setup by setup and model by model (5 pairs, 2 of them with a single run on one side). The hooks ran in 9 of 9 runs, 27.7 times a run on average, rewrote 3.7 tool results a run, added 4.0 notes a run and refused 0.11 calls a run. Tokens a run: 547k without, 559k with (+2%, inside the 21% by which repeats of one prompt without the hooks differ; pair by pair from -2% to +4%). Turns: 7.8 and 8.0. Mean score: 97% and 98%. Runs fully correct: 13 of 17 and 5 of 9.
 - The rewritten results carried 2.4 redaction markers a run, where the hook put a marker in place of source text it took for a secret. The agent that looked up the callers left one out in 5 of 9 runs with the hooks (triage_with_opus in 5), against 1 of 17 without them. In these runs the marker was `[REDACTED:generic_secret_assignment]`, written over the call itself on two lines of the fixture's prs.py that assign its result to something named api_key. Both lines sit in one function, and that function is the caller the incomplete answers lack. Traced in the transcripts: the lines an agent was shown, and the caller its answer left out.
-- Index commands sent through PowerShell (A5, A9, S1, S3): 32 runs with the hooks against 50 without, compared setup by setup and tier by tier (18 pairs, 8 of them with a single run on one side). The hooks ran in 6 of 32 runs, 1.2 times a run on average, rewrote 0.2 tool results a run, added 0.6 notes a run and refused 0.00 calls a run. Tokens a run: 280k without, 260k with (-7%, inside the 25% by which repeats of one prompt without the hooks differ; pair by pair from -34% to +8%). Turns: 4.2 and 4.0. Mean score: 99% and 100%. Runs fully correct: 48 of 50 and 32 of 32.
+- Index commands sent through PowerShell (A5, A9, S1, S3): 32 runs with the hooks against 50 without, compared setup by setup and model by model (18 pairs, 8 of them with a single run on one side). The hooks ran in 6 of 32 runs, 1.2 times a run on average, rewrote 0.2 tool results a run, added 0.6 notes a run and refused 0.00 calls a run. Tokens a run: 280k without, 260k with (-7%, inside the 25% by which repeats of one prompt without the hooks differ; pair by pair from -34% to +8%). Turns: 4.2 and 4.0. Mean score: 99% and 100%. Runs fully correct: 48 of 50 and 32 of 32.
 - In 13 of those 18 method, setup and tier pairs no hook ran at all, because PowerShell is not a tool they match. 7 of the 13 still differ by 5% or more in tokens, all of them downward (the 13 run from -34% to +4%). No hook ran in those runs, so the hooks did not make that gap. The two sides were not otherwise identical: every run with the hooks comes from one round, and the agents of each round start from slightly different context (an agent began with 62,884 tokens with the hooks on against 62,958 without: the version of the rules file the session had loaded, the request it relays to its agents, the skill list). With 1 to 6 runs a side, these rows cannot separate that from chance.
-- The one-call command sent through Bash, a tool the hooks do match: 7 runs with the hooks against 7 without, compared setup by setup and tier by tier (4 pairs, 2 of them with a single run on one side). The hooks ran in 7 of 7 runs, 4.1 times a run on average, rewrote nothing, added 0.4 notes a run and refused 0.00 calls a run. Tokens a run: 196k without, 204k with (+4%, inside the 26% by which repeats of one prompt without the hooks differ; pair by pair from -15% to +97%). Turns: 3.0 and 3.1. Mean score: 100% and 100%. Runs fully correct: 7 of 7 and 7 of 7.
+- The one-call command sent through Bash, a tool the hooks do match: 7 runs with the hooks against 7 without, compared setup by setup and model by model (4 pairs, 2 of them with a single run on one side). The hooks ran in 7 of 7 runs, 4.1 times a run on average, rewrote nothing, added 0.4 notes a run and refused 0.00 calls a run. Tokens a run: 196k without, 204k with (+4%, inside the 26% by which repeats of one prompt without the hooks differ; pair by pair from -15% to +97%). Turns: 3.0 and 3.1. Mean score: 100% and 100%. Runs fully correct: 7 of 7 and 7 of 7.
 - Installing the hooks also writes a routing block into each rules file (4,661 bytes in ~/.claude/CLAUDE.md, 4,731 bytes in ~/.codex/AGENTS.md, 4,564 bytes in ~/.copilot/copilot-instructions.md), about 1,200 tokens that every request of every agent then carries. The agents measured here did not carry it, so that cost is on top of the figures above.
 
 Means per run. Hook runs, calls rewritten, notes added and calls refused are per run with the hooks on. Runs the hooks ran in counts the runs where a hook fired at least once. Seconds are left out: the two sides come from different rounds, run under different machine load.
@@ -864,7 +1000,7 @@ Means per run. Hook runs, calls rewritten, notes added and calls refused are per
 
 ## Round five
 
-The Rust engine in every combination of its parts, three earlier methods run again on the same day, and a held-out set B: a second set of three questions of the same three shapes, written later by the same team and not seen by the people and agents who built the engine (it is not independent). One agent answering all three questions; light is Tier C and mid is Tier B. Hooks were on for every run of the round.
+The Rust engine in every combination of its parts, three earlier methods run again on the same day, and a held-out set B: a second set of three questions of the same three shapes, written later by the same team and not seen by the people and agents who built the engine (it is not independent). One agent answering all three questions; light is Claude Haiku 5.5 at low effort and mid is Claude Sonnet 5.5 at medium effort. Hooks were on for every run of the round.
 
 ### Original questions, set A
 
@@ -945,7 +1081,7 @@ Whole-process wall time, median of 20 runs, release build, index already current
 
 - Hooks were on for every run of the round. Hook calls were recorded in 35 of 97 runs (348 calls).
 - The public control is the same-day one: A0r, S1r and S3r are the repeats of A0, S1 and S3 and are the ones the public leaderboard shows. The earlier A0, S1 and S3 runs stay in this report only.
-- Start-up context grew between the sessions: the earlier A0, S1 and S3 single-agent runs averaged 62,937 tokens (23 agents) and the repeats A0r, S1r and S3r 64,911 (15 agents), on the light and mid classes.
+- Start-up context grew between the sessions: the earlier A0, S1 and S3 single-agent runs averaged 62,937 tokens (23 agents) and the repeats A0r, S1r and S3r 64,911 (15 agents), on Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort.
 - The control's file reads pass through token-goat's hooks on the test machine. The secret-redaction hook overwrote the two lines that call the first question's target (its name contains "api_key") with a placeholder, so the control left that caller out in four of its six original-question runs. The hook matches the file-reading tools only; the product configurations ran their lookups through the shell tool and were not touched. The earlier session (A0) ran without the hooks. The public site therefore does not set the control's fully correct counts or mean score against the product's; it compares tokens and turns only, and fully correct counts only with the first generation. See Known weaknesses of the study.
 - Control, fully correct runs: A0r light 2 of 3, mid 0 of 3; A0h light 3 of 3, mid 2 of 2; earlier A0 light 4 of 5, mid 3 of 3, top 3 of 3.
 - Memory was filled before the runs by two earlier sessions: RM, RGM, RSM and RGSM from one that answered the same three questions, RGSO and RGSOh from one that explored the repository without seeing any question.
@@ -954,37 +1090,147 @@ Whole-process wall time, median of 20 runs, release build, index already current
 
 ## Saving against no index, cell by cell
 
-The highlighted configuration ("Most reliable" on the site) is PGR: graph and search. Tokens and turns of it and of the no-index control in each of the four cells where both were measured. The site quotes the lowest and the highest saving and labels any single cell it shows. It does not set the control's fully correct counts against the product's: in these runs the control's reads were altered by token-goat's secret-redaction hook (see Known weaknesses of the study).
+The highlighted configuration ("Most reliable" on the site) is A brief pack alone, without a lookup command. Tokens and turns of it and of the no-index control in each of the four cells where both were measured. The site quotes the lowest and the highest saving and labels any single cell it shows. It does not set the control's fully correct counts against the product's: in these runs the control's reads were altered by token-goat's secret-redaction hook (see Known weaknesses of the study).
 
 | Class | Questions | Tokens, highlighted | Tokens, no index | Saving | Turns, highlighted | Turns, no index |
 |---|---|---:|---:|---:|---:|---:|
-| light | original | 134,013 | 293,653 | 54.4% | 2.00 | 4.00 |
-| mid | original | 133,367 | 261,183 | 48.9% | 2.00 | 3.67 |
-| light | held-out | 181,055 | 360,770 | 49.8% | 2.67 | 4.67 |
-| mid | held-out | 180,119 | 250,430 | 28.1% | 2.67 | 3.50 |
+| light | original | 70,631 | 293,653 | 75.9% | 1.00 | 4.00 |
+| mid | original | 69,926 | 261,183 | 73.2% | 1.00 | 3.67 |
+| light | held-out | 70,900 | 360,770 | 80.3% | 1.00 | 4.67 |
+| mid | held-out | 69,844 | 250,430 | 72.1% | 1.00 | 3.50 |
 
-Range of the saving in tokens: 28.1% to 54.4% (28% to 54% on the site).
+Range of the saving in tokens: 72.1% to 80.3% (72% to 80% on the site).
 
 Against the first generation (Our engine, first generation, with embeddings), the only comparison of fully correct counts the site makes, because it ran in the same session under the same conditions:
 
 | Class | Questions | Tokens, highlighted | Tokens, first generation | Turns, highlighted | Turns, first generation | Fully correct, highlighted | Fully correct, first generation |
 |---|---|---:|---:|---:|---:|---:|---:|
-| light | original | 134,013 | 133,923 | 2.00 | 2.00 | 3 of 3 | 3 of 3 |
-| mid | original | 133,367 | 133,129 | 2.00 | 2.00 | 3 of 3 | 3 of 3 |
-| light | held-out | 181,055 | 134,120 | 2.67 | 2.00 | 3 of 3 | 2 of 3 |
-| mid | held-out | 180,119 | 272,030 | 2.67 | 4.00 | 3 of 3 | 2 of 2 |
+| light | original | 70,631 | 133,923 | 1.00 | 2.00 | 3 of 3 | 3 of 3 |
+| mid | original | 69,926 | 133,129 | 1.00 | 2.00 | 3 of 3 | 3 of 3 |
+| light | held-out | 70,900 | 134,120 | 1.00 | 2.00 | 3 of 3 | 2 of 3 |
+| mid | held-out | 69,844 | 272,030 | 1.00 | 4.00 | 3 of 3 | 2 of 2 |
+
+
+## Round six: teams of agents
+
+Round six, run on 2026-10-14, put the engine in the setups a team of agents uses: 351 agents in 135 runs over 45 cells, three runs a cell. Each finding below sets two setups of this round against each other, on the same repository and the same question sets. The one comparison that crosses rounds is the highlighted configuration against no index, because the no-index agent was last run in round five, a day earlier; it is marked where it appears. The builders of the engine wrote the questions.
+
+The highlighted configuration ("Most reliable" on the site) is A brief pack alone, without a lookup command: 12 of 12 fully correct over the four cells, 70k tokens and 1.0 turns on average. 6 configurations were eligible and 4 of them were fully correct in every run of the four cells.
+
+Read before relying on it: the agent had no command to call, and its pack was made before it started by pgr 0.2.0. The questions were written by the builders and two of the three in each set name the function in backticks, which suits a pack; the held-out set is not held out for it, because the part of the pack that finds the functions a question names was written after those questions had been run; nothing asked an agent to do open-ended work; and the saving against no index crosses rounds, because no index was last run in round five, a day before round six (2026-10-14).
+
+### A pack alone
+
+With a pack in the prompt and no tool at all, one agent answered the three lookups in one turn on 70k to 71k tokens and was fully correct in 12 of 12 runs over four cells: Claude Haiku 5.5 and Claude Sonnet 5.5, on the original and the held-out questions. The baseline of the same round, one agent with the lookup command and no pack, needed 135k to 181k tokens over 2.0 to 2.7 turns on Claude Haiku 5.5, so on that model the pack alone used 48% to 61% fewer tokens. Another tool on the test machine altered a read in 1 of the 12 runs of these pairs; with those runs set aside the change would be 48% fewer (Claude Haiku 5.5 at low effort, original questions).
+
+- A pack alone, Claude Haiku 5.5 at low effort, original questions: 71k tokens, 1.0 turns, 3 of 3 fully correct
+- A pack alone, Claude Haiku 5.5 at low effort, held-out questions: 71k tokens, 1.0 turns, 3 of 3 fully correct
+- A pack alone, Claude Sonnet 5.5 at medium effort, original questions: 70k tokens, 1.0 turns, 3 of 3 fully correct
+- A pack alone, Claude Sonnet 5.5 at medium effort, held-out questions: 70k tokens, 1.0 turns, 3 of 3 fully correct
+- Lookup command, no pack, Claude Haiku 5.5 at low effort, original questions: 181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- Lookup command, no pack, Claude Haiku 5.5 at low effort, held-out questions: 135k tokens, 2.0 turns, 3 of 3 fully correct
+
+### Packs in the briefs of three subagents
+
+Three subagents started together, one question each, with nobody checking their answers (Claude Haiku 5.5): with a pack in each brief the three used 27% to 32% fewer tokens than without, and every answer was fully correct (12 of 12 runs, both ways). With an orchestrator (Claude Opus 5.5) that writes the briefs and checks the answers, the packs moved the total from 13% fewer to 1% more tokens (12 of 12 runs fully correct), and the runs of the two sides overlap. Another tool on the test machine altered a read in 1 of the 12 runs of these pairs; with those runs set aside the change would be 8% fewer (Claude Haiku 5.5 at low effort, original questions, with an orchestrator).
+
+- No pack, Claude Haiku 5.5 at low effort, original questions, three subagents: 399k tokens, 6.0 turns, 3 of 3 fully correct
+- A pack in each brief, Claude Haiku 5.5 at low effort, original questions, three subagents: 269k tokens, 4.0 turns, 3 of 3 fully correct
+- No pack, Claude Haiku 5.5 at low effort, held-out questions, three subagents: 468k tokens, 7.0 turns, 3 of 3 fully correct
+- A pack in each brief, Claude Haiku 5.5 at low effort, held-out questions, three subagents: 340k tokens, 5.0 turns, 3 of 3 fully correct
+- No pack, Claude Haiku 5.5 at low effort, original questions, with an orchestrator: 805k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- A pack, Claude Haiku 5.5 at low effort, original questions, with an orchestrator: 702k tokens, 10.0 turns, 3 of 3 fully correct
+- No pack, Claude Haiku 5.5 at low effort, held-out questions, with an orchestrator: 855k tokens, 12.3 turns, 3 of 3 fully correct
+- A pack, Claude Haiku 5.5 at low effort, held-out questions, with an orchestrator: 863k tokens, 12.0 turns, 3 of 3 fully correct
+
+### A pack and the commands together
+
+One agent given the pack and the lookup commands as well, on Claude Haiku 5.5, used from 34% fewer to 42% more tokens than the same agent with no pack. Over its twelve runs, on both models and both question sets, it ran a lookup anyway in 11 and answered in one turn in 1: with commands in reach, the pack did not take the asking turn away. Another tool on the test machine altered a read in 1 of the 12 runs of these pairs; with those runs set aside the change would be 12% fewer (Claude Haiku 5.5 at low effort, original questions, one agent).
+
+- No pack, Claude Haiku 5.5 at low effort, original questions, one agent: 181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- A pack and the commands, Claude Haiku 5.5 at low effort, original questions, one agent: 119k tokens, 1.7 turns, 3 of 3 fully correct
+- No pack, Claude Haiku 5.5 at low effort, held-out questions, one agent: 135k tokens, 2.0 turns, 3 of 3 fully correct
+- A pack and the commands, Claude Haiku 5.5 at low effort, held-out questions, one agent: 192k tokens, 2.7 turns, 3 of 3 fully correct
+
+### The team hub
+
+On lookup work an orchestrated team (Claude Opus 5.5 orchestrating, Claude Haiku 5.5 answering) used 14% to 34% more tokens when its subagents filed what they found in the hub and the reviewer started from it, and gained no accuracy: 24 of 24 runs were fully correct, with the hub and without. Another tool on the test machine altered a read in 3 of the 24 runs of these pairs; with those runs set aside the change would be 36% more (Claude Haiku 5.5 at low effort, original questions, orchestrated); 36% more (Claude Haiku 5.5 at low effort, held-out questions, orchestrated). A small demonstration set, written by the builders so that each answer needs a note an earlier agent filed, shows what the hub is for: Claude Haiku 5.5 got 0 of 15 note fields right with no notes, 15 of 15 when it loaded the notes itself and 15 of 15 when the notes were put in its brief, the lowest mean of the three, though the runs of the three overlap: 163k tokens against 207k to load them and 206k with none.
+
+- No hub, Claude Haiku 5.5 at low effort, original questions, orchestrated: 805k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- A team hub, Claude Haiku 5.5 at low effort, original questions, orchestrated: 1.06M tokens, 15.3 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- No hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated: 855k tokens, 12.3 turns, 3 of 3 fully correct
+- A team hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated: 1.10M tokens, 15.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- A pack, no hub, Claude Haiku 5.5 at low effort, original questions, orchestrated: 702k tokens, 10.0 turns, 3 of 3 fully correct
+- A pack and a team hub, Claude Haiku 5.5 at low effort, original questions, orchestrated: 939k tokens, 13.3 turns, 3 of 3 fully correct
+- A pack, no hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated: 863k tokens, 12.0 turns, 3 of 3 fully correct
+- A pack and a team hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated: 980k tokens, 13.7 turns, 3 of 3 fully correct
+- Demonstration set, no notes, Claude Haiku 5.5 at low effort: 0 of 15 note fields right, 206k tokens, 3.0 turns
+- Demonstration set, the agent loads the notes, Claude Haiku 5.5 at low effort: 15 of 15 note fields right, 207k tokens, 3.0 turns
+- Demonstration set, the notes in the brief, Claude Haiku 5.5 at low effort: 15 of 15 note fields right, 163k tokens, 2.3 turns
+
+### The tools in a virtual machine
+
+With the repository and the tools inside an Ubuntu virtual machine (WSL 2) and the agent outside it, 18 of 18 runs were fully correct, against 18 of 18 on Windows, and the mean tokens moved from 13% fewer to 9% more over six pairs, while the three runs of one cell differ from each other by up to 104%. Another tool on the test machine altered a read in 3 of the 36 runs of these pairs; with those runs set aside the change would be 18% more (Claude Haiku 5.5 at low effort, original questions, one agent); 1% more (Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub); 3% more (Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub). The tools ran inside the machine and no step used the desktop, the mouse or the keyboard; nothing here measured an agent working beside a person at the same computer.
+
+- On Windows, Claude Haiku 5.5 at low effort, original questions, one agent: 181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- In the virtual machine, Claude Haiku 5.5 at low effort, original questions, one agent: 158k tokens, 2.3 turns, 3 of 3 fully correct
+- On Windows, Claude Haiku 5.5 at low effort, held-out questions, one agent: 135k tokens, 2.0 turns, 3 of 3 fully correct
+- In the virtual machine, Claude Haiku 5.5 at low effort, held-out questions, one agent: 135k tokens, 2.0 turns, 3 of 3 fully correct
+- On Windows, Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub: 1.06M tokens, 15.3 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- In the virtual machine, Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub: 1.05M tokens, 15.0 turns, 3 of 3 fully correct
+- On Windows, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub: 1.10M tokens, 15.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- In the virtual machine, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub: 1.19M tokens, 17.0 turns, 3 of 3 fully correct
+- On Windows, Claude Haiku 5.5 at low effort, original questions, orchestrated, with a pack and the hub: 939k tokens, 13.3 turns, 3 of 3 fully correct
+- In the virtual machine, Claude Haiku 5.5 at low effort, original questions, orchestrated, with a pack and the hub: 931k tokens, 13.0 turns, 3 of 3 fully correct
+- On Windows, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with a pack and the hub: 980k tokens, 13.7 turns, 3 of 3 fully correct
+- In the virtual machine, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with a pack and the hub: 985k tokens, 13.7 turns, 3 of 3 fully correct
+
+### No neural network
+
+With the search working on words alone, 4 of 6 runs were fully correct, against 6 of 6 with the neural network, on Claude Haiku 5.5; the mean tokens moved up to 35% more. In the search lab, on the Study page, the search without it was not told apart from the default. Both of the runs that were not fully correct without the network had a read altered by another tool on the test machine, and the runs without the network that the tool did not touch were all fully correct, so these runs cannot tell the missing network from that tool as the cause. Another tool on the test machine altered a read in 3 of the 12 runs of these pairs; with those runs set aside the change would be 26% more (Claude Haiku 5.5 at low effort, original questions, no pack); 26% more (Claude Haiku 5.5 at low effort, held-out questions, no pack). With a pack made on the same words-only search, 6 of 6 runs were fully correct.
+
+- With the neural network, Claude Haiku 5.5 at low effort, original questions, no pack: 181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- Words only, Claude Haiku 5.5 at low effort, original questions, no pack: 182k tokens, 2.7 turns, 2 of 3 fully correct, 1 run with a read altered by another tool
+- With the neural network, Claude Haiku 5.5 at low effort, held-out questions, no pack: 135k tokens, 2.0 turns, 3 of 3 fully correct
+- Words only, Claude Haiku 5.5 at low effort, held-out questions, no pack: 182k tokens, 2.7 turns, 2 of 3 fully correct, 1 run with a read altered by another tool
+- A pack, with the neural network, Claude Haiku 5.5 at low effort, original questions, with a pack: 119k tokens, 1.7 turns, 3 of 3 fully correct
+- A pack, words only, Claude Haiku 5.5 at low effort, original questions, with a pack: 217k tokens, 3.0 turns, 3 of 3 fully correct
+- A pack, with the neural network, Claude Haiku 5.5 at low effort, held-out questions, with a pack: 192k tokens, 2.7 turns, 3 of 3 fully correct
+- A pack, words only, Claude Haiku 5.5 at low effort, held-out questions, with a pack: 168k tokens, 2.3 turns, 3 of 3 fully correct
+
+### Three models, each in its role
+
+Claude Opus 5.5 plans, Claude Haiku 5.5 looks things up and Claude Sonnet 5.5 reviews, against the same team with Claude Opus 5.5 reviewing as well: the total moved from 15% fewer to 3% more tokens over four pairs, and 24 of 24 runs were fully correct, both ways. In three of the four pairs the lowest and highest runs of the two sides cover tokens in common, so a difference there is not shown to be real. Another tool on the test machine altered a read in 2 of the 24 runs of these pairs; with those runs set aside the change would be 6% fewer (Claude Haiku 5.5 at low effort, original questions, no pack); 22% fewer (Claude Haiku 5.5 at low effort, held-out questions, no pack).
+
+- One model reviewing, Claude Haiku 5.5 at low effort, original questions, no pack: 805k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- Three models in their roles, Claude Haiku 5.5 at low effort, original questions, no pack: 715k tokens, 10.3 turns, 3 of 3 fully correct
+- One model reviewing, Claude Haiku 5.5 at low effort, held-out questions, no pack: 855k tokens, 12.3 turns, 3 of 3 fully correct
+- Three models in their roles, Claude Haiku 5.5 at low effort, held-out questions, no pack: 827k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool
+- One model reviewing, Claude Haiku 5.5 at low effort, original questions, with a pack: 702k tokens, 10.0 turns, 3 of 3 fully correct
+- Three models in their roles, Claude Haiku 5.5 at low effort, original questions, with a pack: 722k tokens, 10.3 turns, 3 of 3 fully correct
+- One model reviewing, Claude Haiku 5.5 at low effort, held-out questions, with a pack: 863k tokens, 12.0 turns, 3 of 3 fully correct
+- Three models in their roles, Claude Haiku 5.5 at low effort, held-out questions, with a pack: 731k tokens, 10.3 turns, 3 of 3 fully correct
+
+### What round six cannot show
+
+- Three runs a cell cannot support a claim of significance. A difference of one turn between two setups is noise, and so is a difference of one fully correct run.
+- Another tool on the test machine, the one the Study page describes under the no-index control, was installed in round six as well. It altered a read in 11 of the round's 135 runs, and in 5 of the 11 runs that were not fully correct. A finding that rests on a pair with such a run says so, and gives the change without it. Running the round again with that tool off would settle it; that was not done.
+- The questions were written by the builders of the engine, and two of the three in each set name the function in backticks. That suits a pack, which is built from the words of the question. The third describes a job in words; the pack alone answered it too.
+- None of this was tested on open-ended work: no bug to find, no change to make, no question that names no function and describes none.
+- The demonstration set was written to show one feature of the hub. It is not a test nobody tuned for.
+- The held-out questions are not held out for the packs of this round. The questions were written and committed before pgr 0.2.0, and the part of its pack that finds the functions a question names was written after them. For round six they are a second set of questions, not an untouched one.
 
 
 ## Known weaknesses of the study
 
-The method review of the study found the weaknesses below. Each has what it could change and the cheapest fix. The counts are the reviewer's, taken from the transcripts and the harness; this build does not recompute them. For scale: 112 single-agent runs in 42 cells stand behind the public leaderboard, computed by this build.
+The method review of the study found the weaknesses below. Each has what it could change and the cheapest fix. The counts are the reviewer's, taken from the transcripts and the harness; this build does not recompute them. For scale: 172 single-agent runs in 62 cells stand behind the public leaderboard, computed by this build.
 
 ### 1. The control's accuracy deficit comes from another tool, not from having no index
 
-Token-goat's secret-redaction hook overwrote the two lines where the first question's target is called with a placeholder, because the target's own name contains "api_key". Every one of the six control runs of the second session had the hook act on its reads, and four of them left that caller out; the held-out control, whose first question has another target, had no redaction and missed nothing. The hook matches only the file-reading tools, so the product configurations, which ran their lookups through the shell tool the hook does not see, were not touched. In the first session, without the hook, the control was fully correct in 10 of 11 runs across the light, mid and top classes on the original questions.
+Token-goat's secret-redaction hook overwrote the two lines where the first question's target is called with a placeholder, because the target's own name contains "api_key". Every one of the six control runs of the second session had the hook act on its reads, and four of them left that caller out; the held-out control, whose first question has another target, had no redaction and missed nothing. The hook matches only the file-reading tools, so the product configurations, which ran their lookups through the shell tool the hook does not see, were not touched. In the first session, without the hook, the control was fully correct in 10 of 11 runs across Claude Haiku 5.5 at low effort, Claude Sonnet 5.5 at medium effort and Claude Opus 5.5 at maximum effort on the original questions.
 
 - What it could change: The control's fully correct counts (7 of 11 in the second session, against 15 of 16 for the first-session control and the held-out control together), any claim that the index improves accuracy, and the control's tokens, which the hook lowered while it damaged the answers. The public site no longer sets the control's correctness against the product's.
-- Cheapest fix: Rerun the control, original and held-out, with the hooks off, in the same session as the product runs and in alternating order: about six light-class runs. Or choose a first-question target whose name does not contain "api_key".
+- Cheapest fix: Rerun the control, original and held-out, with the hooks off, in the same session as the product runs and in alternating order: about six Claude Haiku 5.5 (low effort) runs. Or choose a first-question target whose name does not contain "api_key".
 
 ### 2. The held-out set is not an independent test
 
@@ -995,7 +1241,7 @@ It is a second draw from the same generator by the same people: the same filter,
 
 ### 3. The held-out result is worse than the original one, and the headline quoted the best cell
 
-Configurations that took two turns on every original-question run needed more on the held-out questions (the first generation took three and five turns on the mid class, with two runs). The saving against the same-day control was largest in the cell the headline showed. The site now gives the range over the four cells and says that two turns is true of the original questions.
+Configurations that took two turns on every original-question run needed more on the held-out questions (the first generation took three and five turns on Claude Sonnet 5.5 at medium effort, with two runs). The saving against the same-day control was largest in the cell the headline showed. The site now gives the range over the four cells and says that two turns is true of the original questions.
 
 - What it could change: The size of the headline saving, and the claim that two turns is a floor for any question.
 - Cheapest fix: Show all four cells, and run the third runs that are missing.
@@ -1005,7 +1251,7 @@ Configurations that took two turns on every original-question run needed more on
 With three runs against three, the smallest exact two-sided permutation p-value is 0.10, and every product-against-control token cell of the second session sits at that floor although the ranges do not overlap. A cell holds three repeats of one bundle of three questions, so the effective sample for generalising is two bundles. Tokens equal about 65k times the turns, so a cell is three draws of a small whole number. Differences of one turn or one fully correct run are inside the spread, among them graph alone against graph and search on turns, and the memory comparisons.
 
 - What it could change: Every finding that rests on one turn or one run. The site now says "in these runs" and gives the counts.
-- Cheapest fix: Ten repeats per cell for the control and the two leading configurations on the light class, both sets (about two dollars at the table's prices), and about twenty randomly drawn questions so that the question dimension has a sample.
+- Cheapest fix: Ten repeats per cell for the control and the two leading configurations on Claude Haiku 5.5 at low effort, both sets (about two dollars at the table's prices), and about twenty randomly drawn questions so that the question dimension has a sample.
 
 ### 5. The highlighted configuration is chosen by a rule written after the results
 
@@ -1037,14 +1283,14 @@ The control has file search and read tools and no shell, so no ripgrep, no conte
 
 ### 9. The token headline is against a control the hook had made cheaper
 
-The hooked control of the second session used fewer tokens than the clean control of the first (about 19% fewer on the light class) while giving worse answers. Against the clean control the saving is larger (about 64% light and 53% mid). Within the second session the start-up context of the control and the product differ by little, so the hook is the live difference.
+The hooked control of the second session used fewer tokens than the clean control of the first (about 19% fewer on Claude Haiku 5.5 at low effort) while giving worse answers. Against the clean control the saving is larger (about 64% light and 53% mid). Within the second session the start-up context of the control and the product differ by little, so the hook is the live difference.
 
 - What it could change: The saving, upward. The site compares with the same-day control on tokens and turns and says so; the Study page gives the tokens of both controls.
 - Cheapest fix: Run control and product in one session with the hooks off, in alternating order, and report one control.
 
 ### 10. A token count weighs cached re-reads like fresh text
 
-About 87% of all tokens are cache reads, which a bill weighs at a tenth. The size of the saving depends on the cache state: in dollars it is much larger with a warm cache than with a cold one, and the absolute saving on the light class is a fraction of a cent. The prices are constants typed into the analysis, and the light-class entry is about a tenth of the list price the reviewer knew of. They cannot be checked from the repository.
+About 87% of all tokens are cache reads, which a bill weighs at a tenth. The size of the saving depends on the cache state: in dollars it is much larger with a warm cache than with a cold one, and the absolute saving on Claude Haiku 5.5 at low effort is a fraction of a cent. The prices are constants typed into the analysis, and the Claude Haiku 5.5 (low effort) entry is about a tenth of the list price the reviewer knew of. They cannot be checked from the repository.
 
 - What it could change: Every money figure, including the orchestration cost multiple. The site now defines a token count, says most of the saving is turns, and calls the multiple an estimate.
 - Cheapest fix: Show warm and cold dollars beside tokens, check the price table against a bill, and describe the saving as about two fewer round trips.
@@ -1072,7 +1318,7 @@ It compares a first generation written in Python with a binary written in Rust, 
 
 ### 14. The competitor rows are not like for like
 
-Three published comparators come from the first session with one to three runs, and are driven through descriptions written by the sponsor, one of them through an awkward command-line wrapper of a tool-protocol call. 14 of 44 configurations are published, chosen by a flag.
+Three published comparators come from the first session with one to three runs, and are driven through descriptions written by the sponsor, one of them through an awkward command-line wrapper of a tool-protocol call. 22 of 59 configurations are published, chosen by a flag.
 
 - What it could change: How the comparators compare when used as their makers intend. The leaderboard marks these rows as an earlier session and the Study page no longer says everything was measured on the same day.
 - Cheapest fix: Rerun them on the same day with at least five runs and the maker's recommended use, and publish the thirty other rows in this report.
@@ -1086,7 +1332,7 @@ The parser takes a list of folders on the command line, with no manifest and no 
 
 ### 16. The orchestration claim rests on estimates and one set of briefs
 
-Only three planning calls were ever measured and the mean is charged to the other orchestrated runs; every orchestrated run of the original set reuses the same briefs; the reviewer is the top model class with tools, so the comparison mixes orchestration with model class; and the single-agent comparison pools many configurations, including weak ones.
+Only three planning calls were ever measured and the mean is charged to the other orchestrated runs; every orchestrated run of the original set reuses the same briefs; the reviewer is Claude Opus 5.5 at maximum effort with tools, so the comparison mixes orchestration with model; and the single-agent comparison pools many configurations, including weak ones.
 
 - What it could change: The cost multiple and the accuracy gap. The site now says the cost is an estimate, pooled, and that the reviewer is a larger class.
 - Cheapest fix: Compare like for like on the same configurations and questions with independent plans for each run.
@@ -1099,7 +1345,7 @@ Only three planning calls were ever measured and the mean is charged to the othe
 
 ### The claims it does support
 
-1. On this repository, for caller, definition and find-by-description questions, a one-call lookup lets light and mid agents finish in about two turns where unaided search and read tools needed three to six. The saving in tokens against the same-day control over the four cells is in the table above, and its direction does not depend on the hook.
-2. Tokens here are turns times the start-up context. The index shrinks the tool output, which is small next to one extra turn. Search without a call graph failed the callers question on the light class.
+1. On this repository, for caller, definition and find-by-description questions, a one-call lookup lets light and Claude Sonnet 5.5 (medium effort) agents finish in about two turns where unaided search and read tools needed three to six. The saving in tokens against the same-day control over the four cells is in the table above, and its direction does not depend on the hook.
+2. Tokens here are turns times the start-up context. The index shrinks the tool output, which is small next to one extra turn. Search without a call graph failed the callers question on Claude Haiku 5.5 at low effort.
 3. Memory does not help single lookups: memory holding the answers only matches the two-turn floor, and memory from an exploring session used fewer tokens in a minority of cells.
 

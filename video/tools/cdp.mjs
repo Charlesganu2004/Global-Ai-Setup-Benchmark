@@ -21,6 +21,14 @@ export function findBrowser() {
   throw new Error('No Edge or Chrome found. Set PGR_BROWSER to the browser executable.');
 }
 
+// The graphics card: ANGLE on Direct3D 11 with the block list ignored. The default pick is the Intel Iris Xe;
+// PGR_GPU=nvidia (or --force_high_performance_gpu) picks the RTX 3060. PGR_GPU=software turns the card off.
+function GPU_FLAGS() {
+  if (process.env.PGR_GPU === 'software') return ['--disable-gpu'];
+  const f = ['--use-angle=d3d11', '--ignore-gpu-blocklist', '--enable-gpu-rasterization', '--enable-zero-copy', '--disable-gpu-vsync', '--disable-frame-rate-limit'];
+  if (process.env.PGR_GPU === 'nvidia') f.push('--force_high_performance_gpu');
+  return f;
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const LIVE = new Set();   // profile folders of the browsers this process has open
 
@@ -35,7 +43,7 @@ async function waitForJson(url, tries = 80) {
   throw new Error('browser did not open its debugging port: ' + url);
 }
 
-export async function launchPage({ width, height, scale = 1, profile = 'edge-profile' }) {
+export async function launchPage({ width, height, scale = 1, profile = 'edge-profile', flags = [] }) {
   const exe = findBrowser();
   // A fresh profile folder for every browser and a port the browser picks itself: no clash with a window
   // left over from a killed run.
@@ -51,7 +59,8 @@ export async function launchPage({ width, height, scale = 1, profile = 'edge-pro
     '--no-default-browser-check', '--disable-extensions', '--disable-sync', '--disable-background-networking',
     '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows',
     '--allow-file-access-from-files', '--force-color-profile=srgb', '--disable-lcd-text',
-    '--font-render-hinting=none', '--disable-features=CalculateNativeWinOcclusion,Translate', 'about:blank',
+    '--font-render-hinting=none', '--disable-features=CalculateNativeWinOcclusion,Translate', ...flags,
+    ...GPU_FLAGS(), ...(process.env.PGR_BROWSER_FLAGS ? process.env.PGR_BROWSER_FLAGS.split(' ') : []), 'about:blank',
   ];
   const child = spawn(exe, args, { stdio: 'ignore', windowsHide: true });
   const exited = new Promise((r) => child.once('exit', r));

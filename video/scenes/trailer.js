@@ -1,17 +1,15 @@
-/* The ad. One idea: the token mass collapses into a filament. Hard cuts land on the first frame of each spoken
-   cue (build/ad.timeline.js), type is set at the scale of the stage, and the only numbers are the three the site
-   headlines: tokens with no index, tokens with the best configuration, and the saving between them, each labelled
-   as one comparison (light class, first question set). Every line that qualifies a claim is 64 px or more on the
-   1920 x 1080 stage and sits in the upper two thirds, clear of the captions. Every frame is a function of t alone:
-   window.PGR.seek(t). */
+/* The trailer. One idea: every dot is 100 tokens. The agent re-reads its conversation and the dots pile up; then the same
+   task is run twice, side by side, and the dots of each run are counted: no index against PGR. The camera travels through
+   the world between the beats instead of cutting. Every number is read from window.FACTS (tools/facts.mjs, from
+   docs/data/showcase.js), every reveal is keyed to a cue of build/trailer.timeline.js, and every frame is a function of t
+   alone: window.PGR.seek(t). Anything that qualifies a claim is 60 px or more on the 1920 x 1080 stage and sits in the
+   upper two thirds, clear of the player's play button and its control bar. */
 (function () {
   'use strict';
-  var L = window.PGRLIB, F = window.FACTS, TL = window.TIMELINE;
+  var L = window.PGRLIB, K = window.PGRKIT, F = window.FACTS, TL = window.TIMELINE;
   var W = L.W, H = L.H, clamp = L.clamp, mix = L.mix, seg = L.seg, ease = L.ease, rgba = L.rgba;
-  var ACC = L.ACCENT, HOT = L.HOT, INK = L.INK, INK2 = L.INK2, CONTROL = L.CONTROL;
-  var ui = document.getElementById('ui'), world = L.makeCanvas('world'), ctx = world.ctx;
-  var grainEl = document.getElementById('grain'), cam = document.getElementById('cam');
-  var FPS = TL.fps, DUR = TL.duration;
+  var ACC = L.ACCENT, HOT = L.HOT, INK = L.INK, INK2 = L.INK2, INK3 = L.INK3;
+  var DUR = TL.duration;
 
   function sc(id) { return TL.scenes.filter(function (s) { return s.id === id; })[0]; }
   function cue(id, n) { return sc(id).cues[n - 1]; }
@@ -19,206 +17,178 @@
     var i = c.spoken.toLowerCase().indexOf(phrase.toLowerCase());
     return c.start + (c.end - c.start) * (i < 0 ? 0 : i / c.spoken.length);
   }
-  var HK = [cue('hook', 1), cue('hook', 2)], MS = [cue('mass', 1), cue('mass', 2)];
-  var CO = [cue('collapse', 1), cue('collapse', 2)], NB = cue('number', 1), CM = [cue('claim', 1), cue('claim', 2)], CS = [cue('close', 1), cue('close', 2)];
+  function win(t, a, b, c, d) { return seg(t, a, b) * (1 - seg(t, c, d)); }
+  var HK = [cue('hook', 1), cue('hook', 2)], MS = [cue('mass', 1), cue('mass', 2)], NM = [cue('name', 1), cue('name', 2), cue('name', 3)];
+  var CO = [cue('collapse', 1), cue('collapse', 2)], NB = cue('number', 1), CM = [cue('claim', 1), cue('claim', 2)], CS = cue('close', 1);
+  var tAgain = cueAt(HK[1], 'And again'), tPGR = cueAt(NM[0], 'P G R');
+  var MODEL = F.labels.classLabel;                           // Claude Haiku 5.5, low effort
+  var HALO = 0.9;
 
-  var tAgain = cueAt(HK[1], 'And again');          // the second half of "Again. And again."
-  var CMP = F.labels.classLabel + ', ' + F.labels.firstSet + '.';
-  var lc = function (v) { return v.charAt(0).toLowerCase() + v.slice(1); };
-
-  // ---------- type: every line is its own element, cut in on a frame, never faded
-  function T(cls, html, x, y, size) {
-    var e = L.el('div', 't ' + cls, html, ui);
-    e._x = x; e._y = y; e.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
-    if (size) e.style.fontSize = size + 'px';
-    return e;
+  // ---------------------------------------------------------------- the world: the agent's session and the dots it reads
+  var N = Math.round(F.control.tokens / 100);
+  var TX = -50, TY = 335, TW = 940, TH = 610, Y0 = TY + 66, Y1 = TY + TH - 26;
+  var BEAMS = [{ a: HK[0].start + 0.15, b: HK[0].end - 0.05 }, { a: HK[1].start, b: HK[1].start + 0.5 }, { a: tAgain, b: tAgain + 0.42 }];
+  function headY(tb) {
+    var i = 0;
+    for (; i < BEAMS.length; i++) if (tb <= BEAMS[i].b) break;
+    var b = BEAMS[Math.min(i, BEAMS.length - 1)];
+    return Y0 + (Y1 - Y0) * ease.ioQ(seg(tb, b.a, b.b));
   }
-  function win(e, t, a, b) { L.vis(e, t >= a && t < b); }
-  function setText(e, s) { if (e._s !== s) { e._s = s; e.textContent = s; } }
+  var n1 = Math.round(N * 0.28), n2 = Math.round(N * 0.33);
+  var CX = 1500;
+  var cloud = new K.Cloud({
+    N: N, M: Math.round(F.best.tokens / 100), seed: 11, center: [CX, 540], R: 560, squash: 0.62, emit: { x: TX + TW, head: headY },
+    passes: [{ n: n1, a: BEAMS[0].a, b: BEAMS[0].b }, { n: n2, a: BEAMS[1].a, b: BEAMS[1].b }, { n: N - n1 - n2, a: BEAMS[2].a, b: BEAMS[2].b }]
+  });
+  var born = cloud.d.map(function (e) { return e.born; }).sort(function (a, b) { return a - b; });
+  function bornCount(t) { var lo = 0, hi = born.length; while (lo < hi) { var m = (lo + hi) >> 1; if (born[m] <= t) lo = m + 1; else hi = m; } return lo; }
 
-  var a_ctx = T('display ink2', 'Your agent reads the whole', 146, 70, 104), a_conv = T('display', 'conversation.', 140, 190, 250);
-  var a_again = T('display', 'again.', 140, 250, 580), a_and = T('display', 'and again.', 146, 330, 340);
-  var a_num1 = T('num', '0', 134, 40, 520), a_num1sub = T('sub', 'tokens per task, for three lookups.', 150, 570, 68), a_num1cmp = T('q big', 'No index. ' + CMP, 150, 644);
-  var a_q1 = T('display', 'one question.', 146, 84, 290), a_q2 = T('display', 'one answer.', 146, 84, 290);
-  var a_num2 = T('num', F.best.tokText, 134, 40, 520), a_num2sub = T('sub', 'tokens per task.', 150, 570, 68), a_num2cmp = T('q big', CMP, 150, 644);
-  var a_pct = T('num', F.pct + '%', 134, 0, 470), a_fewer = T('display', 'fewer tokens', 146, 410, 110);
-  // the lines that qualify the claim stand in a column on the right: clear of the play button the site's player lays over
-  // the middle of the poster, and above its control bar
-  function Tl(lines, x, y) { return lines.map(function (l, n) { return T('q', l, x, y + n * 67); }); }
-  var a_cmp1 = Tl([F.control.tokText + ' to ' + F.best.tokText + ' tokens', 'per task, against', 'no index.'], 1160, 90);
-  var a_cmp2 = Tl(['One comparison:', lc(F.labels.classLabel) + ',', F.labels.firstSet + '.'], 1160, 330);
-  var a_mark = L.markSvg(ui, 250, 't'); a_mark.root._x = 150; a_mark.root._y = 40; a_mark.root.style.transform = 'translate3d(150px,40px,0)';
-  var a_name = T('display', 'PeterGanuRusty', 142, 300, 214), a_find = T('display', 'Find code in one step.', 148, 525, 92), a_pp = T('q big', 'Private preview', 150, 640);
-  a_pct.style.color = 'var(--ink)'; a_num2.style.color = 'var(--ink)';
-  var domAll = Array.prototype.slice.call(ui.children);
+  // the race of the two agents, from the question to the end of the claim
+  var RACE = { x: 126, y: 310, w: 800, h: 640, gap: 60, size: 30, cs: 118, meterH: 150, task: 'parse_config',
+    tShow: CO[0].start - 0.5, tAsk: CO[0].start - 0.05, tStart: CO[0].start - 0.05, tEnd: NB.start + 1.15 };
+  RACE.lines = K.raceLines(Object.assign({ ask: 'who calls parse_config?', answer: 'load_settings, start_server, run_cli',
+    reads: ['read config.py', 'read loader.py', 'search parse_config', 'read settings.py', 'read cli.py', 'read server.py', 'read tests', 'read config.py'] }, RACE));
+  var tDone = K.raceTimes(RACE).tDone;
 
-  // ---------- the token mass: one particle for each 1k tokens of the no index total
-  var N = Math.round(F.control.tokens / 1000), M = Math.round(F.best.tokens / 1000);
-  var X0 = 150, SPAN = 1620, FIL_Y = 500, FIL_LEN = SPAN * M / N, FIL_X0 = 960 - FIL_LEN / 2;
-  var P = [], R = L.rng(3), i;
-  for (i = 0; i < N; i++) {
-    var r1 = R(), r2 = R(), r3 = R(), r4 = R(), r5 = R(), q = R();
-    var z = q < 0.22 ? 1 : q < 0.58 ? 0.62 : 0.3;
-    P.push({
-      bx: r1 * SPAN, by: 120 + r2 * 840, z: z, v: 34 + 230 * Math.pow(z, 1.4) * (0.6 + 0.4 * r3), r4: r4, r5: r5,
-      slot: FIL_X0 + (i + 0.5) / M * FIL_LEN, x: 0, y: 0, a: 0, ca: 0, boost: 0, passes: 0
-    });
-  }
-
-  // beams: the read head. Three passes in the hook, each faster, and one that counts the tokens.
-  var BEAMS = [
-    { a: HK[0].start + 0.05, b: HK[0].end - 0.1 }, { a: HK[1].start, b: HK[1].start + 0.55 },
-    { a: tAgain, b: tAgain + 0.46 }, { a: MS[0].start, b: MS[0].end - 0.4 }          // the last one counts, and lands on the last word
+  var cam = new K.Cam([
+    [0, -250, 20, 1.08, 0], [HK[1].start, -245, 14, 1.11, 0, 'lin'], [MS[0].start - 0.1, -240, 8, 1.14, 0, 'lin'],
+    [MS[0].start + 1.0, -70, -10, 0.8, 0, 'ioE'], [NM[0].start - 0.2, -50, -10, 0.82, 0, 'lin'],
+    [NM[0].start + 1.2, 540, -15, 1.0, -0.015, 'ioC'], [NM[2].end + 0.3, 560, -20, 1.45, 0.025, 'lin'],
+    [CO[0].start - 0.45, 300, -10, 1.2, 0.01, 'ioC'], [CO[0].start + 0.3, 0, 0, 1.0, 0, 'ioC'], [RACE.tEnd + 0.15, 0, 0, 1.03, 0.004, 'lin'],
+    [CM[0].start - 0.1, 0, -250, 0.78, 0, 'ioC'], [CS.start - 0.3, 0, -250, 0.78, 0, 'lin'], [DUR, 0, -230, 0.8, 0, 'lin']
+  ]);
+  var NAMES = ['read config.py', 'read loader.py', 'search parse_config', 'read settings.py', 'read cli.py', 'read server.py', 'read tests', 'read config.py'];
+  // the conversation is already there when the film opens: earlier questions and what the agent read for them
+  var LINES = [
+    { at: -9, text: 'where is parse_config defined?', kind: 'cmd' }, { at: -9, text: 'searching the code', kind: 'dim' },
+    { at: -9, text: 'read config.py', kind: 'out' }, { at: -9, text: 'read loader.py', kind: 'out' },
+    { at: -9, text: 'who else uses it?', kind: 'cmd' }, { at: -9, text: 'read settings.py', kind: 'out' }, { at: -9, text: 'read cli.py', kind: 'out' },
+    { at: HK[0].start + 0.2, text: 'find every caller of parse_config', kind: 'cmd', cps: 36 }
   ];
-  var KICKS = [[HK[0].start, 5], [HK[1].start, 12], [tAgain, 16], [MS[0].start, 10], [CO[0].start, 12], [CO[1].start, 14],
-    [NB.start, 18], [CM[0].start, 16], [CS[0].start, 11]];
-  function beamX(b, t) { return X0 - 40 + (SPAN + 80) * ease.ioQ(seg(t, b.a, b.b)); }
+  (function () { var k = 0, at = HK[0].start + 1.25; while (at < tAgain + 0.8) { LINES.push({ at: at, text: NAMES[k % NAMES.length], kind: 'out' }); k++; at += 0.19; } })();
+  var SESSION_ALPHA = function (t) { return 1 - seg(t, MS[0].start, MS[0].start + 0.7); };
 
-  function drawWorld(t) {
-    var tColl = CO[0].start, tFil = CO[1].start;
-    var kz = 1 + 0.62 * ease.outQ(seg(t, NB.start - 0.05, NB.start + 1.7));
-    var K = mix(1, kz, 1 - ease.ioC(seg(t, CM[0].start, CM[0].start + 0.3)));
-    ctx.save();
-    ctx.translate(W / 2, H / 2); ctx.scale(K, K); ctx.translate(-W / 2, -H / 2);
+  // the install terminal (closing card)
+  var CLOSE_LINES = K.installLines(F.installers.items, CS.start + 0.1, 420);
 
-    var intro = 0.55 + 0.45 * ease.outQ(seg(t, 0, 0.5));      // the pile is already there on the first frame
-    var c1 = ease.ioC(seg(t, CO[0].start, CO[0].start + 0.85));
-    var gone = 1 - ease.inC(seg(t, CM[0].start, CM[0].start + 0.2));     // the claim and the close are on a clean ground
-    var counted = 0, bm = BEAMS[3], bx3 = beamX(bm, t);
-    var tf = Math.min(t, tColl), j;
-    for (i = 0; i < N; i++) {
-      var p = P[i];
-      var xf = X0 + (((p.bx + p.v * tf) % SPAN) + SPAN) % SPAN;
-      var edge = clamp((xf - X0) / 90) * clamp((X0 + SPAN - xf) / 90);
-      var m = i < M ? ease.ioC(seg(t, tFil + 0.22 * p.r5, tFil + 0.22 * p.r5 + 0.72)) : 0;
-      var x = mix(xf, p.slot, m), y = mix(p.by, FIL_Y + (p.r4 - 0.5) * 5, c1);
-      var a = (0.3 + 0.7 * p.z) * intro * mix(edge, 1, c1), ca = 0, boost = 0;
-      if (i < M) {
-        ca = ease.ioC(seg(t, tFil + 0.12 + 0.5 * ((p.slot - FIL_X0) / FIL_LEN), tFil + 0.12 + 0.5 * ((p.slot - FIL_X0) / FIL_LEN) + 0.5));
-        // a bright pulse runs along the filament
-        var u = ((t * 0.72) % 1) * FIL_LEN, du = (p.slot - FIL_X0) - u;
-        boost += ca * Math.exp(-(du * du) / (2 * 38 * 38)) * 1.4 * seg(t, tFil + 1.0, tFil + 1.4);
-      } else {
-        var d = ease.inC(seg(t, tFil + 0.08 + 0.4 * p.r5, tFil + 0.08 + 0.4 * p.r5 + 0.45));
-        a *= 1 - d; y += d * 46; boost += Math.sin(d * Math.PI) * 1.4;
+  // ---------------------------------------------------------------- the picture
+  function draw(ctx, t, sub) {
+    var c = cam.at(t), tc = sub && sub.t !== undefined ? sub.t : t;
+    L.mark(ctx, 'start');
+    L.background(ctx, t, -c.x * 0.03, -c.y * 0.03, 1);
+    L.mark(ctx, 'bg');
+    K.floor(ctx, c, t, 1 - 0.55 * seg(t, CS.start - 0.2, CS.start + 0.5));
+    L.mark(ctx, 'floor');
+    var camAt = function (tb) { return cam.at(tb); };
+    var dim = 1 - 0.72 * win(t, NM[0].start - 0.15, NM[0].start + 0.5, CO[0].start - 0.5, CO[0].start - 0.1);
+    var cout = 1 - seg(t, CO[0].start - 0.5, CO[0].start + 0.05);
+
+    // the agent's session and its read head (world)
+    var ta = SESSION_ALPHA(t);
+    if (ta > 0.003 && t < MS[0].start + 1.2) {
+      L.layer(ctx, c, 1.0);
+      L.terminal(ctx, TX, TY, TW, TH, t, { title: 'agent  -  parse_config', lines: LINES, size: 30, a: ta, glow: ACC, glowK: 0.5 });
+      K.head(ctx, BEAMS, headY, t, TX, TW);
+      ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
+    }
+    L.mark(ctx, 'terminal');
+    if (cout > 0.003) cloud.draw(ctx, t, { cam: c, camAt: camAt, a: dim * cout, heat: 1 });
+    L.mark(ctx, 'cloud');
+
+    // the race (world, on the glass at zoom 1 and carried down when the claim arrives)
+    if (t > RACE.tShow) {
+      L.layer(ctx, c, 1.0);
+      K.race(ctx, t, Object.assign({}, RACE, { tc: tc, a: 1 - seg(t, CS.start - 0.3, CS.start + 0.1) }));
+      ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
+    }
+    L.mark(ctx, 'race');
+    K.bokeh(ctx, c, t, 1 - 0.5 * seg(t, CS.start - 0.2, CS.start + 0.5));
+    L.mark(ctx, 'bokeh');
+
+    // ---- type, in screen space
+    ctx.setTransform(L.DPR, 0, 0, L.DPR, 0, 0);
+    // hook
+    var hg = 1 - seg(t, MS[0].start - 0.05, MS[0].start + 0.3);
+    if (hg > 0.003) {
+      L.wordsText(ctx, 'Your agent reads', 146, 112, t, HK[0].start, { size: 72, weight: 600, font: 'd', ls: -0.02, color: INK2, a: hg });
+      L.wordsText(ctx, 'the whole conversation.', 140, 250, t, HK[0].start + 0.25, { size: 132, weight: 700, font: 'd', ls: -0.038, color: INK, a: hg });
+      L.riseText(ctx, 'Again.', 1060, 520, ease.outQ(seg(t, HK[1].start, HK[1].start + 0.35)), { size: 190, weight: 800, font: 'd', ls: -0.05, color: INK, a: hg });
+      L.riseText(ctx, 'And again.', 1060, 705, ease.outQ(seg(t, tAgain, tAgain + 0.3)), { size: 170, weight: 800, font: 'd', ls: -0.05, color: ACC, a: hg });
+    }
+    // the counter: bottom right while the dots pile up, then it is carried to the left and grows into the number
+    var read = F.control.tokens * bornCount(tc) / N, cp = ease.ioE(seg(t, MS[0].start - 0.05, MS[0].start + 0.95));
+    var cs = L.fmtTokens(t >= BEAMS[2].b + 0.9 ? F.control.tokens : read), csize = mix(96, 400, cp);
+    var cw = L.measure(ctx, cs, { size: csize, weight: 700, font: 'd', ls: -0.055 });
+    var cvis = win(t, HK[0].start + 0.6, HK[0].start + 0.9, NM[0].start - 0.3, NM[0].start + 0.05);
+    if (cvis > 0.003) {
+      var cx = mix(1770 - cw, 150, cp), cy = mix(1000, 480, cp);
+      L.numText(ctx, cs, cx, cy, { size: csize, weight: 700, font: 'd', ls: -0.055, color: INK, a: cvis, counting: L.fmtTokens(F.control.tokens) });
+      L.text(ctx, 'tokens read', 1770, 1042, { size: 30, weight: 500, font: 't', color: INK3, a: cvis * (1 - cp), align: 'r' });
+    }
+    // mass
+    var mg = win(t, MS[0].start, MS[0].start, NM[0].start - 0.3, NM[0].start + 0.05);
+    if (mg > 0.003) {
+      L.riseText(ctx, 'tokens per task, for three lookups.', 154, 632, ease.outQ(seg(t, MS[0].start + 0.9, MS[0].start + 1.3)), { size: 56, weight: 500, font: 'd', ls: -0.012, color: INK2, a: mg, shadow: HALO });
+      L.riseText(ctx, 'No index. ' + MODEL + ',', 154, 696, ease.outQ(seg(t, MS[1].start, MS[1].start + 0.4)), { size: 56, weight: 560, font: 'd', ls: -0.01, color: INK2, a: mg, shadow: HALO });
+      L.riseText(ctx, F.labels.firstSet + '.', 154, 760, ease.outQ(seg(t, MS[1].start + 0.1, MS[1].start + 0.5)), { size: 56, weight: 560, font: 'd', ls: -0.01, color: INK2, a: mg, shadow: HALO });
+    }
+    if (t > MS[0].start + 0.5 && t < CM[0].start) {
+      L.text(ctx, 'one dot = 100 tokens', 150, 1040, { size: 30, weight: 500, font: 't', color: INK3, a: seg(t, MS[0].start + 0.5, MS[0].start + 1.0) * (1 - seg(t, CM[0].start - 0.3, CM[0].start)) });
+    }
+    L.mark(ctx, 'hook+counter+mass');
+    // the name
+    var ng = win(t, NM[0].start - 0.05, NM[0].start, CO[0].start - 0.7, CO[0].start - 0.4);
+    if (ng > 0.003) {
+      L.markDraw(ctx, 146, 56, 112, seg(t, NM[0].start, NM[0].start + 0.8), ACC, ng);
+      L.riseText(ctx, 'PeterGanuRusty', 140, 340, ease.outQ(seg(t, NM[0].start + 0.1, NM[0].start + 0.65)), { size: 200, weight: 700, font: 'd', ls: -0.045, color: INK, a: ng, shadow: HALO });
+      var pp = ease.spring(seg(t, tPGR, tPGR + 0.6));
+      if (pp > 0.001) {
+        var pw = L.measure(ctx, 'PGR', { size: 76, weight: 700, font: 'd', ls: 0.02 }), px = 150, py = 372, bw = pw + 64;
+        ctx.save(); ctx.translate(px + bw / 2, py + 48); ctx.scale(pp, pp); ctx.translate(-(px + bw / 2), -(py + 48));
+        L.rr(ctx, px, py, bw, 96, L.R_M); ctx.fillStyle = rgba(ACC, 0.14 * ng); ctx.fill(); ctx.strokeStyle = rgba(ACC, ng); ctx.lineWidth = 2.5; ctx.stroke();
+        L.text(ctx, 'PGR', px + 32, py + 70, { size: 76, weight: 700, font: 'd', ls: 0.02, color: ACC, a: ng });
+        L.text(ctx, 'for short', px + bw + 30, py + 68, { size: 56, weight: 500, font: 'd', ls: -0.01, color: INK2, a: ng * seg(t, tPGR + 0.2, tPGR + 0.5) });
+        ctx.restore();
       }
-      // read passes: every beam that has crossed the particle lifts it
-      var passes = 0;
-      for (j = 0; j < BEAMS.length; j++) {
-        var bX = beamX(BEAMS[j], t), r = seg(t, BEAMS[j].a, BEAMS[j].b);
-        if (r > 0 && r < 1) boost += Math.exp(-Math.pow((x - bX) / 100, 2)) * 1.8;
-        if (t >= BEAMS[j].a && (x < bX || t >= BEAMS[j].b)) passes++;
-      }
-      if (t >= bm.a && x < bx3) counted++;
-      a *= (0.55 + 0.17 * Math.min(passes, 4)) * gone;
-      p.x = x; p.y = y; p.a = a; p.ca = ca; p.boost = boost;
+      L.riseText(ctx, 'A command-line program for the desktop', 146, 576, ease.outQ(seg(t, NM[1].start, NM[1].start + 0.4)), { size: 56, weight: 520, font: 'd', ls: -0.012, color: INK, a: ng, shadow: HALO });
+      L.riseText(ctx, 'that AI agents call to look up code.', 146, 644, ease.outQ(seg(t, NM[1].start + 0.9, NM[1].start + 1.3)), { size: 56, weight: 520, font: 'd', ls: -0.012, color: INK2, a: ng, shadow: HALO });
+      K.link(ctx, t, { x: 150, y: 846, w: 1620, h: 120, bw: 600, a: ng * ease.outC(seg(t, NM[1].start + 0.2, NM[1].start + 0.8)), t0: NM[1].start + 0.9 });
+      L.riseText(ctx, 'Local, no account.', 146, 740, ease.outQ(seg(t, NM[2].start, NM[2].start + 0.35)), { size: 72, weight: 700, font: 'd', ls: -0.03, color: ACC, a: ng, shadow: HALO });
     }
-    // beams
-    BEAMS.forEach(function (b, n) {
-      var r = seg(t, b.a, b.b);
-      if (r <= 0 || r >= 1) return;
-      var x = beamX(b, t), g = ctx.createLinearGradient(x - 360, 0, x, 0);
-      g.addColorStop(0, 'rgba(244,244,246,0)'); g.addColorStop(1, 'rgba(244,244,246,' + (0.07 + 0.02 * n).toFixed(3) + ')');
-      ctx.fillStyle = g; ctx.fillRect(x - 360, 0, 360, H);
-      ctx.fillStyle = 'rgba(244,244,246,0.9)'; ctx.fillRect(x - 0.5, 0, 1.5, H);
-    });
-    // the filament: a hairline of light under the particles once the stream has shortened
-    var fl = ease.outQ(seg(t, tFil + 0.5, tFil + 1.3)) * gone;
-    if (fl > 0) {
-      var gl = ctx.createLinearGradient(0, FIL_Y - 46, 0, FIL_Y + 46);
-      gl.addColorStop(0, 'rgba(255,122,61,0)'); gl.addColorStop(0.5, 'rgba(255,122,61,' + (0.2 * fl).toFixed(3) + ')'); gl.addColorStop(1, 'rgba(255,122,61,0)');
-      ctx.fillStyle = gl; ctx.fillRect(FIL_X0 - 20, FIL_Y - 46, FIL_LEN + 40, 92);
-      ctx.fillStyle = rgba(HOT, 0.95 * fl); ctx.fillRect(FIL_X0, FIL_Y - 1, FIL_LEN, 2);
-      L.stamp(ctx, ACC, FIL_X0, FIL_Y, 50, 0.5 * fl); L.stamp(ctx, ACC, FIL_X0 + FIL_LEN, FIL_Y, 50, 0.5 * fl);
+    L.mark(ctx, 'name');
+    // one question, one answer: above the two terminals
+    var qg = win(t, CO[0].start - 0.1, CO[0].start, NB.start + 0.2, NB.start + 0.7);
+    if (qg > 0.003) {
+      L.riseText(ctx, 'One question.', 126, 172, ease.outQ(seg(t, CO[0].start, CO[0].start + 0.4)), { size: 112, weight: 700, font: 'd', ls: -0.045, color: INK, a: qg });
+      L.riseText(ctx, 'One answer.', 986, 172, ease.outQ(seg(t, CO[1].start, CO[1].start + 0.4)), { size: 112, weight: 700, font: 'd', ls: -0.045, color: ACC, a: qg });
     }
-    // particles: glows, then cores
-    ctx.globalCompositeOperation = 'lighter';
-    for (i = 0; i < N; i++) {
-      p = P[i]; if (p.a <= 0.004) continue;
-      var rr = 5.2 + 6.4 * p.z, gs = rr * (4 + p.boost * 2.2);
-      if (p.ca < 1) L.stamp(ctx, CONTROL, p.x, p.y, rr * 11, p.a * 0.05 * (1 - p.ca));   // haze: the mass reads as one body
-      if (p.ca < 1) L.stamp(ctx, p.boost > 0.5 ? INK : CONTROL, p.x, p.y, gs, p.a * (0.2 + p.boost * 0.35) * (1 - p.ca));
-      if (p.ca > 0) L.stamp(ctx, ACC, p.x, p.y, gs * 1.3, p.a * (0.35 + p.boost * 0.4) * p.ca);
+    // the claim, over the two terminals that have moved down
+    var kg = win(t, CM[0].start - 0.05, CM[0].start, CS.start - 0.35, CS.start - 0.05);
+    if (kg > 0.003) {
+      var pv = F.pct * ease.outQ(seg(tc, CM[0].start, CM[0].start + 0.7));
+      L.numText(ctx, Math.round(pv) + '%', 134, 340, { size: 420, weight: 700, font: 'd', ls: -0.055, color: INK, a: kg, counting: F.pct + '%' });
+      L.riseText(ctx, 'fewer tokens', 146, 444, ease.outQ(seg(t, CM[0].start + 0.25, CM[0].start + 0.6)), { size: 100, weight: 700, font: 'd', ls: -0.04, color: INK, a: kg });
+      var q1 = [F.control.tokText + ' to ' + F.best.tokText + ' tokens per task,', 'against no index.'], q2 = ['One comparison:', MODEL + ',', F.labels.firstSet + '.'];
+      q1.forEach(function (s1, n) { L.riseText(ctx, s1, 980, 100 + n * 66, ease.outQ(seg(t, CM[0].start + 0.3 + n * 0.07, CM[0].start + 0.7 + n * 0.07)), { size: 60, weight: 560, font: 'd', ls: -0.01, color: INK2, a: kg, shadow: HALO }); });
+      q2.forEach(function (s1, n) { L.riseText(ctx, s1, 980, 264 + n * 66, ease.outQ(seg(t, CM[1].start + n * 0.07, CM[1].start + 0.4 + n * 0.07)), { size: 60, weight: 560, font: 'd', ls: -0.01, color: INK2, a: kg, shadow: HALO }); });
     }
-    ctx.globalCompositeOperation = 'source-over';
-    for (i = 0; i < N; i++) {
-      p = P[i]; if (p.a <= 0.004) continue;
-      var rc = 5.2 + 6.4 * p.z, base = L.lerpC(CONTROL, INK2, p.z), hot = L.lerpC(base, INK, clamp(p.boost / 1.6));
-      var col = L.lerpC(hot, L.lerpC(ACC, HOT, clamp(p.boost / 1.6) * 0.7), p.ca);
-      ctx.fillStyle = rgba(col, clamp(p.a + p.boost * 0.12));
-      ctx.beginPath(); ctx.arc(p.x, p.y, rc * (1 + p.boost * 0.1) * (i < M && p.ca > 0 ? mix(1, 0.62, p.ca) : 1), 0, Math.PI * 2); ctx.fill();
+    L.mark(ctx, 'claim');
+    var ill = win(t, HK[0].start, HK[0].start + 0.5, CM[1].end + 0.3, CM[1].end + 0.7);
+    if (ill > 0.003) L.text(ctx, 'Illustration: example names', 1770, 44, { size: 28, weight: 560, font: 't', color: INK3, align: 'r', a: ill * 0.9 });
+    // the close
+    var sg = seg(t, CS.start - 0.25, CS.start + 0.05);
+    if (sg > 0.003) {
+      L.markDraw(ctx, 146, 54, 88, seg(t, CS.start, CS.start + 0.7), ACC, sg);
+      L.riseText(ctx, 'PeterGanuRusty', 262, 124, ease.outQ(seg(t, CS.start, CS.start + 0.5)), { size: 80, weight: 700, font: 'd', ls: -0.04, color: INK, a: sg });
+      L.wordsText(ctx, 'One command installs it.', 140, 330, t, CS.start, { size: 150, weight: 700, font: 'd', ls: -0.045, color: INK, a: sg });
+      L.terminal(ctx, 150, 392, 1620, 500, t, { title: 'Install', lines: CLOSE_LINES, size: 34, a: sg * ease.outC(seg(t, CS.start + 0.1, CS.start + 0.5)), sheen: 0.7, glow: ACC, glowK: 0.6 });
     }
-    ctx.restore();
-
-    // the mark of the saving: the no index length as a dashed hairline against the filament's length
-    var bar = ease.outQ(seg(t, CM[1].start - 0.1, CM[1].start + 0.5));
-    if (t >= CM[0].start && t < CS[0].start - 0.02) {
-      var y = 1016;
-      L.hair(ctx, 0.3); ctx.setLineDash([8, 10]); ctx.beginPath(); ctx.moveTo(X0, y); ctx.lineTo(X0 + SPAN * bar, y); ctx.stroke(); ctx.setLineDash([]);
-      ctx.fillStyle = rgba(ACC, 1); ctx.fillRect(X0, y - 2, FIL_LEN * seg(t, CM[0].start, CM[0].start + 0.3), 4);
-      L.stamp(ctx, ACC, X0 + FIL_LEN * seg(t, CM[0].start, CM[0].start + 0.3), y, 40, 0.8);
-    }
-    // the closing filament under the name
-    if (t >= CS[0].start) {
-      var cs = ease.outQ(seg(t, CS[0].start + 0.35, CS[0].start + 0.95)), fy = 760, fx = 150;
-      ctx.fillStyle = rgba(HOT, 0.95 * cs); ctx.fillRect(fx, fy - 1, FIL_LEN * cs, 2);
-      var gg = ctx.createLinearGradient(0, fy - 30, 0, fy + 30); gg.addColorStop(0, 'rgba(255,122,61,0)'); gg.addColorStop(0.5, 'rgba(255,122,61,' + (0.3 * cs).toFixed(3) + ')'); gg.addColorStop(1, 'rgba(255,122,61,0)');
-      ctx.fillStyle = gg; ctx.fillRect(fx - 10, fy - 30, FIL_LEN * cs + 20, 60);
-      L.stamp(ctx, ACC, fx + FIL_LEN * cs, fy, 50, 0.9 * cs);
-    }
-    return counted;
   }
 
-  function seek(t) {
-    t = clamp(t, 0, DUR);
-    var frame = Math.round(t * FPS);
-    world.begin();
-    L.background(ctx, world.dpr, Math.sin(t * 0.37) * 40, Math.cos(t * 0.29) * 26);
-    ctx.lineCap = 'butt';
-    var counted = drawWorld(t);
-
-    // ---- type, cut in on the first frame of the cue that names it
-    win(a_ctx, t, 0, HK[1].start);
-    win(a_conv, t, 0, HK[1].start);
-    win(a_again, t, HK[1].start, tAgain);
-    win(a_and, t, tAgain, MS[0].start);
-    var tokText = t < MS[0].start ? '0' : seg(t, BEAMS[3].a, BEAMS[3].b) >= 1 ? F.control.tokText : L.fmtTokens(counted * 1000);
-    setText(a_num1, tokText);
-    win(a_num1, t, MS[0].start, CO[0].start);
-    win(a_num1sub, t, MS[0].start + 0.6, CO[0].start);
-    win(a_num1cmp, t, MS[1].start, CO[0].start);
-    win(a_q1, t, CO[0].start, CO[1].start);
-    win(a_q2, t, CO[1].start, NB.start);
-    win(a_num2, t, NB.start, CM[0].start);
-    win(a_num2sub, t, NB.start + 0.35, CM[0].start);
-    win(a_num2cmp, t, NB.start + 0.6, CM[0].start);
-    win(a_pct, t, CM[0].start, CS[0].start);
-    win(a_fewer, t, cueAt(CM[0], 'fewer'), CS[0].start);
-    a_cmp1.forEach(function (e) { win(e, t, cueAt(CM[0], 'against'), CS[0].start); });
-    // the label of the figure is uncovered left to right while the voice says it, so the claim never holds one picture
-    var uncover = ease.ioC(seg(t, CM[1].start, CM[1].end - 0.1));
-    a_cmp2.forEach(function (e) {
-      win(e, t, CM[1].start, CS[0].start);
-      e.style.clipPath = uncover >= 1 ? 'none' : 'inset(-30px ' + ((1 - uncover) * 100).toFixed(2) + '% -30px -30px)';   // room above and below for the letters' tails
-    });
-    L.markDraw(a_mark, ease.ioC(seg(t, CS[0].start, CS[0].start + 0.5)));
-    win(a_name, t, CS[0].start + 0.12, DUR + 1);
-    win(a_find, t, CS[1].start, DUR + 1);
-    win(a_pp, t, CS[1].start + 0.3, DUR + 1);
-
-    // ---- the cut lands: a few frames of shake that die away
-    var dx = 0, dy = 0;
-    KICKS.forEach(function (k) {
-      var age = t - k[0];
-      if (age >= 0 && age < 0.5) { var e = Math.exp(-age * 17) * k[1]; dx += Math.sin(frame * 2.399963 + k[0] * 3.1) * e; dy += Math.cos(frame * 3.7 + k[0] * 1.7) * e * 0.7; }
-    });
-    cam.style.transform = 'translate3d(' + dx.toFixed(2) + 'px,' + dy.toFixed(2) + 'px,0)';
-    var fade = seg(t, DUR - 0.3, DUR);
-    if (fade > 0) { ctx.globalAlpha = fade; ctx.fillStyle = '#0a0a0c'; ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-    var gs = L.grainShift(frame, 4);
-    grainEl.style.transform = 'translate3d(' + (-gs[0]) + 'px,' + (-gs[1]) + 'px,0)';
+  function post(t) {
+    var fi = 1 - seg(t, 0, 0.5), fo = seg(t, DUR - 0.3, DUR);
+    return { bloom: 0.22 + 0.12 * win(t, tDone - 0.2, tDone + 0.1, tDone + 0.6, tDone + 1.4), fade: Math.max(fi, fo), vig: 0.3, thr: 0.58 };
   }
 
-  window.PGR = { fps: FPS, duration: DUR, ready: false, seek: seek, sceneTimes: TL.scenes.map(function (s) { return { id: s.id, start: s.start, dur: s.dur }; }) };
-  L.ready().then(function () { seek(0); window.PGR.ready = true; });
+  L.film({ duration: DUR, fps: TL.fps, draw: draw, post: post, sceneTimes: TL.scenes.map(function (s) { return { id: s.id, start: s.start, dur: s.dur }; }) });
 })();

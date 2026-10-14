@@ -2,78 +2,96 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0a0c">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#08090b">
 <title>Benchmarks | PeterGanuRusty</title>
-<meta name="description" content="Tokens, turns and mean score for each published configuration, by model class and question set.">
+<meta name="description" content="Tokens, turns and mean score for each published configuration, by model and question set.">
+<meta property="og:title" content="Benchmarks | PeterGanuRusty">
+<meta property="og:description" content="Tokens, turns and mean score for each published configuration, by model and question set.">
+<meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
-<script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=2e9ba78a">
+<script>(function () { var r = document.documentElement; r.className += " js"; try { var t = localStorage.getItem("pgr-theme"); if (t === "light" || t === "dark") r.setAttribute("data-theme", t); } catch (e) { /* no storage: follow the system */ } })();</script>
+<style>@view-transition { navigation: auto; } @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }</style>
+<link rel="stylesheet" href="assets/app.css?v=69c66cda">
+<link rel="stylesheet" href="assets/blocks.css?v=86d5eed5">
+<link rel="stylesheet" href="assets/bench.css?v=fc5fb1f9">
 </head>
-<body>
+<body class="inner bench">
 <a class="skip" href="#main">Skip to content</a>
-<div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Benchmarks</span></div>
-<!--slot:sidebar--><header class="sidebar">
-    <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
-    <nav aria-label="Pages">
-    <div class="side-wrap">
-      <span class="side-ind" aria-hidden="true" style="--i:1"></span>
-      <ul class="side-pages">
-        <li><a href="index.html">Overview</a></li>
-        <li><a href="benchmarks.html" aria-current="page">Benchmarks</a>
-        <ul class="side-sections" aria-label="On this page">
-          <li><a href="#leaderboard">Leaderboard</a></li>
-          <li><a href="#chart">Which configurations are cheap and correct?</a></li>
-          <li><a href="#turns">Turns per task</a></li>
-          <li><a href="#engine">Engine speed</a></li>
-          <li><a href="#findings">Findings</a></li>
-        </ul></li>
-        <li><a href="study.html">Study</a></li>
-        <li><a href="install.html">Install</a></li>
-      </ul>
+<!--slot:nav--><header class="nav" id="nav" data-cmd-windows="irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex" data-cmd-unix="curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh">
+    <div class="nav-in">
+      <a class="brand" href="index.html" aria-label="PeterGanuRusty, overview"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></a>
+      <nav class="nav-links" id="nav-links" aria-label="Pages"><span class="nav-ind" aria-hidden="true"></span>
+      <a href="index.html">Overview</a>
+      <a href="benchmarks.html" aria-current="page">Benchmarks</a>
+      <a href="study.html">Study</a>
+      <a href="install.html">Install</a>
+      </nav>
+      <div class="nav-tools">
+        <button type="button" class="kbd-btn" data-palette aria-haspopup="dialog" aria-label="Open the command palette"><span>Search</span><kbd data-mod>Ctrl</kbd><kbd>K</kbd></button>
+        <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch the theme"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="sun" cx="12" cy="12" r="4.2"/><path class="rays" d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><path class="moon" d="M19.6 14.4A8 8 0 0 1 9.6 4.4a8 8 0 1 0 10 10z"/></svg></button>
+        <a class="icon-btn" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" aria-label="The repository on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+      </div>
     </div>
-  </nav>
-  </header><!--/slot:sidebar-->
-<main id="main" class="page">
-  <header class="large-title">
-    <h1 id="title" aria-label="Benchmarks"><span class="w" aria-hidden="true" style="--i:0"><span>Benchmarks</span></span></h1>
-    <p class="lede"><!--slot:lede-->Tokens, turns and mean score for each published configuration, measured on the same three lookups and on a second set of three questions of the same shapes. Pick a model class and a question set to compare.<!--/slot:lede--></p>
+  </header><!--/slot:nav-->
+<div class="progress" id="progress" aria-hidden="true"></div>
+<div class="ambient" aria-hidden="true"><i class="amb-glow"></i></div>
+<main id="main" class="page wide">
+  <header class="page-head bench-head">
+    <div class="bh-copy">
+      <h1 id="title" class="display" aria-label="Benchmarks"><span class="w" aria-hidden="true" style="--i:0"><span>Benchmarks</span></span></h1>
+      <p class="lede"><!--slot:lede-->Tokens, turns and mean score for each published configuration, measured on the same three lookups and on a second set of three questions of the same shapes. Pick a model and a question set to compare.<!--/slot:lede--></p>
+    </div>
+    <div class="bh-lead"><!--slot:lead--><div class="bench-lead"><p class="bl-cap">Most reliable configuration against no index, Claude Haiku 5.5 at low effort, original questions.</p><ul class="bl-figs">
+      <li class="bl-fig"><span class="bl-k">Tokens per task</span><b>71k</b><span class="bl-v">No index: 294k</span></li>
+      <li class="bl-fig"><span class="bl-k">Fewer tokens</span><b>76%</b><span class="bl-v">In this one cell. Across four cells: 72% to 80%.</span></li>
+      <li class="bl-fig"><span class="bl-k">Turns per task</span><b>1.0</b><span class="bl-v">No index: 4.0</span></li>
+      <li class="bl-fig"><span class="bl-k">Runs in the cell</span><b>3</b><span class="bl-v">Three runs cannot support a claim of significance, and this site makes none.</span></li>
+    </ul><p class="pick-line"><b>Read before relying on it.</b> A pack made before the agent started; the agent had no command to call. The builders wrote the questions, and the held-out set is not held out for it. Open-ended work was not tested. The no-index figure is from round five. <a href="#pick">What it means</a></p></div><!--/slot:lead--></div>
   </header>
 
   <div class="scope">
     <!--slot:seg--><div class="seg-bar">
-    <div class="seg" role="radiogroup" aria-label="Model class" data-seg="class" style="--count:3"><span class="seg-thumb" aria-hidden="true"></span>
-      <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="light">Light</button>
-      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="mid">Mid</button>
-      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="top">Top</button>
+    <div class="seg" role="radiogroup" aria-label="Model" data-seg="class" style="--count:3"><span class="seg-thumb" aria-hidden="true"></span>
+      <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="light">Claude Haiku 5.5, low effort</button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="mid">Claude Sonnet 5.5, medium effort</button>
+      <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="top">Claude Opus 5.5, maximum effort</button>
     </div>
     <div class="seg" role="radiogroup" aria-label="Questions" data-seg="set" style="--count:2"><span class="seg-thumb" aria-hidden="true"></span>
       <button type="button" role="radio" aria-checked="true" tabindex="0" data-value="original">Original</button>
       <button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="held-out">Held-out</button>
     </div>
   </div>
-  <p class="group-title seg-note" id="set-note"><span data-set="original">Original questions: the three lookups every round has used.</span> <span data-set="held-out">Held-out questions: a second set of three questions of the same three shapes, written later by the same team. The people and agents who built the engine did not see them while building it.</span></p>
+  <p class="group-title seg-note" id="set-note"><span data-set="original">Original questions: the three lookups every round has used.</span> <span data-set="held-out">Held-out questions: a second set of three questions of the same three shapes, written later by the same team. The people and agents who built the engine through round five did not see them while building it. The pack of round six was written after these questions had been run, so for round six they are a second set of questions, not an untouched one.</span></p>
   <p class="sr-only" id="seg-status" aria-live="polite"></p><!--/slot:seg-->
 
     <section class="section" aria-labelledby="leaderboard">
       <h2 id="leaderboard" class="section-title">Leaderboard</h2>
-      <!--slot:boards--><div class="panel board-panel on" data-class="light" data-set="original" role="group" aria-label="Light class, original questions, leaderboard">
-    <h3 class="panel-title">Light class, original questions</h3>
-    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
+      <!--slot:boards--><div class="panel board-panel on" data-class="light" data-set="original" role="group" aria-label="Claude Haiku 5.5, low effort, original questions, leaderboard">
+    <h3 class="panel-title">Claude Haiku 5.5, low effort, original questions</h3>
+    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Light class, original questions: runs, tokens, turns and mean score by configuration</caption>
+        <caption class="sr-only">Claude Haiku 5.5, low effort, original questions: runs, tokens, turns and mean score by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Mean score</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Most reliable</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">A brief pack alone, without a lookup command</span> <span class="tag">Most reliable</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span><span class="sub row-note" style="white-space:normal">The agent has no command to call: the pack is in its prompt.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">71k</span></td><td data-label="Turns">1.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, with a brief pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">119k<span class="sub">71k to 143k</span></span></td><td data-label="Turns">1.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Our engine, first generation</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Our engine, first generation, with embeddings</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: memory, filled with the answers</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k<span class="sub">134k to 135k</span></span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph, search and memory, filled with the answers</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and memory, filled with the answers</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">157k<span class="sub">134k to 203k</span></span></td><td data-label="Turns">2.3</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, in an Ubuntu virtual machine</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">158k<span class="sub">135k to 205k</span></span></td><td data-label="Turns">2.3</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Read-compression tool</span><span class="sub row-note" style="white-space:normal">Earlier session</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">177k<span class="sub">133k to 200k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, round six</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">181k<span class="sub">134k to 274k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, without the neural network</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">182k<span class="sub">135k to 205k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, search only, with a search pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">188k<span class="sub">138k to 286k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">81%</td><td data-label="Fully correct runs">0 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, code graph only, with a graph pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">192k<span class="sub">143k to 289k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, with a brief pack, without the neural network</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">217k</span></td><td data-label="Turns">3.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">252k<span class="sub">204k to 277k</span></span></td><td data-label="Turns">3.7</td><td data-label="Mean score">74%</td><td data-label="Fully correct runs">0 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: code graph</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">273k<span class="sub">272k to 275k</span></span></td><td data-label="Turns">4.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">No index (control)</span><span class="sub row-note" style="white-space:normal">Its reads were altered by another tool on the test machine. <a href="study.html#control">Why this matters</a></span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">294k<span class="sub">292k to 296k</span></span></td><td data-label="Turns">4.0</td><td data-label="Mean score">99%</td><td data-label="Fully correct runs">2 of 3</td></tr>
@@ -83,22 +101,24 @@
         </tbody>
       </table>
     </div>
-    <p class="footnote view-note">Two other configurations used fewer tokens than the most reliable one (134,013): &quot;Our engine, first generation&quot;, 133,751; &quot;Our engine, first generation, with embeddings&quot;, 133,923. Three configurations are within a thousand tokens of the lowest (133,751), the most reliable one among them.</p>
+    <p class="footnote view-note">No other configuration used fewer tokens than the most reliable one here.</p>
   </div>
-  <div class="panel board-panel" data-class="mid" data-set="original" role="group" aria-label="Mid class, original questions, leaderboard">
-    <h3 class="panel-title">Mid class, original questions</h3>
-    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
+  <div class="panel board-panel" data-class="mid" data-set="original" role="group" aria-label="Claude Sonnet 5.5, medium effort, original questions, leaderboard">
+    <h3 class="panel-title">Claude Sonnet 5.5, medium effort, original questions</h3>
+    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Mid class, original questions: runs, tokens, turns and mean score by configuration</caption>
+        <caption class="sr-only">Claude Sonnet 5.5, medium effort, original questions: runs, tokens, turns and mean score by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Mean score</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Most reliable</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">133k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">A brief pack alone, without a lookup command</span> <span class="tag">Most reliable</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span><span class="sub row-note" style="white-space:normal">The agent has no command to call: the pack is in its prompt.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">70k</span></td><td data-label="Turns">1.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Our engine, first generation, with embeddings</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">133k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">133k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and memory, filled with the answers</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph, search and memory, filled with the answers</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: memory, filled with the answers</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: code graph</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, with a brief pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">142k<span class="sub">142k to 143k</span></span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Read-compression tool</span><span class="sub row-note" style="white-space:normal">Earlier session</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">177k<span class="sub">132k to 201k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">203k</span></td><td data-label="Turns">3.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">No index (control)</span><span class="sub row-note" style="white-space:normal">Its reads were altered by another tool on the test machine. <a href="study.html#control">Why this matters</a></span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">261k<span class="sub">210k to 287k</span></span></td><td data-label="Turns">3.7</td><td data-label="Mean score">97%</td><td data-label="Fully correct runs">0 of 3</td></tr>
@@ -109,14 +129,14 @@
         </tbody>
       </table>
     </div>
-    <p class="footnote view-note">One other configuration used fewer tokens than the most reliable one (133,367): &quot;Our engine, first generation, with embeddings&quot;, 133,129. Five configurations are within a thousand tokens of the lowest (133,129), the most reliable one among them.</p>
+    <p class="footnote view-note">No other configuration used fewer tokens than the most reliable one here.</p>
   </div>
-  <div class="panel board-panel" data-class="top" data-set="original" role="group" aria-label="Top class, original questions, leaderboard">
-    <h3 class="panel-title">Top class, original questions</h3>
-    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
+  <div class="panel board-panel" data-class="top" data-set="original" role="group" aria-label="Claude Opus 5.5, maximum effort, original questions, leaderboard">
+    <h3 class="panel-title">Claude Opus 5.5, maximum effort, original questions</h3>
+    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Top class, original questions: runs, tokens, turns and mean score by configuration</caption>
+        <caption class="sr-only">Claude Opus 5.5, maximum effort, original questions: runs, tokens, turns and mean score by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Mean score</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Symbol index with embeddings</span><span class="sub row-note" style="white-space:normal">Earlier session</span></span></th><td data-label="Runs">1</td><td data-label="Tokens"><span class="v">297k</span></td><td data-label="Turns">4.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">1 of 1</td></tr>
@@ -127,48 +147,58 @@
     </div>
     <p class="footnote view-note">The most reliable configuration was not measured on this class with these questions, so no row is marked.</p>
   </div>
-  <div class="panel board-panel" data-class="light" data-set="held-out" role="group" aria-label="Light class, held-out questions, leaderboard">
-    <h3 class="panel-title">Light class, held-out questions</h3>
-    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
+  <div class="panel board-panel" data-class="light" data-set="held-out" role="group" aria-label="Claude Haiku 5.5, low effort, held-out questions, leaderboard">
+    <h3 class="panel-title">Claude Haiku 5.5, low effort, held-out questions</h3>
+    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Light class, held-out questions: runs, tokens, turns and mean score by configuration</caption>
+        <caption class="sr-only">Claude Haiku 5.5, low effort, held-out questions: runs, tokens, turns and mean score by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Mean score</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Most reliable</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">181k<span class="sub">134k to 274k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">A brief pack alone, without a lookup command</span> <span class="tag">Most reliable</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span><span class="sub row-note" style="white-space:normal">The agent has no command to call: the pack is in its prompt.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">71k</span></td><td data-label="Turns">1.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Our engine, first generation, with embeddings</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, in an Ubuntu virtual machine</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, round six</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">135k<span class="sub">135k to 136k</span></span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, code graph only, with a graph pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">168k<span class="sub">143k to 217k</span></span></td><td data-label="Turns">2.3</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, with a brief pack, without the neural network</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">168k<span class="sub">144k to 217k</span></span></td><td data-label="Turns">2.3</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">181k<span class="sub">134k to 274k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, without the neural network</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">182k<span class="sub">136k to 206k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, with a brief pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">192k<span class="sub">144k to 217k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">205k<span class="sub">135k to 275k</span></span></td><td data-label="Turns">3.0</td><td data-label="Mean score">97%</td><td data-label="Fully correct runs">2 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: code graph</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">251k<span class="sub">203k to 275k</span></span></td><td data-label="Turns">3.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">313k<span class="sub">205k to 455k</span></span></td><td data-label="Turns">4.3</td><td data-label="Mean score">72%</td><td data-label="Fully correct runs">1 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, search only, with a search pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">343k<span class="sub">214k to 528k</span></span></td><td data-label="Turns">4.7</td><td data-label="Mean score">72%</td><td data-label="Fully correct runs">1 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">No index (control)</span><span class="sub row-note" style="white-space:normal">Its reads were altered by another tool on the test machine. <a href="study.html#control">Why this matters</a></span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">361k<span class="sub">305k to 391k</span></span></td><td data-label="Turns">4.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="footnote view-note">One other configuration used fewer tokens than the most reliable one (181,055): &quot;Our engine, first generation, with embeddings&quot;, 134,120.</p>
+    <p class="footnote view-note">No other configuration used fewer tokens than the most reliable one here.</p>
   </div>
-  <div class="panel board-panel" data-class="mid" data-set="held-out" role="group" aria-label="Mid class, held-out questions, leaderboard">
-    <h3 class="panel-title">Mid class, held-out questions</h3>
-    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
+  <div class="panel board-panel" data-class="mid" data-set="held-out" role="group" aria-label="Claude Sonnet 5.5, medium effort, held-out questions, leaderboard">
+    <h3 class="panel-title">Claude Sonnet 5.5, medium effort, held-out questions</h3>
+    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
     <div class="card">
       <table class="board">
-        <caption class="sr-only">Mid class, held-out questions: runs, tokens, turns and mean score by configuration</caption>
+        <caption class="sr-only">Claude Sonnet 5.5, medium effort, held-out questions: runs, tokens, turns and mean score by configuration</caption>
         <thead><tr><th scope="col">Configuration</th><th scope="col">Runs</th><th scope="col">Tokens</th><th scope="col">Turns</th><th scope="col">Mean score</th><th scope="col">Fully correct runs</th></tr></thead>
         <tbody>
-        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span> <span class="tag">Most reliable</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">180k<span class="sub">134k to 204k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">A brief pack alone, without a lookup command</span> <span class="tag">Most reliable</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span><span class="sub row-note" style="white-space:normal">The agent has no command to call: the pack is in its prompt.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">70k</span></td><td data-label="Turns">1.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: code graph</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k</span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">134k<span class="sub">134k to 135k</span></span></td><td data-label="Turns">2.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR, graph and search, with a brief pack</span><span class="sub row-note" style="white-space:normal">Round six, run a day after round five.</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">167k<span class="sub">143k to 215k</span></span></td><td data-label="Turns">2.3</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
+        <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: graph and search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">180k<span class="sub">134k to 204k</span></span></td><td data-label="Turns">2.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">No index (control)</span><span class="sub row-note" style="white-space:normal">Its reads were altered by another tool on the test machine. <a href="study.html#control">Why this matters</a></span></span></th><td data-label="Runs">2</td><td data-label="Tokens"><span class="v">250k<span class="sub">210k to 290k</span></span></td><td data-label="Turns">3.5</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">2 of 2</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">Our engine, first generation, with embeddings</span></span></th><td data-label="Runs">2</td><td data-label="Tokens"><span class="v">272k<span class="sub">203k to 341k</span></span></td><td data-label="Turns">4.0</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">2 of 2</td></tr>
         <tr><th scope="row" class="cfg"><span class="cfg-main"><span class="cfg-name">PGR: search</span></span></th><td data-label="Runs">3</td><td data-label="Tokens"><span class="v">328k<span class="sub">279k to 353k</span></span></td><td data-label="Turns">4.7</td><td data-label="Mean score">100%</td><td data-label="Fully correct runs">3 of 3</td></tr>
         </tbody>
       </table>
     </div>
-    <p class="footnote view-note">Two other configurations used fewer tokens than the most reliable one (180,119): &quot;PGR: code graph&quot;, 133,895; &quot;PGR: all three, memory from an earlier exploring session&quot;, 134,415. Two configurations are within a thousand tokens of the lowest (133,895).</p>
+    <p class="footnote view-note">No other configuration used fewer tokens than the most reliable one here.</p>
   </div>
-  <div class="panel board-panel" data-class="top" data-set="held-out" role="group" aria-label="Top class, held-out questions, leaderboard">
-    <h3 class="panel-title">Top class, held-out questions</h3>
-    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (the light and mid classes, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible, and the rule was set after the runs were known.</p>
-    <p class="note empty">No configuration was measured on the top class with the held-out questions.</p>
+  <div class="panel board-panel" data-class="top" data-set="held-out" role="group" aria-label="Claude Opus 5.5, maximum effort, held-out questions, leaderboard">
+    <h3 class="panel-title">Claude Opus 5.5, maximum effort, held-out questions</h3>
+    <p class="group-title">One agent answering three lookups. The most reliable configuration comes first, then the rest by fewest tokens. &quot;Most reliable&quot; marks the one configuration with the highest share of fully correct runs over four cells (Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort, on the original and the held-out questions), a tie going to the lower mean tokens; only configurations run at least 3 times in each of those four cells, and so measured on both question sets, were eligible. The rule was set after the runs of rounds one to five were known and before round six ran.</p>
+    <p class="note empty">No configuration was measured on Claude Opus 5.5, maximum effort with the held-out questions.</p>
   </div>
   <p class="footnote">What a token count is, and the limits of these runs, are on the <a href="study.html#tokens">Study</a> page.</p><!--/slot:boards-->
     </section>
@@ -176,23 +206,31 @@
     <section class="section" aria-labelledby="chart">
       <h2 id="chart" class="section-title">Which configurations are cheap and correct?</h2>
       <p class="group-title">One row per configuration, the fewest tokens first. The bar is the mean tokens per task, and the line across it runs from the lowest to the highest run. The ring is the mean score. The dashed line is no index. The no-index mean score is lower than it would otherwise be: another tool on the test machine altered some of the no-index agent's reads. <a href="study.html#control">Why this matters</a>.</p>
-      <!--slot:charts--><div class="panel on" data-class="light" data-set="original" role="group" aria-label="Light class, original questions, chart">
-    <h3 class="panel-title">Light class, original questions</h3>
+      <!--slot:charts--><div class="panel on" data-class="light" data-set="original" role="group" aria-label="Claude Haiku 5.5, low effort, original questions, chart">
+    <h3 class="panel-title">Claude Haiku 5.5, low effort, original questions</h3>
     <div class="card chart-card">
       <div class="chart" data-chart="light" data-set="original"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Light class, original questions: tokens, mean score and wall time by configuration</caption>
+          <caption class="sr-only">Claude Haiku 5.5, low effort, original questions: tokens, mean score and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Mean score</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">11 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">A brief pack alone, without a lookup command</span></th><td data-label="Tokens">71k</td><td data-label="Mean score">100%</td><td data-label="Wall time">5 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, with a brief pack</span></th><td data-label="Tokens">119k</td><td data-label="Mean score">100%</td><td data-label="Wall time">7 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">29 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">15 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">11 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: memory, filled with the answers</span></th><td data-label="Tokens">135k</td><td data-label="Mean score">100%</td><td data-label="Wall time">17 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">135k</td><td data-label="Mean score">100%</td><td data-label="Wall time">12 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph, search and memory, filled with the answers</span></th><td data-label="Tokens">135k</td><td data-label="Mean score">100%</td><td data-label="Wall time">11 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and memory, filled with the answers</span></th><td data-label="Tokens">157k</td><td data-label="Mean score">100%</td><td data-label="Wall time">16 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, in an Ubuntu virtual machine</span></th><td data-label="Tokens">158k</td><td data-label="Mean score">100%</td><td data-label="Wall time">12 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Tokens">177k</td><td data-label="Mean score">100%</td><td data-label="Wall time">27 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, round six</span></th><td data-label="Tokens">181k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, without the neural network</span></th><td data-label="Tokens">182k</td><td data-label="Mean score">97%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, search only, with a search pack</span></th><td data-label="Tokens">188k</td><td data-label="Mean score">81%</td><td data-label="Wall time">14 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, code graph only, with a graph pack</span></th><td data-label="Tokens">192k</td><td data-label="Mean score">97%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, with a brief pack, without the neural network</span></th><td data-label="Tokens">217k</td><td data-label="Mean score">100%</td><td data-label="Wall time">13 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">252k</td><td data-label="Mean score">74%</td><td data-label="Wall time">33 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">273k</td><td data-label="Mean score">100%</td><td data-label="Wall time">21 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">294k</td><td data-label="Mean score">99%</td><td data-label="Wall time">27 s</td></tr>
@@ -204,21 +242,23 @@
       </details>
     </div>
   </div>
-  <div class="panel" data-class="mid" data-set="original" role="group" aria-label="Mid class, original questions, chart">
-    <h3 class="panel-title">Mid class, original questions</h3>
+  <div class="panel" data-class="mid" data-set="original" role="group" aria-label="Claude Sonnet 5.5, medium effort, original questions, chart">
+    <h3 class="panel-title">Claude Sonnet 5.5, medium effort, original questions</h3>
     <div class="card chart-card">
       <div class="chart" data-chart="mid" data-set="original"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Mid class, original questions: tokens, mean score and wall time by configuration</caption>
+          <caption class="sr-only">Claude Sonnet 5.5, medium effort, original questions: tokens, mean score and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Mean score</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">133k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">A brief pack alone, without a lookup command</span></th><td data-label="Tokens">70k</td><td data-label="Mean score">100%</td><td data-label="Wall time">3 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">133k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">133k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and memory, filled with the answers</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">13 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph, search and memory, filled with the answers</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: memory, filled with the answers</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">12 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">135k</td><td data-label="Mean score">100%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, with a brief pack</span></th><td data-label="Tokens">142k</td><td data-label="Mean score">100%</td><td data-label="Wall time">9 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Read-compression tool</span></th><td data-label="Tokens">177k</td><td data-label="Mean score">100%</td><td data-label="Wall time">42 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">203k</td><td data-label="Mean score">100%</td><td data-label="Wall time">17 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">261k</td><td data-label="Mean score">97%</td><td data-label="Wall time">22 s</td></tr>
@@ -231,13 +271,13 @@
       </details>
     </div>
   </div>
-  <div class="panel" data-class="top" data-set="original" role="group" aria-label="Top class, original questions, chart">
-    <h3 class="panel-title">Top class, original questions</h3>
+  <div class="panel" data-class="top" data-set="original" role="group" aria-label="Claude Opus 5.5, maximum effort, original questions, chart">
+    <h3 class="panel-title">Claude Opus 5.5, maximum effort, original questions</h3>
     <div class="card chart-card">
       <div class="chart" data-chart="top" data-set="original"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Top class, original questions: tokens, mean score and wall time by configuration</caption>
+          <caption class="sr-only">Claude Opus 5.5, maximum effort, original questions: tokens, mean score and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Mean score</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Symbol index with embeddings</span></th><td data-label="Tokens">297k</td><td data-label="Mean score">100%</td><td data-label="Wall time">175 s</td></tr>
@@ -248,38 +288,48 @@
       </details>
     </div>
   </div>
-  <div class="panel" data-class="light" data-set="held-out" role="group" aria-label="Light class, held-out questions, chart">
-    <h3 class="panel-title">Light class, held-out questions</h3>
+  <div class="panel" data-class="light" data-set="held-out" role="group" aria-label="Claude Haiku 5.5, low effort, held-out questions, chart">
+    <h3 class="panel-title">Claude Haiku 5.5, low effort, held-out questions</h3>
     <div class="card chart-card">
       <div class="chart" data-chart="light" data-set="held-out"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Light class, held-out questions: tokens, mean score and wall time by configuration</caption>
+          <caption class="sr-only">Claude Haiku 5.5, low effort, held-out questions: tokens, mean score and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Mean score</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">181k</td><td data-label="Mean score">100%</td><td data-label="Wall time">13 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">A brief pack alone, without a lookup command</span></th><td data-label="Tokens">71k</td><td data-label="Mean score">100%</td><td data-label="Wall time">7 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">97%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, in an Ubuntu virtual machine</span></th><td data-label="Tokens">135k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, round six</span></th><td data-label="Tokens">135k</td><td data-label="Mean score">100%</td><td data-label="Wall time">9 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, code graph only, with a graph pack</span></th><td data-label="Tokens">168k</td><td data-label="Mean score">100%</td><td data-label="Wall time">11 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, with a brief pack, without the neural network</span></th><td data-label="Tokens">168k</td><td data-label="Mean score">100%</td><td data-label="Wall time">11 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">181k</td><td data-label="Mean score">100%</td><td data-label="Wall time">13 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, without the neural network</span></th><td data-label="Tokens">182k</td><td data-label="Mean score">97%</td><td data-label="Wall time">12 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, with a brief pack</span></th><td data-label="Tokens">192k</td><td data-label="Mean score">100%</td><td data-label="Wall time">12 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">205k</td><td data-label="Mean score">97%</td><td data-label="Wall time">15 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">251k</td><td data-label="Mean score">100%</td><td data-label="Wall time">15 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">313k</td><td data-label="Mean score">72%</td><td data-label="Wall time">38 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, search only, with a search pack</span></th><td data-label="Tokens">343k</td><td data-label="Mean score">72%</td><td data-label="Wall time">29 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">361k</td><td data-label="Mean score">100%</td><td data-label="Wall time">44 s</td></tr>
           </tbody>
         </table>
       </details>
     </div>
   </div>
-  <div class="panel" data-class="mid" data-set="held-out" role="group" aria-label="Mid class, held-out questions, chart">
-    <h3 class="panel-title">Mid class, held-out questions</h3>
+  <div class="panel" data-class="mid" data-set="held-out" role="group" aria-label="Claude Sonnet 5.5, medium effort, held-out questions, chart">
+    <h3 class="panel-title">Claude Sonnet 5.5, medium effort, held-out questions</h3>
     <div class="card chart-card">
       <div class="chart" data-chart="mid" data-set="held-out"><p class="note chart-fallback">The chart needs JavaScript. The table view below has the same numbers.</p></div>
       <details class="table-view"><summary>Table view</summary>
         <table class="board board-small">
-          <caption class="sr-only">Mid class, held-out questions: tokens, mean score and wall time by configuration</caption>
+          <caption class="sr-only">Claude Sonnet 5.5, medium effort, held-out questions: tokens, mean score and wall time by configuration</caption>
           <thead><tr><th scope="col">Configuration</th><th scope="col">Tokens</th><th scope="col">Mean score</th><th scope="col">Wall time</th></tr></thead>
           <tbody>
-          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">180k</td><td data-label="Mean score">100%</td><td data-label="Wall time">16 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">A brief pack alone, without a lookup command</span></th><td data-label="Tokens">70k</td><td data-label="Mean score">100%</td><td data-label="Wall time">3 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: code graph</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">12 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: all three, memory from an earlier exploring session</span></th><td data-label="Tokens">134k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR, graph and search, with a brief pack</span></th><td data-label="Tokens">167k</td><td data-label="Mean score">100%</td><td data-label="Wall time">10 s</td></tr>
+          <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: graph and search</span></th><td data-label="Tokens">180k</td><td data-label="Mean score">100%</td><td data-label="Wall time">16 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">No index (control)</span></th><td data-label="Tokens">250k</td><td data-label="Mean score">100%</td><td data-label="Wall time">25 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">Our engine, first generation, with embeddings</span></th><td data-label="Tokens">272k</td><td data-label="Mean score">100%</td><td data-label="Wall time">27 s</td></tr>
           <tr><th scope="row" class="cfg"><span class="cfg-name">PGR: search</span></th><td data-label="Tokens">328k</td><td data-label="Mean score">100%</td><td data-label="Wall time">30 s</td></tr>
@@ -288,49 +338,49 @@
       </details>
     </div>
   </div>
-  <div class="panel" data-class="top" data-set="held-out" role="group" aria-label="Top class, held-out questions, chart">
-    <h3 class="panel-title">Top class, held-out questions</h3>
-    <p class="note empty">No configuration was measured on the top class with the held-out questions.</p>
+  <div class="panel" data-class="top" data-set="held-out" role="group" aria-label="Claude Opus 5.5, maximum effort, held-out questions, chart">
+    <h3 class="panel-title">Claude Opus 5.5, maximum effort, held-out questions</h3>
+    <p class="note empty">No configuration was measured on Claude Opus 5.5, maximum effort with the held-out questions.</p>
   </div><!--/slot:charts-->
     </section>
 
     <!--slot:runners--><section class="section" aria-labelledby="turns">
   <h2 id="turns" class="section-title">Turns per task</h2>
-  <p class="group-title">One dot is one turn, and a task ends when its last turn ends. One agent answering three lookups, for the model class and question set chosen above.</p>
+  <p class="group-title">One dot is one turn, and a task ends when its last turn ends. One agent answering three lookups, for the model and question set chosen above.</p>
   <figure class="card runners" id="runners">
-    <div class="panel on" data-class="light" data-set="original" role="group" aria-label="Light class, original questions, turns">
-      <h3 class="panel-title">Light class, original questions</h3>
+    <div class="panel on" data-class="light" data-set="original" role="group" aria-label="Claude Haiku 5.5, low effort, original questions, turns">
+      <h3 class="panel-title">Claude Haiku 5.5, low effort, original questions</h3>
       <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">4.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:3">1</i><i class="dot" style="--i:1;--k:2">2</i><i class="dot" style="--i:2;--k:1">3</i><i class="dot" style="--i:3;--k:0">4</i></div></div>
-      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:1">1</i><i class="dot" style="--i:1;--k:0">2</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">A brief pack alone, without a lookup command</span><span class="runner-val">1.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:0">1</i></div></div>
       <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
-      <p class="runner-callout">2.0 fewer turns per task with the most reliable configuration, so its run ends first.</p>
+      <p class="runner-callout">3.0 fewer turns per task with the most reliable configuration, so its run ends first.</p>
     </div>
-    <div class="panel" data-class="mid" data-set="original" role="group" aria-label="Mid class, original questions, turns">
-      <h3 class="panel-title">Mid class, original questions</h3>
+    <div class="panel" data-class="mid" data-set="original" role="group" aria-label="Claude Sonnet 5.5, medium effort, original questions, turns">
+      <h3 class="panel-title">Claude Sonnet 5.5, medium effort, original questions</h3>
       <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">3.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:3">1</i><i class="dot" style="--i:1;--k:2">2</i><i class="dot" style="--i:2;--k:1">3</i><i class="dot" style="--i:3;--k:0">4</i></div></div>
-      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:1">1</i><i class="dot" style="--i:1;--k:0">2</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">A brief pack alone, without a lookup command</span><span class="runner-val">1.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:0">1</i></div></div>
       <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
-      <p class="runner-callout">1.7 fewer turns per task with the most reliable configuration, so its run ends first.</p>
+      <p class="runner-callout">2.7 fewer turns per task with the most reliable configuration, so its run ends first.</p>
     </div>
-    <div class="panel" data-class="top" data-set="original" role="group" aria-label="Top class, original questions, turns">
-      <h3 class="panel-title">Top class, original questions</h3><p class="note empty">No index and one other configuration were not both measured on the top class with the original questions.</p>
+    <div class="panel" data-class="top" data-set="original" role="group" aria-label="Claude Opus 5.5, maximum effort, original questions, turns">
+      <h3 class="panel-title">Claude Opus 5.5, maximum effort, original questions</h3><p class="note empty">No index and one other configuration were not both measured on Claude Opus 5.5, maximum effort with the original questions.</p>
     </div>
-    <div class="panel" data-class="light" data-set="held-out" role="group" aria-label="Light class, held-out questions, turns">
-      <h3 class="panel-title">Light class, held-out questions</h3>
+    <div class="panel" data-class="light" data-set="held-out" role="group" aria-label="Claude Haiku 5.5, low effort, held-out questions, turns">
+      <h3 class="panel-title">Claude Haiku 5.5, low effort, held-out questions</h3>
       <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">4.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:4">1</i><i class="dot" style="--i:1;--k:3">2</i><i class="dot" style="--i:2;--k:2">3</i><i class="dot" style="--i:3;--k:1">4</i><i class="dot" style="--i:4;--k:0">5</i></div></div>
-      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:2">1</i><i class="dot" style="--i:1;--k:1">2</i><i class="dot" style="--i:2;--k:0">3</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">A brief pack alone, without a lookup command</span><span class="runner-val">1.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:0">1</i></div></div>
       <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
-      <p class="runner-callout">2.0 fewer turns per task with the most reliable configuration, so its run ends first.</p>
+      <p class="runner-callout">3.7 fewer turns per task with the most reliable configuration, so its run ends first.</p>
     </div>
-    <div class="panel" data-class="mid" data-set="held-out" role="group" aria-label="Mid class, held-out questions, turns">
-      <h3 class="panel-title">Mid class, held-out questions</h3>
+    <div class="panel" data-class="mid" data-set="held-out" role="group" aria-label="Claude Sonnet 5.5, medium effort, held-out questions, turns">
+      <h3 class="panel-title">Claude Sonnet 5.5, medium effort, held-out questions</h3>
       <div class="runner ref"><p class="runner-label"><span class="runner-name">No index</span><span class="runner-val">3.5 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:3">1</i><i class="dot" style="--i:1;--k:2">2</i><i class="dot" style="--i:2;--k:1">3</i><i class="dot" style="--i:3;--k:0">4</i></div></div>
-      <div class="runner best"><p class="runner-label"><span class="runner-name">PGR: graph and search</span><span class="runner-val">2.7 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:2">1</i><i class="dot" style="--i:1;--k:1">2</i><i class="dot" style="--i:2;--k:0">3</i></div></div>
+      <div class="runner best"><p class="runner-label"><span class="runner-name">A brief pack alone, without a lookup command</span><span class="runner-val">1.0 turns</span></p><div class="runner-track" aria-hidden="true"><span class="start"></span><span class="end"></span><i class="dot" style="--i:0;--k:0">1</i></div></div>
       <p class="runner-axis" aria-hidden="true"><span>Question asked</span><span>Answer found</span></p>
-      <p class="runner-callout">0.8 fewer turns per task with the most reliable configuration, so its run ends first.</p>
+      <p class="runner-callout">2.5 fewer turns per task with the most reliable configuration, so its run ends first.</p>
     </div>
-    <div class="panel" data-class="top" data-set="held-out" role="group" aria-label="Top class, held-out questions, turns">
-      <h3 class="panel-title">Top class, held-out questions</h3><p class="note empty">No configuration was measured on the top class with the held-out questions.</p>
+    <div class="panel" data-class="top" data-set="held-out" role="group" aria-label="Claude Opus 5.5, maximum effort, held-out questions, turns">
+      <h3 class="panel-title">Claude Opus 5.5, maximum effort, held-out questions</h3><p class="note empty">No configuration was measured on Claude Opus 5.5, maximum effort with the held-out questions.</p>
     </div>
     <p class="runner-status" hidden>Motion is off. Each run is shown finished.</p>
     <div class="runners-bar"><button type="button" class="btn quiet replay">Replay</button></div>
@@ -338,6 +388,139 @@
 </section>
 <!--/slot:runners-->
   </div>
+
+  <!--slot:team--><section class="section" aria-labelledby="team">
+    <h2 id="team" class="section-title">Round six: teams of agents</h2>
+    <p class="group-title">Round six, run on 2026-10-14, put the engine in the setups a team of agents uses: 351 agents in 135 runs over 45 cells, three runs a cell. Each finding below sets two setups of this round against each other, on the same repository and the same question sets. The one comparison that crosses rounds is the highlighted configuration against no index, because the no-index agent was last run in round five, a day earlier; it is marked where it appears. The builders of the engine wrote the questions.</p>
+    <div class="pick" id="pick">
+      <h3 class="pick-title">What the rule picked, and what that means</h3>
+      <p class="pick-text">The rule is the highest share of fully correct runs over four cells, then the fewest tokens. Six configurations were eligible and four of them were fully correct in every run of the four cells. A pack alone used the fewest tokens of those, so it is the one marked. The rule was written after round five and before round six ran. After it, in the rule's order, and averaged over the same four cells:</p>
+      <ul class="pick-after"><li><b>PGR, graph and search, with a brief pack</b><span>12 of 12 fully correct, 155k tokens, 2.2 turns</span></li><li><b>PGR: graph and search</b><span>12 of 12 fully correct, 157k tokens, 2.3 turns</span></li><li><b>PGR: code graph</b><span>12 of 12 fully correct, 198k tokens, 2.9 turns</span></li></ul>
+      <ul class="pick-caveats">
+        <li><b>What a pack alone means for your own agents.</b> The harness that starts the agent runs <code>pgr pack</code> on the task and puts the output in the agent's brief. The agent answers from it and calls no command and no tool. Making a pack used no language model: the program&#x27;s own search found the matches, with its small neural table switched on. The agent made one call, with the pack in its prompt.</li>
+        <li><b>The questions suit it.</b> The builders wrote them, and two of the three in each set name the function in backticks. A pack is built from the words of the question, so it finds such a function at once.</li>
+        <li><b>The held-out questions are not held out for it.</b> The part of the pack that finds the functions a question names was written after the held-out questions had been run in round five. For this pick they are a second set of questions, not an untouched one.</li>
+        <li><b>It has not been tested on open-ended work.</b> Nothing here asked an agent to find a bug, change code or explore a repository it was not pointed at. Where the pack misses what is needed, an agent with no command cannot look further.</li>
+        <li><b>The saving against no index crosses rounds.</b> No index was last run in round five, a day earlier than round six. The same configuration run in both rounds started with a context 296 tokens larger in round six, 0.5% of that context.</li>
+      </ul>
+    </div>
+    <div class="finding-list">
+    <div class="card finding" id="team-pack-alone">
+      <h3 class="finding-title">A pack alone</h3>
+      <p class="finding-text">With a pack in the prompt and no tool at all, one agent answered the three lookups in one turn on 70k to 71k tokens and was fully correct in 12 of 12 runs over four cells: Claude Haiku 5.5 and Claude Sonnet 5.5, on the original and the held-out questions. The baseline of the same round, one agent with the lookup command and no pack, needed 135k to 181k tokens over 2.0 to 2.7 turns on Claude Haiku 5.5, so on that model the pack alone used 48% to 61% fewer tokens. Another tool on the test machine altered a read in 1 of the 12 runs of these pairs; with those runs set aside the change would be 48% fewer (Claude Haiku 5.5 at low effort, original questions).</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions</p><div class="rl-fig"><span class="rl-lane best"><span class="rl-name">A pack alone</span><span class="rl-num">71k</span><span class="rl-bar"><i style="--v:0.3900"></i></span></span><span class="rl-lane ref"><span class="rl-name">Lookup command, no pack</span><span class="rl-num">181k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions</p><div class="rl-fig"><span class="rl-lane best"><span class="rl-name">A pack alone</span><span class="rl-num">71k</span><span class="rl-bar"><i style="--v:0.3915"></i></span></span><span class="rl-lane ref"><span class="rl-name">Lookup command, no pack</span><span class="rl-num">135k</span><span class="rl-bar"><i style="--v:0.7472"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Sonnet 5.5 at medium effort, original questions</p><div class="rl-fig"><span class="rl-lane best"><span class="rl-name">A pack alone</span><span class="rl-num">70k</span><span class="rl-bar"><i style="--v:0.3861"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Sonnet 5.5 at medium effort, held-out questions</p><div class="rl-fig"><span class="rl-lane best"><span class="rl-name">A pack alone</span><span class="rl-num">70k</span><span class="rl-bar"><i style="--v:0.3857"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">A pack alone, Claude Haiku 5.5 at low effort, original questions</span><span class="value">71k tokens, 1.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack alone, Claude Haiku 5.5 at low effort, held-out questions</span><span class="value">71k tokens, 1.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack alone, Claude Sonnet 5.5 at medium effort, original questions</span><span class="value">70k tokens, 1.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack alone, Claude Sonnet 5.5 at medium effort, held-out questions</span><span class="value">70k tokens, 1.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Lookup command, no pack, Claude Haiku 5.5 at low effort, original questions</span><span class="value">181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">Lookup command, no pack, Claude Haiku 5.5 at low effort, held-out questions</span><span class="value">135k tokens, 2.0 turns, 3 of 3 fully correct</span></li>
+      </ul>
+    </div>
+    <div class="card finding" id="team-pack-in-briefs">
+      <h3 class="finding-title">Packs in the briefs of three subagents</h3>
+      <p class="finding-text">Three subagents started together, one question each, with nobody checking their answers (Claude Haiku 5.5): with a pack in each brief the three used 27% to 32% fewer tokens than without, and every answer was fully correct (12 of 12 runs, both ways). With an orchestrator (Claude Opus 5.5) that writes the briefs and checks the answers, the packs moved the total from 13% fewer to 1% more tokens (12 of 12 runs fully correct), and the runs of the two sides overlap. Another tool on the test machine altered a read in 1 of the 12 runs of these pairs; with those runs set aside the change would be 8% fewer (Claude Haiku 5.5 at low effort, original questions, with an orchestrator).</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, three subagents</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No pack</span><span class="rl-num">399k</span><span class="rl-bar"><i style="--v:0.8531"></i></span></span><span class="rl-lane best"><span class="rl-name">A pack in each brief</span><span class="rl-num">269k</span><span class="rl-bar"><i style="--v:0.5759"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, three subagents</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No pack</span><span class="rl-num">468k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">A pack in each brief</span><span class="rl-num">340k</span><span class="rl-bar"><i style="--v:0.7260"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">No pack, Claude Haiku 5.5 at low effort, original questions, three subagents</span><span class="value">399k tokens, 6.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack in each brief, Claude Haiku 5.5 at low effort, original questions, three subagents</span><span class="value">269k tokens, 4.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">No pack, Claude Haiku 5.5 at low effort, held-out questions, three subagents</span><span class="value">468k tokens, 7.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack in each brief, Claude Haiku 5.5 at low effort, held-out questions, three subagents</span><span class="value">340k tokens, 5.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">No pack, Claude Haiku 5.5 at low effort, original questions, with an orchestrator</span><span class="value">805k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">A pack, Claude Haiku 5.5 at low effort, original questions, with an orchestrator</span><span class="value">702k tokens, 10.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">No pack, Claude Haiku 5.5 at low effort, held-out questions, with an orchestrator</span><span class="value">855k tokens, 12.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack, Claude Haiku 5.5 at low effort, held-out questions, with an orchestrator</span><span class="value">863k tokens, 12.0 turns, 3 of 3 fully correct</span></li>
+      </ul>
+    </div>
+    <div class="card finding" id="team-pack-with-commands">
+      <h3 class="finding-title">A pack and the commands together</h3>
+      <p class="finding-text">One agent given the pack and the lookup commands as well, on Claude Haiku 5.5, used from 34% fewer to 42% more tokens than the same agent with no pack. Over its twelve runs, on both models and both question sets, it ran a lookup anyway in 11 and answered in one turn in 1: with commands in reach, the pack did not take the asking turn away. Another tool on the test machine altered a read in 1 of the 12 runs of these pairs; with those runs set aside the change would be 12% fewer (Claude Haiku 5.5 at low effort, original questions, one agent).</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, one agent</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No pack</span><span class="rl-num">181k</span><span class="rl-bar"><i style="--v:0.9410"></i></span></span><span class="rl-lane best"><span class="rl-name">A pack and the commands</span><span class="rl-num">119k</span><span class="rl-bar"><i style="--v:0.6167"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, one agent</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No pack</span><span class="rl-num">135k</span><span class="rl-bar"><i style="--v:0.7031"></i></span></span><span class="rl-lane best"><span class="rl-name">A pack and the commands</span><span class="rl-num">192k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">No pack, Claude Haiku 5.5 at low effort, original questions, one agent</span><span class="value">181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">A pack and the commands, Claude Haiku 5.5 at low effort, original questions, one agent</span><span class="value">119k tokens, 1.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">No pack, Claude Haiku 5.5 at low effort, held-out questions, one agent</span><span class="value">135k tokens, 2.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack and the commands, Claude Haiku 5.5 at low effort, held-out questions, one agent</span><span class="value">192k tokens, 2.7 turns, 3 of 3 fully correct</span></li>
+      </ul>
+    </div>
+    <div class="card finding" id="team-hub">
+      <h3 class="finding-title">The team hub</h3>
+      <p class="finding-text">On lookup work an orchestrated team (Claude Opus 5.5 orchestrating, Claude Haiku 5.5 answering) used 14% to 34% more tokens when its subagents filed what they found in the hub and the reviewer started from it, and gained no accuracy: 24 of 24 runs were fully correct, with the hub and without. Another tool on the test machine altered a read in 3 of the 24 runs of these pairs; with those runs set aside the change would be 36% more (Claude Haiku 5.5 at low effort, original questions, orchestrated); 36% more (Claude Haiku 5.5 at low effort, held-out questions, orchestrated). A small demonstration set, written by the builders so that each answer needs a note an earlier agent filed, shows what the hub is for: Claude Haiku 5.5 got 0 of 15 note fields right with no notes, 15 of 15 when it loaded the notes itself and 15 of 15 when the notes were put in its brief, the lowest mean of the three, though the runs of the three overlap: 163k tokens against 207k to load them and 206k with none.</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, orchestrated</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No hub</span><span class="rl-num">805k</span><span class="rl-bar"><i style="--v:0.7332"></i></span></span><span class="rl-lane best"><span class="rl-name">A team hub</span><span class="rl-num">1.06M</span><span class="rl-bar"><i style="--v:0.9685"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, orchestrated</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No hub</span><span class="rl-num">855k</span><span class="rl-bar"><i style="--v:0.7787"></i></span></span><span class="rl-lane best"><span class="rl-name">A team hub</span><span class="rl-num">1.10M</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, orchestrated</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No hub</span><span class="rl-num">702k</span><span class="rl-bar"><i style="--v:0.6396"></i></span></span><span class="rl-lane best"><span class="rl-name">A team hub</span><span class="rl-num">939k</span><span class="rl-bar"><i style="--v:0.8558"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, orchestrated</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">No hub</span><span class="rl-num">863k</span><span class="rl-bar"><i style="--v:0.7861"></i></span></span><span class="rl-lane best"><span class="rl-name">A team hub</span><span class="rl-num">980k</span><span class="rl-bar"><i style="--v:0.8929"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">No hub, Claude Haiku 5.5 at low effort, original questions, orchestrated</span><span class="value">805k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">A team hub, Claude Haiku 5.5 at low effort, original questions, orchestrated</span><span class="value">1.06M tokens, 15.3 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">No hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated</span><span class="value">855k tokens, 12.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A team hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated</span><span class="value">1.10M tokens, 15.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">A pack, no hub, Claude Haiku 5.5 at low effort, original questions, orchestrated</span><span class="value">702k tokens, 10.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack and a team hub, Claude Haiku 5.5 at low effort, original questions, orchestrated</span><span class="value">939k tokens, 13.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack, no hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated</span><span class="value">863k tokens, 12.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack and a team hub, Claude Haiku 5.5 at low effort, held-out questions, orchestrated</span><span class="value">980k tokens, 13.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Demonstration set, no notes, Claude Haiku 5.5 at low effort</span><span class="value">0 of 15 note fields right, 206k tokens, 3.0 turns</span></li>
+      <li class="row"><span class="label">Demonstration set, the agent loads the notes, Claude Haiku 5.5 at low effort</span><span class="value">15 of 15 note fields right, 207k tokens, 3.0 turns</span></li>
+      <li class="row"><span class="label">Demonstration set, the notes in the brief, Claude Haiku 5.5 at low effort</span><span class="value">15 of 15 note fields right, 163k tokens, 2.3 turns</span></li>
+      </ul>
+    </div>
+    <div class="card finding" id="team-virtual-machine">
+      <h3 class="finding-title">The tools in a virtual machine</h3>
+      <p class="finding-text">With the repository and the tools inside an Ubuntu virtual machine (WSL 2) and the agent outside it, 18 of 18 runs were fully correct, against 18 of 18 on Windows, and the mean tokens moved from 13% fewer to 9% more over six pairs, while the three runs of one cell differ from each other by up to 104%. Another tool on the test machine altered a read in 3 of the 36 runs of these pairs; with those runs set aside the change would be 18% more (Claude Haiku 5.5 at low effort, original questions, one agent); 1% more (Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub); 3% more (Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub). The tools ran inside the machine and no step used the desktop, the mouse or the keyboard; nothing here measured an agent working beside a person at the same computer.</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, one agent</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">On Windows</span><span class="rl-num">181k</span><span class="rl-bar"><i style="--v:0.1517"></i></span></span><span class="rl-lane best"><span class="rl-name">In the virtual machine</span><span class="rl-num">158k</span><span class="rl-bar"><i style="--v:0.1326"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, one agent</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">On Windows</span><span class="rl-num">135k</span><span class="rl-bar"><i style="--v:0.1133"></i></span></span><span class="rl-lane best"><span class="rl-name">In the virtual machine</span><span class="rl-num">135k</span><span class="rl-bar"><i style="--v:0.1132"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">On Windows</span><span class="rl-num">1.06M</span><span class="rl-bar"><i style="--v:0.8901"></i></span></span><span class="rl-lane best"><span class="rl-name">In the virtual machine</span><span class="rl-num">1.05M</span><span class="rl-bar"><i style="--v:0.8772"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">On Windows</span><span class="rl-num">1.10M</span><span class="rl-bar"><i style="--v:0.9191"></i></span></span><span class="rl-lane best"><span class="rl-name">In the virtual machine</span><span class="rl-num">1.19M</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, orchestrated, with a pack and the hub</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">On Windows</span><span class="rl-num">939k</span><span class="rl-bar"><i style="--v:0.7865"></i></span></span><span class="rl-lane best"><span class="rl-name">In the virtual machine</span><span class="rl-num">931k</span><span class="rl-bar"><i style="--v:0.7801"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with a pack and the hub</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">On Windows</span><span class="rl-num">980k</span><span class="rl-bar"><i style="--v:0.8206"></i></span></span><span class="rl-lane best"><span class="rl-name">In the virtual machine</span><span class="rl-num">985k</span><span class="rl-bar"><i style="--v:0.8250"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">On Windows, Claude Haiku 5.5 at low effort, original questions, one agent</span><span class="value">181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">In the virtual machine, Claude Haiku 5.5 at low effort, original questions, one agent</span><span class="value">158k tokens, 2.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">On Windows, Claude Haiku 5.5 at low effort, held-out questions, one agent</span><span class="value">135k tokens, 2.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">In the virtual machine, Claude Haiku 5.5 at low effort, held-out questions, one agent</span><span class="value">135k tokens, 2.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">On Windows, Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub</span><span class="value">1.06M tokens, 15.3 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">In the virtual machine, Claude Haiku 5.5 at low effort, original questions, orchestrated, with the hub</span><span class="value">1.05M tokens, 15.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">On Windows, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub</span><span class="value">1.10M tokens, 15.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">In the virtual machine, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with the hub</span><span class="value">1.19M tokens, 17.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">On Windows, Claude Haiku 5.5 at low effort, original questions, orchestrated, with a pack and the hub</span><span class="value">939k tokens, 13.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">In the virtual machine, Claude Haiku 5.5 at low effort, original questions, orchestrated, with a pack and the hub</span><span class="value">931k tokens, 13.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">On Windows, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with a pack and the hub</span><span class="value">980k tokens, 13.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">In the virtual machine, Claude Haiku 5.5 at low effort, held-out questions, orchestrated, with a pack and the hub</span><span class="value">985k tokens, 13.7 turns, 3 of 3 fully correct</span></li>
+      </ul>
+    </div>
+    <div class="card finding" id="team-no-neural-network">
+      <h3 class="finding-title">No neural network</h3>
+      <p class="finding-text">With the search working on words alone, 4 of 6 runs were fully correct, against 6 of 6 with the neural network, on Claude Haiku 5.5; the mean tokens moved up to 35% more. In the search lab, on the Study page, the search without it was not told apart from the default. Both of the runs that were not fully correct without the network had a read altered by another tool on the test machine, and the runs without the network that the tool did not touch were all fully correct, so these runs cannot tell the missing network from that tool as the cause. Another tool on the test machine altered a read in 3 of the 12 runs of these pairs; with those runs set aside the change would be 26% more (Claude Haiku 5.5 at low effort, original questions, no pack); 26% more (Claude Haiku 5.5 at low effort, held-out questions, no pack). With a pack made on the same words-only search, 6 of 6 runs were fully correct.</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, no pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">With the neural network</span><span class="rl-num">181k</span><span class="rl-bar"><i style="--v:0.8345"></i></span></span><span class="rl-lane best"><span class="rl-name">Words only</span><span class="rl-num">182k</span><span class="rl-bar"><i style="--v:0.8367"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, no pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">With the neural network</span><span class="rl-num">135k</span><span class="rl-bar"><i style="--v:0.6236"></i></span></span><span class="rl-lane best"><span class="rl-name">Words only</span><span class="rl-num">182k</span><span class="rl-bar"><i style="--v:0.8388"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, with a pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">With the neural network</span><span class="rl-num">119k</span><span class="rl-bar"><i style="--v:0.5469"></i></span></span><span class="rl-lane best"><span class="rl-name">Words only</span><span class="rl-num">217k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, with a pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">With the neural network</span><span class="rl-num">192k</span><span class="rl-bar"><i style="--v:0.8868"></i></span></span><span class="rl-lane best"><span class="rl-name">Words only</span><span class="rl-num">168k</span><span class="rl-bar"><i style="--v:0.7761"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">With the neural network, Claude Haiku 5.5 at low effort, original questions, no pack</span><span class="value">181k tokens, 2.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">Words only, Claude Haiku 5.5 at low effort, original questions, no pack</span><span class="value">182k tokens, 2.7 turns, 2 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">With the neural network, Claude Haiku 5.5 at low effort, held-out questions, no pack</span><span class="value">135k tokens, 2.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Words only, Claude Haiku 5.5 at low effort, held-out questions, no pack</span><span class="value">182k tokens, 2.7 turns, 2 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">A pack, with the neural network, Claude Haiku 5.5 at low effort, original questions, with a pack</span><span class="value">119k tokens, 1.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack, words only, Claude Haiku 5.5 at low effort, original questions, with a pack</span><span class="value">217k tokens, 3.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack, with the neural network, Claude Haiku 5.5 at low effort, held-out questions, with a pack</span><span class="value">192k tokens, 2.7 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">A pack, words only, Claude Haiku 5.5 at low effort, held-out questions, with a pack</span><span class="value">168k tokens, 2.3 turns, 3 of 3 fully correct</span></li>
+      </ul>
+    </div>
+    <div class="card finding" id="team-three-models">
+      <h3 class="finding-title">Three models, each in its role</h3>
+      <p class="finding-text">Claude Opus 5.5 plans, Claude Haiku 5.5 looks things up and Claude Sonnet 5.5 reviews, against the same team with Claude Opus 5.5 reviewing as well: the total moved from 15% fewer to 3% more tokens over four pairs, and 24 of 24 runs were fully correct, both ways. In three of the four pairs the lowest and highest runs of the two sides cover tokens in common, so a difference there is not shown to be real. Another tool on the test machine altered a read in 2 of the 24 runs of these pairs; with those runs set aside the change would be 6% fewer (Claude Haiku 5.5 at low effort, original questions, no pack); 22% fewer (Claude Haiku 5.5 at low effort, held-out questions, no pack).</p>
+      <div class="team-lanes draw"><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, no pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">One model reviewing</span><span class="rl-num">805k</span><span class="rl-bar"><i style="--v:0.9327"></i></span></span><span class="rl-lane best"><span class="rl-name">Three models in their roles</span><span class="rl-num">715k</span><span class="rl-bar"><i style="--v:0.8293"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, no pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">One model reviewing</span><span class="rl-num">855k</span><span class="rl-bar"><i style="--v:0.9906"></i></span></span><span class="rl-lane best"><span class="rl-name">Three models in their roles</span><span class="rl-num">827k</span><span class="rl-bar"><i style="--v:0.9582"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, original questions, with a pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">One model reviewing</span><span class="rl-num">702k</span><span class="rl-bar"><i style="--v:0.8137"></i></span></span><span class="rl-lane best"><span class="rl-name">Three models in their roles</span><span class="rl-num">722k</span><span class="rl-bar"><i style="--v:0.8373"></i></span></span></div></div><div class="team-lane"><p class="team-lane-title">Claude Haiku 5.5 at low effort, held-out questions, with a pack</p><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">One model reviewing</span><span class="rl-num">863k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">Three models in their roles</span><span class="rl-num">731k</span><span class="rl-bar"><i style="--v:0.8476"></i></span></span></div></div></div>
+      <ul class="rows">
+      <li class="row"><span class="label">One model reviewing, Claude Haiku 5.5 at low effort, original questions, no pack</span><span class="value">805k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">Three models in their roles, Claude Haiku 5.5 at low effort, original questions, no pack</span><span class="value">715k tokens, 10.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">One model reviewing, Claude Haiku 5.5 at low effort, held-out questions, no pack</span><span class="value">855k tokens, 12.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Three models in their roles, Claude Haiku 5.5 at low effort, held-out questions, no pack</span><span class="value">827k tokens, 11.7 turns, 3 of 3 fully correct, 1 run with a read altered by another tool</span></li>
+      <li class="row"><span class="label">One model reviewing, Claude Haiku 5.5 at low effort, original questions, with a pack</span><span class="value">702k tokens, 10.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Three models in their roles, Claude Haiku 5.5 at low effort, original questions, with a pack</span><span class="value">722k tokens, 10.3 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">One model reviewing, Claude Haiku 5.5 at low effort, held-out questions, with a pack</span><span class="value">863k tokens, 12.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Three models in their roles, Claude Haiku 5.5 at low effort, held-out questions, with a pack</span><span class="value">731k tokens, 10.3 turns, 3 of 3 fully correct</span></li>
+      </ul>
+    </div>
+    </div>
+    <div class="fine">
+      <p class="footnote">Three runs a cell cannot support a claim of significance. A difference of one turn between two setups is noise, and so is a difference of one fully correct run.</p>
+      <p class="footnote">Another tool on the test machine, the one the Study page describes under the no-index control, was installed in round six as well. It altered a read in 11 of the round&#x27;s 135 runs, and in 5 of the 11 runs that were not fully correct. A finding that rests on a pair with such a run says so, and gives the change without it. Running the round again with that tool off would settle it; that was not done.</p>
+      <p class="footnote">The questions were written by the builders of the engine, and two of the three in each set name the function in backticks. That suits a pack, which is built from the words of the question. The third describes a job in words; the pack alone answered it too.</p>
+      <p class="footnote">None of this was tested on open-ended work: no bug to find, no change to make, no question that names no function and describes none.</p>
+      <p class="footnote">The demonstration set was written to show one feature of the hub. It is not a test nobody tuned for.</p>
+      <p class="footnote">The held-out questions are not held out for the packs of this round. The questions were written and committed before pgr 0.2.0, and the part of its pack that finds the functions a question names was written after them. For round six they are a second set of questions, not an untouched one.</p>
+    </div>
+  </section><!--/slot:team-->
 
   <!--slot:engine--><section class="section" aria-labelledby="engine">
   <h2 id="engine" class="section-title">Engine speed</h2>
@@ -363,49 +546,60 @@
 </section>
 <!--/slot:engine-->
 
+  <section class="section ch-size" aria-labelledby="size">
+    <!--slot:size--><h2 id="size" class="section-title">Size on disk</h2>
+    <p class="group-title">Sizes of the files on disk, summed per folder. The first generation is the set of separate tools the Rust engine replaces, as installed and used on the test machine; the Python interpreter itself is not counted. Its model, cache and index folders hold data for more than one repository, so they are listed apart from the programs. The index sizes are for the test repository (86 files, 68,316 lines). Sizes are in megabytes of a million bytes, the unit of the Install page. Measured 2026-10-13 on one Windows 11 laptop; the packed index of pgr 0.2.0 on 2026-10-14.</p>
+    <div class="size-grid draw">
+      <div class="card size-card"><h3>Programs and runtimes</h3><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">First generation: separate tools and their runtimes</span><span class="rl-num">505.1 MB</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr, one file, with its model</span><span class="rl-num">43.1 MB</span><span class="rl-bar"><i style="--v:0.0853"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr, one file, without its model</span><span class="rl-num">8.3 MB</span><span class="rl-bar"><i style="--v:0.0164"></i></span></span></div><p class="footnote">The first generation is graph tool: its runtime environment, 183.0 MB; search tool: its runtime environment, 242.3 MB; symbol index tool: program, 79.8 MB.</p></div>
+      <div class="card size-card"><h3>Index of the test repository</h3><div class="rl-fig"><span class="rl-lane ref"><span class="rl-name">First generation</span><span class="rl-num">15.2 MB</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr 0.1.0</span><span class="rl-num">8.5 MB</span><span class="rl-bar"><i style="--v:0.5552"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr 0.2.0, packed</span><span class="rl-num">5.9 MB</span><span class="rl-bar"><i style="--v:0.3881"></i></span></span><span class="rl-lane best"><span class="rl-name">pgr 0.2.0, packed, without the vectors</span><span class="rl-num">1.0 MB</span><span class="rl-bar"><i style="--v:0.0627"></i></span></span></div><p class="footnote">The index is what the engine builds once for a repository and reads on every lookup. The packed index of pgr 0.2.0 is 30% smaller than the one before, 8.5 MB to 5.9 MB, and lossless. The same test repository was indexed by pgr 0.2.0, with every index file written with a lossless codec (deflate, read back byte for byte). The 88 commands recorded from the benchmark and 53 pack and loadout outputs print exactly what they printed before; query times stay inside their targets.</p></div>
+    </div>
+    <p class="footnote">Listed apart from the programs: the first generation&#x27;s models, caches and index folders hold 619.9 MB, for a total of 1125.0 MB. The new program is 1 file. The model inside the program file was left uncompressed: the best lossless codec saved 14.7%, under the 15% bar, and would need a 32 MB copy beside the program.</p>
+    <p class="lang-line">The engine, pgr, is written in Rust, all of it. Python is around it, not inside it: the repository the benchmark asks questions about is a Python project, the first generation&#x27;s tools, the benchmark harness and this site&#x27;s generator are Python programs, and uv, pipx and pip are optional ways to deliver the same Rust program.</p><!--/slot:size-->
+  </section>
+
   <section class="section" aria-labelledby="findings">
     <h2 id="findings" class="section-title">Findings</h2>
     <p class="group-title">In plain sentences, with their numbers.</p>
     <div class="card">
       <ul class="plain"><!--slot:headline-->
-      <li>On the light class and the original questions, in these runs, one agent using &quot;PGR: graph and search&quot; needed 134k tokens and 2.0 turns for the three lookups, against 294k tokens and 4.0 turns with no index: 54% fewer tokens in this one cell. Across the four cells where both were measured, the light and mid classes on the original and the held-out questions, the saving against no index was 28% to 54% in tokens.</li>
-      <li>In these runs &quot;PGR: graph and search&quot; was fully correct in 3 of 3 runs on the light class and the original questions, and &quot;Our engine, first generation, with embeddings&quot; in 3 of 3. Over the four cells where both were measured, 12 of 12 against 10 of 11. A run is fully correct when all three answers are. Fully correct counts are not set against no index: another tool on the test machine altered some of the no-index agent&#x27;s reads, which lowered its correctness.</li>
-      <li>Two turns is the floor for this task: one to ask and one to answer. On the original questions &quot;PGR: graph and search&quot; answered in 2 turns on both classes, with 134k tokens on the light class and 133k on the mid class; &quot;Our engine, first generation, with embeddings&quot; also took 2 turns on both, with 134k tokens on the light class and 133k on the mid class. On these lookups the first generation matched it in tokens and turns; the measured difference between the two generations is speed, under Engine speed. On the held-out questions &quot;PGR: graph and search&quot; took 2.7 turns on the light class and 2.7 on the mid class, and &quot;Our engine, first generation, with embeddings&quot; 2.0 turns on the light class and 4.0 on the mid class.</li>
-      <li>Tokens follow turns, because most of a run&#x27;s tokens are the agent&#x27;s start-up context, read again on every turn. On the light class and the original questions the leanest published configuration, &quot;Our engine, first generation&quot;, took 2.0 turns and 134k tokens, and the heaviest, &quot;Two separate tools: code graph and semantic search&quot;, 7.0 turns and 480k tokens.</li>
-      <li>With no index, in these runs, one agent used 294k tokens on the light class (3 runs) and 261k tokens on the mid class (3 runs) on the original questions. The larger model class did not need far fewer tokens for the same lookups.</li>
+      <li>On Claude Haiku 5.5 at low effort and the original questions, in these runs, one agent using &quot;A brief pack alone, without a lookup command&quot; needed 71k tokens and 1.0 turns for the three lookups, against 294k tokens and 4.0 turns with no index: 76% fewer tokens in this one cell. Across the four cells where both were measured, Claude Haiku 5.5 at low effort and Claude Sonnet 5.5 at medium effort on the original and the held-out questions, the saving against no index was 72% to 80% in tokens.</li>
+      <li>In these runs &quot;A brief pack alone, without a lookup command&quot; was fully correct in 3 of 3 runs on Claude Haiku 5.5 at low effort and the original questions, and &quot;Our engine, first generation, with embeddings&quot; in 3 of 3. Over the four cells where both were measured, 12 of 12 against 10 of 11. A run is fully correct when all three answers are. Fully correct counts are not set against no index: another tool on the test machine altered some of the no-index agent&#x27;s reads, which lowered its correctness.</li>
+      <li>Two turns is the floor for a task that needs a lookup command: one to ask and one to answer. On the original questions &quot;Our engine, first generation, with embeddings&quot; took 2 turns on both classes, with 134k tokens on Claude Haiku 5.5 at low effort and 133k on Claude Sonnet 5.5 at medium effort. &quot;A brief pack alone, without a lookup command&quot; has no command to call: with the pack already in its prompt it answered in 1 turn on both classes, with 71k tokens on Claude Haiku 5.5 at low effort and 70k on Claude Sonnet 5.5 at medium effort. On the held-out questions &quot;A brief pack alone, without a lookup command&quot; took 1.0 turns on Claude Haiku 5.5 at low effort and 1.0 on Claude Sonnet 5.5 at medium effort, and &quot;Our engine, first generation, with embeddings&quot; 2.0 turns on Claude Haiku 5.5 at low effort and 4.0 on Claude Sonnet 5.5 at medium effort.</li>
+      <li>Tokens follow turns, because most of a run&#x27;s tokens are the agent&#x27;s start-up context, read again on every turn. On Claude Haiku 5.5 at low effort and the original questions the leanest published configuration, &quot;A brief pack alone, without a lookup command&quot;, took 1.0 turns and 71k tokens, and the heaviest, &quot;Two separate tools: code graph and semantic search&quot;, 7.0 turns and 480k tokens.</li>
+      <li>With no index, in these runs, one agent used 294k tokens on Claude Haiku 5.5 at low effort (3 runs) and 261k tokens on Claude Sonnet 5.5 at medium effort (3 runs) on the original questions. The larger model did not need far fewer tokens for the same lookups.</li>
     <!--/slot:headline--></ul>
     </div>
     <div class="finding-list">
       <!--slot:findings--><div class="card finding">
     <h3 class="finding-title">Held-out questions</h3>
-    <p class="finding-text">Of the 6 configurations measured on both question sets, &quot;PGR: code graph&quot; and &quot;PGR: graph and search&quot; were fully correct in every run, in these runs. On the held-out questions &quot;PGR: graph and search&quot; needed 181k tokens and 2.7 turns on the light class and 180k and 2.7 on the mid class; &quot;Our engine, first generation, with embeddings&quot; needed 134k tokens and 2.0 turns on the light class and 272k and 4.0 on the mid class. No index needed 361k tokens and 4.7 turns on the light class and 250k and 3.5 on the mid class, so on the held-out questions &quot;PGR: graph and search&quot; used 50% fewer tokens on the light class and 28% fewer on the mid class. These are higher than on the original questions, where &quot;PGR: graph and search&quot; needed 134k tokens and 2.0 turns on the light class and 133k and 2.0 on the mid class.</p>
+    <p class="finding-text">Of the 14 configurations measured on both question sets, &quot;PGR: code graph&quot;, &quot;PGR: graph and search&quot;, &quot;PGR, graph and search, round six&quot;, &quot;PGR, graph and search, with a brief pack&quot;, &quot;PGR, graph and search, in an Ubuntu virtual machine&quot;, &quot;PGR, graph and search, with a brief pack, without the neural network&quot; and &quot;A brief pack alone, without a lookup command&quot; were fully correct in every run, in these runs. On the held-out questions &quot;A brief pack alone, without a lookup command&quot; needed 71k tokens and 1.0 turns on Claude Haiku 5.5 at low effort and 70k and 1.0 on Claude Sonnet 5.5 at medium effort; &quot;Our engine, first generation, with embeddings&quot; needed 134k tokens and 2.0 turns on Claude Haiku 5.5 at low effort and 272k and 4.0 on Claude Sonnet 5.5 at medium effort. No index needed 361k tokens and 4.7 turns on Claude Haiku 5.5 at low effort and 250k and 3.5 on Claude Sonnet 5.5 at medium effort, so on the held-out questions &quot;A brief pack alone, without a lookup command&quot; used 80% fewer tokens on Claude Haiku 5.5 at low effort and 72% fewer on Claude Sonnet 5.5 at medium effort.</p>
     <ul class="rows">
-      <li class="row"><span class="label">Most reliable, light class</span><span class="value">181k tokens, 2.7 turns, 3 of 3 fully correct</span></li>
-      <li class="row"><span class="label">Most reliable, mid class</span><span class="value">180k tokens, 2.7 turns, 3 of 3 fully correct</span></li>
-      <li class="row"><span class="label">First generation, light class</span><span class="value">134k tokens, 2.0 turns, 2 of 3 fully correct</span></li>
-      <li class="row"><span class="label">First generation, mid class</span><span class="value">272k tokens, 4.0 turns, 2 of 2 fully correct</span></li>
-      <li class="row"><span class="label">No index, light class</span><span class="value">361k tokens, 4.7 turns, 3 runs</span></li>
-      <li class="row"><span class="label">No index, mid class</span><span class="value">250k tokens, 3.5 turns, 2 runs</span></li>
+      <li class="row"><span class="label">Most reliable, Claude Haiku 5.5 at low effort</span><span class="value">71k tokens, 1.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">Most reliable, Claude Sonnet 5.5 at medium effort</span><span class="value">70k tokens, 1.0 turns, 3 of 3 fully correct</span></li>
+      <li class="row"><span class="label">First generation, Claude Haiku 5.5 at low effort</span><span class="value">134k tokens, 2.0 turns, 2 of 3 fully correct</span></li>
+      <li class="row"><span class="label">First generation, Claude Sonnet 5.5 at medium effort</span><span class="value">272k tokens, 4.0 turns, 2 of 2 fully correct</span></li>
+      <li class="row"><span class="label">No index, Claude Haiku 5.5 at low effort</span><span class="value">361k tokens, 4.7 turns, 3 runs</span></li>
+      <li class="row"><span class="label">No index, Claude Sonnet 5.5 at medium effort</span><span class="value">250k tokens, 3.5 turns, 2 runs</span></li>
     </ul>
   </div>
   <div class="card finding">
     <h3 class="finding-title">Parts</h3>
-    <p class="finding-text">Across both question sets, search alone listed every caller of a function in 1 of 6 light-class runs and 5 of 6 mid-class runs; graph alone did in 6 of 6 and 6 of 6. Over the four cells, graph alone averaged 2.9 turns and 198k tokens, and graph and search together 2.3 turns and 157k. Cell by cell, graph alone used fewer tokens in 1 of 4 cells and within 2% of graph and search in 1 of 4 more.</p>
+    <p class="finding-text">Across both question sets, search alone listed every caller of a function in 1 of 6 Claude Haiku 5.5 (low effort) runs and 5 of 6 Claude Sonnet 5.5 (medium effort) runs; graph alone did in 6 of 6 and 6 of 6. Over the four cells, graph alone averaged 2.9 turns and 198k tokens, and graph and search together 2.3 turns and 157k. Cell by cell, graph alone used fewer tokens in 1 of 4 cells and within 2% of graph and search in 1 of 4 more.</p>
     <ul class="rows">
-      <li class="row"><span class="label">Search alone, every caller listed, light class</span><span class="value">1 of 6</span></li>
-      <li class="row"><span class="label">Search alone, every caller listed, mid class</span><span class="value">5 of 6</span></li>
-      <li class="row"><span class="label">Graph alone, every caller listed, light class</span><span class="value">6 of 6</span></li>
-      <li class="row"><span class="label">Graph alone, every caller listed, mid class</span><span class="value">6 of 6</span></li>
+      <li class="row"><span class="label">Search alone, every caller listed, Claude Haiku 5.5 at low effort</span><span class="value">1 of 6</span></li>
+      <li class="row"><span class="label">Search alone, every caller listed, Claude Sonnet 5.5 at medium effort</span><span class="value">5 of 6</span></li>
+      <li class="row"><span class="label">Graph alone, every caller listed, Claude Haiku 5.5 at low effort</span><span class="value">6 of 6</span></li>
+      <li class="row"><span class="label">Graph alone, every caller listed, Claude Sonnet 5.5 at medium effort</span><span class="value">6 of 6</span></li>
       <li class="row"><span class="label">Search alone, fully correct runs</span><span class="value">6 of 12</span></li>
       <li class="row"><span class="label">Graph alone, fully correct runs</span><span class="value">12 of 12</span></li>
-      <li class="row"><span class="label">Graph alone, light class, original</span><span class="value">273k tokens, 4.0 turns</span></li>
-      <li class="row"><span class="label">Graph and search, light class, original</span><span class="value">134k tokens, 2.0 turns</span></li>
-      <li class="row"><span class="label">Graph alone, mid class, original</span><span class="value">135k tokens, 2.0 turns</span></li>
-      <li class="row"><span class="label">Graph and search, mid class, original</span><span class="value">133k tokens, 2.0 turns</span></li>
-      <li class="row"><span class="label">Graph alone, light class, held-out</span><span class="value">251k tokens, 3.7 turns</span></li>
-      <li class="row"><span class="label">Graph and search, light class, held-out</span><span class="value">181k tokens, 2.7 turns</span></li>
-      <li class="row"><span class="label">Graph alone, mid class, held-out</span><span class="value">134k tokens, 2.0 turns</span></li>
-      <li class="row"><span class="label">Graph and search, mid class, held-out</span><span class="value">180k tokens, 2.7 turns</span></li>
+      <li class="row"><span class="label">Graph alone, Claude Haiku 5.5 at low effort, original</span><span class="value">273k tokens, 4.0 turns</span></li>
+      <li class="row"><span class="label">Graph and search, Claude Haiku 5.5 at low effort, original</span><span class="value">134k tokens, 2.0 turns</span></li>
+      <li class="row"><span class="label">Graph alone, Claude Sonnet 5.5 at medium effort, original</span><span class="value">135k tokens, 2.0 turns</span></li>
+      <li class="row"><span class="label">Graph and search, Claude Sonnet 5.5 at medium effort, original</span><span class="value">133k tokens, 2.0 turns</span></li>
+      <li class="row"><span class="label">Graph alone, Claude Haiku 5.5 at low effort, held-out</span><span class="value">251k tokens, 3.7 turns</span></li>
+      <li class="row"><span class="label">Graph and search, Claude Haiku 5.5 at low effort, held-out</span><span class="value">181k tokens, 2.7 turns</span></li>
+      <li class="row"><span class="label">Graph alone, Claude Sonnet 5.5 at medium effort, held-out</span><span class="value">134k tokens, 2.0 turns</span></li>
+      <li class="row"><span class="label">Graph and search, Claude Sonnet 5.5 at medium effort, held-out</span><span class="value">180k tokens, 2.7 turns</span></li>
     </ul>
   </div>
   <div class="card finding">
@@ -434,12 +628,12 @@
   </div>
   <div class="card finding">
     <h3 class="finding-title">Orchestration</h3>
-    <p class="finding-text">With a reviewing agent on top of three light workers, 48 of 48 runs ended fully correct, against 98 of 106 for one light agent alone, on the original questions. The reviewing agent is of a larger model class than the workers, so this compares more than orchestration. A run cost about 90 times as much. That is an estimate: a price list applied to the measured tokens, pooled over 36 configurations, and for 45 of 48 orchestrated runs the planning cost is itself estimated from the planning calls that were measured.</p>
+    <p class="finding-text">With a reviewing agent on top of three Claude Haiku 5.5 (low effort) workers, 84 of 84 runs ended fully correct, against 110 of 118 for one Claude Haiku 5.5 agent alone, on the held-out and original questions. The reviewing agent is of a larger model than the workers, so this compares more than orchestration. A run cost about 106 times as much. That is an estimate: a price list applied to the measured tokens, pooled over 40 configurations, and for 45 of 84 orchestrated runs the planning cost is itself estimated from the planning calls that were measured.</p>
     <ul class="rows">
-      <li class="row"><span class="label">Fully correct, orchestrated</span><span class="value">48 of 48</span></li>
-      <li class="row"><span class="label">Fully correct, one light agent</span><span class="value">98 of 106</span></li>
-      <li class="row"><span class="label">Estimated cost of one run</span><span class="value">about 90 times</span></li>
-      <li class="row"><span class="label">Orchestrated runs with an estimated planning cost</span><span class="value">45 of 48</span></li>
+      <li class="row"><span class="label">Fully correct, orchestrated</span><span class="value">84 of 84</span></li>
+      <li class="row"><span class="label">Fully correct, one Claude Haiku 5.5 agent</span><span class="value">110 of 118</span></li>
+      <li class="row"><span class="label">Estimated cost of one run</span><span class="value">about 106 times</span></li>
+      <li class="row"><span class="label">Orchestrated runs with an estimated planning cost</span><span class="value">45 of 84</span></li>
     </ul>
   </div>
   <div class="card finding">
@@ -455,20 +649,45 @@
     </div>
   </section>
 
+  <!--slot:harness-two--><section class="section" aria-labelledby="second-harness">
+  <h2 id="second-harness" class="section-title">Under the Codex CLI</h2>
+  <p class="cx-headline">No consistent saving was shown under that agent program.</p>
+  <p class="group-title">A small second check with the Codex CLI with gpt-6-astra at medium effort: the same three lookups, one agent a session, three sessions in each cell, on both question sets. On the first set the sessions with pgr, against those with no index, used fewer tokens; on the second set they used more. Every session was fully correct, so correctness separated nothing. The figures are the means of the sessions of each cell, and they are not set beside the Claude Code figures above.</p>
+  <div class="cx-grid draw">
+    <div class="card cx-card"><h3 class="cx-title">Original questions</h3>
+      <p class="cx-verdict"><b>37.5%</b> fewer tokens with pgr</p>
+      <div class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">No index</span><span class="rl-num">129k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span><span class="rl-lane best"><span class="rl-name">With pgr</span><span class="rl-num">81k</span><span class="rl-bar"><i style="--v:0.6250"></i></span></span></div>
+      <ul class="cx-facts"><li>Mean tokens in a session: 129k with no index, 81k with pgr.</li><li>Fully correct sessions: 3 of 3 with no index, 3 of 3 with pgr.</li><li>The sessions of a cell ranged from 86k to 184k with no index and from 54k to 108k with pgr, a spread as wide as the gap between the means.</li></ul>
+    </div>
+    <div class="card cx-card"><h3 class="cx-title">Held-out questions</h3>
+      <p class="cx-verdict"><b>15.4%</b> more tokens with pgr</p>
+      <div class="rl-fig" aria-hidden="true"><span class="rl-lane ref"><span class="rl-name">No index</span><span class="rl-num">120k</span><span class="rl-bar"><i style="--v:0.8668"></i></span></span><span class="rl-lane best"><span class="rl-name">With pgr</span><span class="rl-num">139k</span><span class="rl-bar"><i style="--v:1.0000"></i></span></span></div>
+      <ul class="cx-facts"><li>Mean tokens in a session: 120k with no index, 139k with pgr.</li><li>Fully correct sessions: 3 of 3 with no index, 3 of 3 with pgr.</li><li>The sessions of a cell ranged from 120k to 121k with no index and from 110k to 166k with pgr, a spread as wide as the gap between the means.</li></ul>
+    </div>
+  </div>
+  <ul class="plain cx-limits"><li>Three sessions in each cell support no claim of significance.</li><li>One repository, the same Python project as the rest of this site.</li><li>The Codex CLI counts tokens its own way, with its own instructions, tools and caching, so its counts are not comparable with the Claude Code counts on this site. Only the two methods inside this check can be compared with each other.</li><li>One agent answers three questions in a session. Orchestration, subagents and the memory were not measured under the Codex CLI.</li><li>The questions were written by the builders of pgr.</li></ul>
+</section>
+<!--/slot:harness-two-->
+
 </main>
-<footer class="foot">
-  <p>Implementation details are not published. This site reports measured outcomes only.</p>
-  <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
-</footer>
-<!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
-    <span class="tab-ind" aria-hidden="true" style="--n:4;--i:1"></span>
-    <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
-    <a href="benchmarks.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg><span>Benchmarks</span></a>
-    <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
-    <a href="install.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
-  </nav><!--/slot:tabbar-->
-<script src="data/showcase.js?v=8fe6540f"></script>
-<script src="assets/app.js?v=fe9ca4e1"></script>
-<script src="assets/benchmarks.js?v=ce1a11fa"></script>
+<!--slot:foot--><footer class="foot" id="foot">
+    <div class="foot-in">
+      <div class="foot-brand"><p class="foot-name"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+        <p>A desktop command-line tool for AI coding agents.</p>
+        <p class="foot-built">Results built 2026-10-14.</p></div>
+      <nav class="sitemap" aria-label="Site map">
+      <div class="sm-col"><a class="sm-page" href="index.html">Overview</a><ul><li><a href="index.html#problem">Every turn re-reads everything</a></li><li><a href="index.html#result">What it saves</a></li><li><a href="index.html#benefits">What it does for an agent</a></li><li><a href="index.html#most-reliable">Most reliable configuration</a></li><li><a href="index.html#teams">Teams of agents</a></li><li><a href="index.html#size">Size on disk</a></li><li><a href="index.html#films">Films</a></li><li><a href="index.html#next">Install it in one paste</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="benchmarks.html">Benchmarks</a><ul><li><a href="benchmarks.html#leaderboard">Leaderboard</a></li><li><a href="benchmarks.html#chart">Which configurations are cheap and correct?</a></li><li><a href="benchmarks.html#turns">Turns per task</a></li><li><a href="benchmarks.html#team">Round six: teams of agents</a></li><li><a href="benchmarks.html#engine">Engine speed</a></li><li><a href="benchmarks.html#size">Size on disk</a></li><li><a href="benchmarks.html#findings">Findings</a></li><li><a href="benchmarks.html#second-harness">Under the Codex CLI</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="study.html">Study</a><ul><li><a href="study.html#asked">What was asked</a></li><li><a href="study.html#sets">Question sets</a></li><li><a href="study.html#graded">How answers were graded</a></li><li><a href="study.html#told">What each agent was told</a></li><li><a href="study.html#scale">How much was run</a></li><li><a href="study.html#tokens">What a token count is</a></li><li><a href="study.html#classes">Models</a></li><li><a href="study.html#sessions">Sessions and memory</a></li><li><a href="study.html#team">Round six: teams of agents</a></li><li><a href="study.html#control">The control</a></li><li><a href="study.html#limits">Limits</a></li><li><a href="study.html#lab">Search without a neural network</a></li><li><a href="study.html#second">A second agent program</a></li><li><a href="study.html#unpublished">What is not on this site</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="install.html">Install</a><ul><li><a href="install.html#get">Install with one command</a></li><li><a href="install.html#python">Install with pip, pipx and uv</a></li><li><a href="install.html#files">Release files</a></li><li><a href="install.html#how">What the installer does</a></li><li><a href="install.html#first">Your first three commands</a></li><li><a href="install.html#agent">Tell your agent to use it</a></li><li><a href="install.html#team">Use it in a team of agents</a></li><li><a href="install.html#tested">What was tested, and what was not</a></li><li><a href="install.html#licence">Licence</a></li></ul></div>
+      </nav>
+    </div>
+    <div class="foot-line"><p>The benchmark pages report measured outcomes: counts of tokens, turns and answers. What is not measured is marked.</p>
+      <p class="foot-links"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest">Latest release</a><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark">Repository</a></p></div>
+  </footer><!--/slot:foot-->
+<script src="data/showcase.js?v=f63c1a19"></script>
+<script src="assets/app.js?v=9a43b6ea"></script>
+<script src="assets/palette.js?v=e4d3de54"></script>
+<script src="assets/benchmarks.js?v=696acab5"></script>
 </body>
 </html>

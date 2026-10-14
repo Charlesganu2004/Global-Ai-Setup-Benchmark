@@ -56,7 +56,7 @@
   <h2 id="off-on">Off against on</h2>
   <section class="card" aria-labelledby="pairs-title">
     <h3 id="pairs-title">The same prompt without the hooks and with them</h3>
-    <p class="sub">One row per method and model tier, one dot for each state. Dots at the same place mean the two sides used the same. A gap on a row where the hooks never ran was not made by the hooks: check the "Runs the hooks ran in" column before reading a gap as an effect. Cost is drawn on a log scale, where each gridline is ten times the one before.</p>
+    <p class="sub">One row per method and model, one dot for each state. Dots at the same place mean the two sides used the same. A gap on a row where the hooks never ran was not made by the hooks: check the "Runs the hooks ran in" column before reading a gap as an effect. Cost is drawn on a log scale, where each gridline is ten times the one before.</p>
     <div class="legend" id="pairs-legend"></div>
     <div class="chart" id="pairs"></div>
     <details open><summary>Table view</summary><div id="pairs-table"></div></details>
@@ -91,7 +91,7 @@ npm uninstall -g token-goat                      # remove the package itself</co
 </main>
 <footer class="site-footer" id="site-footer"></footer>
 </div>
-<script src="data/benchmark.js?v=39c86ca3"></script>
+<script src="data/benchmark.js?v=04fcceb4"></script>
 <script src="data/bench-hooks.js?v=4770ed9e"></script>
 <script src="assets/site.js?v=63f9e3ff"></script>
 <script src="assets/charts.js?v=1299e283"></script>

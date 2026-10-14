@@ -2,94 +2,237 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
-<meta name="theme-color" content="#0a0a0c">
-<title>Install | PeterGanuRusty</title>
-<meta name="description" content="Availability of the package and what installing gives you.">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#08090b">
+<title>Install pgr | PeterGanuRusty</title>
+<meta name="description" content="Install PeterGanuRusty (pgr) with one command on Windows, macOS or Linux, or from a Python wheel. Release files with sizes, what the installer does, first commands, and how to tell an agent to use it.">
+<meta property="og:title" content="Install pgr | PeterGanuRusty">
+<meta property="og:description" content="One paste installs pgr: one program file, checked against a published checksum. Windows, macOS and Linux.">
+<meta property="og:type" content="website">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7' fill='none' stroke='%23ff7a3d' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3Ccircle cx='18.5' cy='18.6' r='1.9' fill='%23ff7a3d'/%3E%3C/svg%3E">
-<script>document.documentElement.className += " js";</script>
-<link rel="stylesheet" href="assets/app.css?v=2e9ba78a">
+<script>(function () { var r = document.documentElement; r.className += " js"; try { var t = localStorage.getItem("pgr-theme"); if (t === "light" || t === "dark") r.setAttribute("data-theme", t); } catch (e) { /* no storage: follow the system */ } })();</script>
+<style>@view-transition { navigation: auto; } @media (prefers-reduced-motion: reduce) { @view-transition { navigation: none; } }</style>
+<link rel="stylesheet" href="assets/app.css?v=69c66cda">
+<link rel="stylesheet" href="assets/blocks.css?v=86d5eed5">
+<link rel="stylesheet" href="assets/install.css?v=3b7c698a">
 </head>
-<body>
+<body class="inner install">
 <a class="skip" href="#main">Skip to content</a>
-<div class="bar" id="bar" aria-hidden="true"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Install</span></div>
-<!--slot:sidebar--><header class="sidebar">
-    <p class="brand"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
-    <nav aria-label="Pages">
-    <div class="side-wrap">
-      <span class="side-ind" aria-hidden="true" style="--i:3"></span>
-      <ul class="side-pages">
-        <li><a href="index.html">Overview</a></li>
-        <li><a href="benchmarks.html">Benchmarks</a></li>
-        <li><a href="study.html">Study</a></li>
-        <li><a href="install.html" aria-current="page">Install</a>
-        <ul class="side-sections" aria-label="On this page">
-          <li><a href="#what-it-is">What it is</a></li>
-          <li><a href="#availability">Availability</a></li>
-          <li><a href="#what-you-get">What installing will look like</a></li>
-        </ul></li>
-      </ul>
+<!--slot:nav--><header class="nav" id="nav" data-cmd-windows="irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex" data-cmd-unix="curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh">
+    <div class="nav-in">
+      <a class="brand" href="index.html" aria-label="PeterGanuRusty, overview"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></a>
+      <nav class="nav-links" id="nav-links" aria-label="Pages"><span class="nav-ind" aria-hidden="true"></span>
+      <a href="index.html">Overview</a>
+      <a href="benchmarks.html">Benchmarks</a>
+      <a href="study.html">Study</a>
+      <a href="install.html" aria-current="page">Install</a>
+      </nav>
+      <div class="nav-tools">
+        <button type="button" class="kbd-btn" data-palette aria-haspopup="dialog" aria-label="Open the command palette"><span>Search</span><kbd data-mod>Ctrl</kbd><kbd>K</kbd></button>
+        <button type="button" class="icon-btn" data-theme-toggle aria-label="Switch the theme"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle class="sun" cx="12" cy="12" r="4.2"/><path class="rays" d="M12 2.8v2.4M12 18.8v2.4M2.8 12h2.4M18.8 12h2.4M5.5 5.5l1.7 1.7M16.8 16.8l1.7 1.7M5.5 18.5l1.7-1.7M16.8 7.2l1.7-1.7"/><path class="moon" d="M19.6 14.4A8 8 0 0 1 9.6 4.4a8 8 0 1 0 10 10z"/></svg></button>
+        <a class="icon-btn" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark" aria-label="The repository on GitHub"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M9 19c-4.3 1.4-4.3-2.5-6-3m12 5v-3.5c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.6 4.6 0 0 0-1.3-3.2 4.2 4.2 0 0 0-.1-3.2s-1.1-.3-3.5 1.3a12.3 12.3 0 0 0-6.2 0C6.5 2.8 5.4 3.1 5.4 3.1a4.2 4.2 0 0 0-.1 3.2A4.6 4.6 0 0 0 4 9.5c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21"/></svg></a>
+      </div>
     </div>
-  </nav>
-  </header><!--/slot:sidebar-->
-<main id="main" class="page">
-  <header class="large-title">
-    <h1 id="title" aria-label="Install"><span class="w" aria-hidden="true" style="--i:0"><span>Install</span></span></h1>
-    <p class="lede"><!--slot:lede-->PeterGanuRusty is in private preview: access is by invitation, and there is no public download yet.<!--/slot:lede--></p>
+  </header><!--/slot:nav-->
+<div class="progress" id="progress" aria-hidden="true"></div>
+<div class="ambient" aria-hidden="true"><i class="amb-glow"></i></div>
+<main id="main" class="page wide">
+  <header class="page-head">
+    <h1 id="title" class="display" aria-label="Install pgr"><span class="w" aria-hidden="true" style="--i:0"><span>Install</span></span> <span class="w" aria-hidden="true" style="--i:1"><span>pgr</span></span></h1>
+    <p class="lede"><!--slot:lede-->PeterGanuRusty (pgr) is a desktop command-line tool for AI coding agents, for Windows, macOS and Linux. It works with any agent that can run a command, and it is written in Rust. Measured under Claude Code. A smaller check under the Codex CLI showed no consistent saving (see Benchmarks). One paste installs it.<!--/slot:lede--></p>
   </header>
 
-  <!--slot:install--><section class="section" aria-labelledby="what-it-is">
-  <h2 id="what-it-is" class="section-title">What it is</h2>
-  <div class="card prose">
-    <p>PeterGanuRusty is a command-line program that runs on the developer's own machine. An AI coding agent calls it to look things up in the code it is working on, such as where a function is defined and what calls it.</p>
-    <p>Nothing leaves the machine.</p>
-  </div>
-</section>
-<section class="section" aria-labelledby="availability">
-  <h2 id="availability" class="section-title">Availability</h2>
-  <div class="card">
-    <ul class="rows">
-      <li class="row"><span class="label">Status</span><span class="value"><span class="tag">Private preview</span></span></li>
-      <li class="row"><span class="label">Access</span><span class="value">By invitation</span></li>
-      <li class="row"><span class="label">Public download</span><span class="value">None yet</span></li>
-      <li class="row"><span class="label">Public registry</span><span class="value">Not yet</span></li>
-    </ul>
-  </div>
-  <p class="footnote">The package is in private preview. Access is by invitation, and there is no public download yet.</p>
-</section>
-<section class="section" aria-labelledby="what-you-get">
-  <h2 id="what-you-get" class="section-title">What installing will look like</h2>
-  <div class="card">
-    <ul class="rows">
-      <li class="row"><span class="label">Installation</span><span class="value">One command</span></li>
-      <li class="row"><span class="label">What is installed</span><span class="value">One program</span></li>
-      <li class="row"><span class="label">What it needs</span><span class="value">Nothing but the program</span></li>
-      <li class="row"><span class="label">Used through</span><span class="value">An AI coding agent that can run a command on your machine</span></li>
-      <li class="row"><span class="label">Systems</span><span class="value">Windows, macOS and Linux</span></li>
-      <li class="row"><span class="label">Tested so far</span><span class="value">Windows 11 only. Every measurement on this site was made there.</span></li>
-    </ul>
-  </div>
-</section>
-<section class="section" aria-label="More on this site">
-  <p class="close-actions"><a class="btn" href="study.html">How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>
-</section>
-<!--/slot:install-->
+  <!--slot:install--><div class="install-layout">
+  <nav class="toc" aria-label="On this page"><ul><li><a href="#get">Install</a></li><li><a href="#python">pip, pipx and uv</a></li><li><a href="#files">Release files</a></li><li><a href="#how">What it does</a></li><li><a href="#first">First commands</a></li><li><a href="#agent">Your agent</a></li><li><a href="#team">A team of agents</a></li><li><a href="#tested">What was tested</a></li><li><a href="#licence">Licence</a></li></ul></nav>
+  <div class="install-main">
+    <section class="block get" aria-labelledby="get">
+      <h2 id="get" class="block-title">Install with one command</h2>
+      <p class="block-lede">Your system is selected for you. Paste the line into PowerShell or a terminal. The installer needs no administrator rights and no root.</p>
+      <div class="cmdbox big" data-cmdbox><div class="cmd-tabs" role="radiogroup" aria-label="System"><button type="button" role="radio" aria-checked="true" tabindex="0" data-sys="windows">Windows</button><button type="button" role="radio" aria-checked="false" tabindex="-1" data-sys="unix">macOS and Linux</button></div><div class="cmd-line" data-sys="windows"><code>irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex</code><button type="button" class="copy" data-copy="irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex" aria-label="Copy the install command for Windows"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-sys="unix"><code>curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh</code><button type="button" class="copy" data-copy="curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh" aria-label="Copy the install command for macOS and Linux"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><p class="cmd-note" data-sys="windows">Run it in PowerShell. No administrator rights.</p><p class="cmd-note" data-sys="unix">Run it in a terminal. No root.</p></div>
+      <div class="get-grid">
+        <ul class="facts">
+          <li><b>One program file</b><span>43.5 MB on Windows, about the same elsewhere.</span></li>
+          <li><b>Checked before it is installed</b><span>Against the published SHA256SUMS.txt.</span></li>
+          <li><b>Local only</b><span>No account, no server, no network use once it is installed.</span></li>
+          <li><b>Works with any agent</b><span>Any agent that can run a command. The benchmark on this site measured it under Claude Code.</span></li>
+        </ul>
+        <figure class="term term-install" data-install-term aria-label="What the installer prints">
+          <figcaption class="term-bar"><span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="term-title">Terminal</span><span class="term-state">done</span></figcaption>
+          <div class="term-body">
+        <div class="log" data-sys="windows">
+          <p class="lg lg-in"><span class="lg-cmd">irm https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1 | iex</span></p>
+          <p class="lg">pgr: downloading from https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download</p>
+          <p class="lg">pgr: installed pgr 0.2.0 to C:\Users\...\AppData\Local\Programs\pgr\pgr.exe</p>
+          <p class="lg">pgr: added C:\Users\...\AppData\Local\Programs\pgr to your user PATH. Open a new terminal to use the pgr command.</p>
+          <p class="lg lg-gap">Next, inside a git repository:</p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr refresh</span><span class="lg-note">build the index</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr ask about:SomeFunction</span><span class="lg-note">definition, callers and what it calls</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr find &quot;where tokens expire&quot;</span><span class="lg-note">search by meaning</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr help</span><span class="lg-note">every command</span></p>
+        </div>
+        <div class="log" data-sys="unix">
+          <p class="lg lg-in"><span class="lg-cmd">curl -fsSL https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh | sh</span></p>
+          <p class="lg">pgr: downloading from https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download</p>
+          <p class="lg">pgr: installed pgr 0.2.0 to ~/.local/bin/pgr</p>
+          <p class="lg lg-gap">Next, inside a git repository:</p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr refresh</span><span class="lg-note">build the index</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr ask about:SomeFunction</span><span class="lg-note">definition, callers and what it calls</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr find &quot;where tokens expire&quot;</span><span class="lg-note">search by meaning</span></p>
+          <p class="lg lg-next"><span class="lg-cmd">pgr help</span><span class="lg-note">every command</span></p>
+        </div>
+          </div>
+        </figure>
+      </div>
+    </section>
 
+    <section class="block" aria-labelledby="python">
+      <h2 id="python" class="block-title">Install with pip, pipx and uv</h2>
+      <p class="block-lede">These are optional ways to deliver the same program, which is written in Rust: the wheel carries the program itself and needs no Python packages. Pass the address of the wheel for your system, from the release page, to uv, pipx, or pip.</p>
+      <div class="py-controls" hidden>
+        <div class="seg" role="radiogroup" aria-label="Tool" data-seg="tool" style="--count:3"><span class="seg-thumb" aria-hidden="true"></span><button type="button" role="radio" aria-checked="true" tabindex="0" data-value="uv">uv</button><button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="pipx">pipx</button><button type="button" role="radio" aria-checked="false" tabindex="-1" data-value="pip">pip</button></div>
+        <label class="select-wrap"><span class="sr-only">System</span><select class="select" data-wheel aria-label="System"><option value="windows">Windows, x86-64</option><option value="macos">macOS, Apple silicon</option><option value="macos-intel">macOS, Intel</option><option value="linux">Linux, x86-64</option><option value="linux-arm">Linux, ARM64</option></select></label>
+      </div>
+      <div class="py-lines"><div class="cmd-line" data-tool="uv" data-sys="windows"><code>uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl</code><button type="button" class="copy" data-copy="uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl" aria-label="Copy the command for uv, Windows, x86-64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pipx" data-sys="windows"><code>pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl</code><button type="button" class="copy" data-copy="pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl" aria-label="Copy the command for pipx, Windows, x86-64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pip" data-sys="windows"><code>pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl</code><button type="button" class="copy" data-copy="pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl" aria-label="Copy the command for pip, Windows, x86-64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="uv" data-sys="macos"><code>uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl</code><button type="button" class="copy" data-copy="uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl" aria-label="Copy the command for uv, macOS, Apple silicon"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pipx" data-sys="macos"><code>pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl</code><button type="button" class="copy" data-copy="pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl" aria-label="Copy the command for pipx, macOS, Apple silicon"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pip" data-sys="macos"><code>pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl</code><button type="button" class="copy" data-copy="pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl" aria-label="Copy the command for pip, macOS, Apple silicon"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="uv" data-sys="macos-intel"><code>uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl</code><button type="button" class="copy" data-copy="uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl" aria-label="Copy the command for uv, macOS, Intel"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pipx" data-sys="macos-intel"><code>pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl</code><button type="button" class="copy" data-copy="pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl" aria-label="Copy the command for pipx, macOS, Intel"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pip" data-sys="macos-intel"><code>pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl</code><button type="button" class="copy" data-copy="pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl" aria-label="Copy the command for pip, macOS, Intel"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="uv" data-sys="linux"><code>uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl</code><button type="button" class="copy" data-copy="uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" aria-label="Copy the command for uv, Linux, x86-64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pipx" data-sys="linux"><code>pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl</code><button type="button" class="copy" data-copy="pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" aria-label="Copy the command for pipx, Linux, x86-64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pip" data-sys="linux"><code>pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl</code><button type="button" class="copy" data-copy="pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl" aria-label="Copy the command for pip, Linux, x86-64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="uv" data-sys="linux-arm"><code>uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl</code><button type="button" class="copy" data-copy="uv tool install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" aria-label="Copy the command for uv, Linux, ARM64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pipx" data-sys="linux-arm"><code>pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl</code><button type="button" class="copy" data-copy="pipx install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" aria-label="Copy the command for pipx, Linux, ARM64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div><div class="cmd-line" data-tool="pip" data-sys="linux-arm"><code>pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl</code><button type="button" class="copy" data-copy="pip install https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl" aria-label="Copy the command for pip, Linux, ARM64"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div></div>
+      <p class="fine-print">For another system, take the wheel from the list below; its name carries the version, 0.2.0.</p>
+    </section>
+
+    <section class="block" aria-labelledby="files">
+      <h2 id="files" class="block-title">Release files</h2>
+      <p class="block-lede">Program files carry no version in their name, so the address <span class="mono-inline">https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/NAME</span> always gives the newest. Every file is on the <a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest">release page</a>.</p>
+      <div class="files-grid">
+        <div class="file-group"><h3>Program files</h3><ul class="files">
+          <li class="file" data-os="windows"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-windows-x86_64.exe">pgr-windows-x86_64.exe</a><span class="file-for">Windows, x86-64</span><span class="file-size">43.5 MB</span></li>
+          <li class="file" data-os="mac"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-macos-aarch64">pgr-macos-aarch64</a><span class="file-for">macOS, Apple silicon</span><span class="file-size">41.7 MB</span></li>
+          <li class="file" data-os="mac"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-macos-x86_64">pgr-macos-x86_64</a><span class="file-for">macOS, Intel</span><span class="file-size">42.0 MB</span></li>
+          <li class="file" data-os="linux"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-linux-x86_64">pgr-linux-x86_64</a><span class="file-for">Linux, x86-64</span><span class="file-size">42.5 MB</span></li>
+          <li class="file" data-os="linux"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/pgr-linux-aarch64">pgr-linux-aarch64</a><span class="file-for">Linux, ARM64</span><span class="file-size">41.6 MB</span></li>
+        </ul></div>
+        <div class="file-group"><h3>Wheels for pip, pipx and uv, version 0.2.0</h3><ul class="files">
+          <li class="file" data-os="windows"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-win_amd64.whl">peterganurusty-0.2.0-py3-none-win_amd64.whl</a><span class="file-for">Windows, x86-64</span><span class="file-size">34.6 MB</span></li>
+          <li class="file" data-os="mac"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl">peterganurusty-0.2.0-py3-none-macosx_11_0_arm64.whl</a><span class="file-for">macOS, Apple silicon</span><span class="file-size">34.5 MB</span></li>
+          <li class="file" data-os="mac"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl">peterganurusty-0.2.0-py3-none-macosx_10_12_x86_64.whl</a><span class="file-for">macOS, Intel</span><span class="file-size">34.4 MB</span></li>
+          <li class="file" data-os="linux"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl">peterganurusty-0.2.0-py3-none-manylinux_2_17_x86_64.manylinux2014_x86_64.whl</a><span class="file-for">Linux, x86-64</span><span class="file-size">34.5 MB</span></li>
+          <li class="file" data-os="linux"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/download/v0.2.0/peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl">peterganurusty-0.2.0-py3-none-manylinux_2_17_aarch64.manylinux2014_aarch64.whl</a><span class="file-for">Linux, ARM64</span><span class="file-size">34.3 MB</span></li>
+        </ul></div>
+        <div class="file-group"><h3>Installers and checksums</h3><ul class="files">
+          <li class="file"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.ps1">install.ps1</a><span class="file-for">Windows installer script</span><span class="file-size">3.9 kB</span></li>
+          <li class="file"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/install.sh">install.sh</a><span class="file-for">macOS and Linux installer script</span><span class="file-size">3.4 kB</span></li>
+          <li class="file"><a class="file-name" href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest/download/SHA256SUMS.txt">SHA256SUMS.txt</a><span class="file-for">Checksums of every program file</span><span class="file-size">1.2 kB</span></li>
+        </ul></div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="how">
+      <h2 id="how" class="block-title">What the installer does</h2>
+    <ol class="steps">
+      <li><h3>It downloads one program file</h3><p>The file for your system and its checksum list, SHA256SUMS.txt, from the release at https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest. Nothing else is downloaded: no Python, no runtime, no packages.</p></li>
+      <li><h3>It checks the file</h3><p>The installer compares the file with its published SHA-256. If they differ, it stops and nothing is installed.</p></li>
+      <li><h3>It puts the file in a folder of your user account</h3><p>On Windows that is %LOCALAPPDATA%\Programs\pgr\pgr.exe, and the folder is added to your user PATH, so open a new terminal afterwards. On macOS and Linux it is ~/.local/bin/pgr; if that folder is not on your PATH, the installer prints the line to add. No administrator rights and no root are used.</p></li>
+      <li><h3>It runs the program once</h3><p>The installer asks the new file for its version, so a file that cannot run on your system is reported at once.</p></li>
+    </ol>
+    </section>
+
+    <section class="block" aria-labelledby="first">
+      <h2 id="first" class="block-title">Your first three commands</h2>
+      <p class="block-lede">Open a terminal inside a git repository. Replace SomeFunction with a name from your code.</p>
+      <ol class="firsts">
+        <li class="first-step"><p class="first-text">Build the index of the repository you are in. Run it once, and again after the code changes.</p><div class="cmd-line"><code>pgr refresh</code><button type="button" class="copy" data-copy="pgr refresh" aria-label="Copy: pgr refresh"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div></li>
+        <li class="first-step"><p class="first-text">Ask two questions in one call: where SomeFunction is defined and what calls it (use a name from your code), and which code does a job you can only describe.</p><div class="cmd-line"><code>pgr ask about:SomeFunction &quot;find:where tokens expire&quot;</code><button type="button" class="copy" data-copy="pgr ask about:SomeFunction &quot;find:where tokens expire&quot;" aria-label="Copy: pgr ask about:SomeFunction &quot;find:where tokens expire&quot;"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div></li>
+        <li class="first-step"><p class="first-text">Every command, with what it prints.</p><div class="cmd-line"><code>pgr help</code><button type="button" class="copy" data-copy="pgr help" aria-label="Copy: pgr help"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div></li>
+      </ol>
+    </section>
+
+    <section class="block" aria-labelledby="agent">
+      <h2 id="agent" class="block-title">Tell your agent to use it</h2>
+      <p class="block-lede">An agent uses the command when its instructions say so. Paste these four lines into the instruction file your agent reads at the start of a session.</p>
+      <div class="rule-card"><pre class="rule" tabindex="0"><code>Before reading files to find where something is, run pgr ask.
+For a name, run pgr ask about:NAME: the definition, the callers and what it calls.
+For a job you cannot name, run pgr ask &quot;find:what the code does&quot;.
+Open a file only for the lines the answer names.</code></pre><button type="button" class="copy" data-copy="Before reading files to find where something is, run pgr ask.
+For a name, run pgr ask about:NAME: the definition, the callers and what it calls.
+For a job you cannot name, run pgr ask &quot;find:what the code does&quot;.
+Open a file only for the lines the answer names." aria-label="Copy the four lines for your agent"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div>
+      <div class="proto"><span class="tag">Not part of the measured benchmark</span>
+        <p>The program also runs as a Model Context Protocol server, for agents that speak the protocol instead of running commands. Start it with the command below. The benchmark on this site measured agents that ran commands, not this route.</p>
+        <div class="cmd-line"><code>pgr mcp</code><button type="button" class="copy" data-copy="pgr mcp" aria-label="Copy: pgr mcp"><svg class="i-copy" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8.5" y="8.5" width="11" height="11" rx="2.2"/><path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8"/></svg><svg class="i-check" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="m5 12.8 4.4 4.4L19 7.6"/></svg><span class="copy-label">Copy</span></button></div></div>
+    </section>
+
+
+    <section class="block" aria-labelledby="team">
+      <h2 id="team" class="block-title">Use it in a team of agents</h2>
+      <p class="block-lede">The pattern round six supports, in four steps. Each step says what was measured and what is advice that follows from it. The questions were written by the builders of the engine and none of this was tested on open-ended work.</p>
+      <ol class="steps team-steps">
+      <li><h3>Run <code>pgr pack</code> on each subagent's task and paste the output into its brief</h3><p class="team-m"><span class="tag">Measured</span> In round six the harness made a pack for each question before the agent started and put it in the prompt. Making a pack used no language model: the program&#x27;s own search found the matches, with its small neural table switched on. Three subagents started together used 27% to 32% fewer tokens with a pack in each brief than without, and 12 of 12 runs were fully correct.</p><p class="team-a"><span class="tag quiet">Advice</span> Give the command the task in the words you would give a colleague: a pack is built from the words it is given. Make one pack for each subagent's own task, not one for the whole job.</p></li>
+      <li><h3>Tell it to answer from the pack, and to look up only what is missing</h3><p class="team-m"><span class="tag">Measured</span> Each pack came with the note that it may be all the agent needs and that anything it does not show can be looked up. Even so, an agent that also had the lookup commands ran one in 11 of 12 runs and answered in one turn in 1 of 12. An agent with the pack and no command answered in one turn on 70k to 71k tokens, fully correct in 12 of 12 runs.</p><p class="team-a"><span class="tag quiet">Advice</span> Say it plainly in the brief, and keep the lookup command within reach for any work that is open-ended: an agent with no command cannot look further, and round six did not test open-ended work.</p></li>
+      <li><h3>Give the reviewer the same packs</h3><p class="team-m"><span class="tag">Measured</span> In the orchestrated runs the reviewer got the same packs as the subagents, and the total moved from 13% fewer to 1% more tokens against runs with no packs (12 of 12 runs fully correct), inside the spread of three runs. What the reviewer&#x27;s packs are worth alone was not isolated.</p><p class="team-a"><span class="tag quiet">Advice</span> A reviewer that starts from the packs can spend its calls on checking what the subagents said instead of finding it again.</p></li>
+      <li><h3>Use the hub only for findings that cannot be looked up again</h3><p class="team-m"><span class="tag">Measured</span> On lookup work the hub used 14% to 34% more tokens and gained no accuracy: 24 of 24 runs were fully correct, with the hub and without. On a demonstration set whose answers are notes an earlier agent left, an agent got 0 of 15 note fields right with no notes and 15 of 15 with the notes in its brief, at the lowest mean tokens of the three setups, though the runs of the three overlap.</p><p class="team-a"><span class="tag quiet">Advice</span> File a decision, a ticket number, a reason, or a finding someone confirmed. Do not file what <code>pgr ask</code> answers again. <code>pgr handoff</code> files a note and <code>pgr loadout</code> reads what was filed for a task; <code>pgr help</code> lists their options.</p></li>
+      </ol>
+    </section>
+
+    <section class="block" aria-labelledby="tested">
+      <h2 id="tested" class="block-title">What was tested, and what was not</h2>
+      <div class="tested-grid">
+        <div class="card-plain"><h3>What ran</h3><ul>
+          <li>The Windows installer, on Windows 11, from the public release, followed by a first index build and a query in a new repository.</li>
+          <li>The shell installer, on Ubuntu, from the public release, with the same first index build and query.</li>
+          <li>Installing the wheel with pip, on both of those systems.</li>
+          <li>The build workflow installed and ran the Windows, Linux x86-64 and macOS Apple-silicon builds.</li>
+        </ul></div>
+        <div class="card-plain"><h3>What did not run</h3><ul>
+          <li>The Linux ARM64 and the macOS Intel builds were cross-compiled and checked, not run.</li>
+          <li>The Linux builds need the GNU C library, so Alpine (musl) is not covered yet.</li>
+        </ul></div>
+      </div>
+      <p class="block-lede">Checked 2026-10-13.</p>
+      <div class="tested-grid">
+        <div class="card-plain"><h3>Test suites</h3><ul>
+          <li><b>Windows 11</b> (development machine): the engine&#x27;s whole test suite. 729 passed, 0 failed, 5 ignored.</li>
+          <li><b>Ubuntu 24.04 on WSL 2</b> (the same machine): the engine&#x27;s whole test suite, built natively. 654 passed, 0 failed, 5 ignored on the 0.1 source after one fix; the first run found a test that failed in 23 of 40 runs on Linux only, fixed (0 of 40 after).</li>
+          <li><b>Linux, macOS, Windows</b> (GitHub&#x27;s build machines): the engine&#x27;s whole test suite on every push that touches the engine. passed on all three for 0.1 and for 0.2.</li>
+        </ul></div>
+        <div class="card-plain"><h3>Same answers on different systems</h3><ul>
+          <li>The Windows build against the Linux build, the Linux one run inside Ubuntu, on the same repository: 56 of 56 commands gave byte-identical output (42 recorded from the benchmark&#x27;s agents, 14 added), for 0.1 and for 0.2.</li>
+          <li>The 0.2 Windows build against the binary the fifth round measured: 88 of 88 recorded commands gave identical output.</li>
+        </ul></div>
+        <div class="card-plain"><h3>The installers, run from the public release</h3><ul>
+          <li><b>Windows 11</b>: install.ps1 from the public release, then a first index and a query in a new repository: passed.</li>
+          <li><b>Ubuntu 24.04 on WSL 2</b>: install.sh from the public release, then a first index and a query in a new repository: passed.</li>
+          <li><b>both</b>: installing the wheel from the release with pip: passed.</li>
+        </ul></div>
+        <div class="card-plain"><h3>Built but not run here</h3><ul>
+          <li>Linux aarch64 (cross-compiled, checked, not run)</li>
+          <li>macOS Intel (cross-compiled, checked, not run)</li>
+        </ul></div>
+      </div>
+    </section>
+
+    <section class="block" aria-labelledby="licence">
+      <h2 id="licence" class="block-title">Licence</h2>
+      <p class="block-lede licence">The licence terms are not chosen yet. LICENSE.txt says all rights reserved, with the terms to be published.</p>
+      <p class="close-actions"><a class="btn quiet" href="study.html">How it was measured</a><a class="btn quiet" href="benchmarks.html">Open the benchmarks</a></p>
+    </section>
+  </div>
+</div>
+<!--/slot:install-->
 </main>
-<footer class="foot">
-  <p>Implementation details are not published. This site reports measured outcomes only.</p>
-  <p>Results built <!--slot:built-->2026-10-13<!--/slot:built-->.</p>
-</footer>
-<!--slot:tabbar--><nav class="tabbar" aria-label="Pages">
-    <span class="tab-ind" aria-hidden="true" style="--n:4;--i:3"></span>
-    <a href="index.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>Overview</span></a>
-    <a href="benchmarks.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 20v-8M12 20V5M19 20v-5"/></svg><span>Benchmarks</span></a>
-    <a href="study.html"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M5 5.5A1.5 1.5 0 0 1 6.5 4H18v13H6.5A1.5 1.5 0 0 0 5 18.5zM5 18.5A1.5 1.5 0 0 0 6.5 20H18v-3"/></svg><span>Study</span></a>
-    <a href="install.html" aria-current="page"><svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 20h14"/></svg><span>Install</span></a>
-  </nav><!--/slot:tabbar-->
-<script src="data/showcase.js?v=8fe6540f"></script>
-<script src="assets/app.js?v=fe9ca4e1"></script>
-<script src="assets/install.js?v=f9346843"></script>
+<!--slot:foot--><footer class="foot" id="foot">
+    <div class="foot-in">
+      <div class="foot-brand"><p class="foot-name"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M7 4v16M7 4h6.5a4.25 4.25 0 0 1 0 8.5H7"/><circle cx="18.5" cy="18.6" r="1.9"/></svg><span>PeterGanuRusty</span></p>
+        <p>A desktop command-line tool for AI coding agents.</p>
+        <p class="foot-built">Results built 2026-10-14.</p></div>
+      <nav class="sitemap" aria-label="Site map">
+      <div class="sm-col"><a class="sm-page" href="index.html">Overview</a><ul><li><a href="index.html#problem">Every turn re-reads everything</a></li><li><a href="index.html#result">What it saves</a></li><li><a href="index.html#benefits">What it does for an agent</a></li><li><a href="index.html#most-reliable">Most reliable configuration</a></li><li><a href="index.html#teams">Teams of agents</a></li><li><a href="index.html#size">Size on disk</a></li><li><a href="index.html#films">Films</a></li><li><a href="index.html#next">Install it in one paste</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="benchmarks.html">Benchmarks</a><ul><li><a href="benchmarks.html#leaderboard">Leaderboard</a></li><li><a href="benchmarks.html#chart">Which configurations are cheap and correct?</a></li><li><a href="benchmarks.html#turns">Turns per task</a></li><li><a href="benchmarks.html#team">Round six: teams of agents</a></li><li><a href="benchmarks.html#engine">Engine speed</a></li><li><a href="benchmarks.html#size">Size on disk</a></li><li><a href="benchmarks.html#findings">Findings</a></li><li><a href="benchmarks.html#second-harness">Under the Codex CLI</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="study.html">Study</a><ul><li><a href="study.html#asked">What was asked</a></li><li><a href="study.html#sets">Question sets</a></li><li><a href="study.html#graded">How answers were graded</a></li><li><a href="study.html#told">What each agent was told</a></li><li><a href="study.html#scale">How much was run</a></li><li><a href="study.html#tokens">What a token count is</a></li><li><a href="study.html#classes">Models</a></li><li><a href="study.html#sessions">Sessions and memory</a></li><li><a href="study.html#team">Round six: teams of agents</a></li><li><a href="study.html#control">The control</a></li><li><a href="study.html#limits">Limits</a></li><li><a href="study.html#lab">Search without a neural network</a></li><li><a href="study.html#second">A second agent program</a></li><li><a href="study.html#unpublished">What is not on this site</a></li></ul></div>
+      <div class="sm-col"><a class="sm-page" href="install.html">Install</a><ul><li><a href="install.html#get">Install with one command</a></li><li><a href="install.html#python">Install with pip, pipx and uv</a></li><li><a href="install.html#files">Release files</a></li><li><a href="install.html#how">What the installer does</a></li><li><a href="install.html#first">Your first three commands</a></li><li><a href="install.html#agent">Tell your agent to use it</a></li><li><a href="install.html#team">Use it in a team of agents</a></li><li><a href="install.html#tested">What was tested, and what was not</a></li><li><a href="install.html#licence">Licence</a></li></ul></div>
+      </nav>
+    </div>
+    <div class="foot-line"><p>The benchmark pages report measured outcomes: counts of tokens, turns and answers. What is not measured is marked.</p>
+      <p class="foot-links"><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark/releases/latest">Latest release</a><a href="https://github.com/Charlesganu2004/Global-Ai-Setup-Benchmark">Repository</a></p></div>
+  </footer><!--/slot:foot-->
+<script src="assets/app.js?v=9a43b6ea"></script>
+<script src="assets/palette.js?v=e4d3de54"></script>
+<script src="assets/install.js?v=ecdea9cc"></script>
 </body>
 </html>
